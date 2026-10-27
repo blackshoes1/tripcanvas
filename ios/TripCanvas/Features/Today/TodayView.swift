@@ -128,6 +128,11 @@ struct TodayView: View {
                             DoneForTodayCard(tone: env.jTone.selected)
                         }
 
+                        // '여행 중' 권유는 다음 일정 카드 **바로 아래**의 얇은 띠다 — 지금 할 일보다 먼저 읽히면 안 되지만,
+                        // 2026-10-26 전에는 제안·컨디션 뒤 지도 위(화면 세 장 아래)에 있어 여행 중인데도 "아예 없다"였다.
+                        travelModeInviteSection
+                        liveActivityNoticeSection
+
                         if model.canAct, let replan = model.replanSuggestion {
                             DailyMomentsTodaySection(trip: today.trip, dayIndex: today.day.index, revision: model.revision,
                                                      dropActivityIds: today.replan.dropActivityIds)
@@ -183,9 +188,6 @@ struct TodayView: View {
                                         onEnergy: { level in Task { await model.setEnergy(level) } })
                         }
 
-                        // '여행 중' 권유는 할 일들 **아래**의 얇은 띠다 — 지금 할 일보다 먼저 읽히면 안 된다.
-                        travelModeInviteSection
-                        liveActivityNoticeSection
 
                         if let brief = today.tomorrowBrief {
                             TomorrowBriefCard(trip: today.trip, brief: brief, generatedAt: today.generatedAt, offline: model.isOffline,

@@ -73,7 +73,7 @@ final class TravelModeController {
 
     /// 여행 당일이면 먼저 권해도 되는 상태인지. 자동으로 켜지는 않는다 — 제안만 한다.
     func shouldOfferStart(for trip: TripSummary) -> Bool {
-        trip.isLive && !isActive
+        trip.isLive && (!isActive || snapshot.tripId != trip.id)
     }
 
     func start(trip: TripSummary) async {
