@@ -358,16 +358,29 @@ protocol TripDocumentSource {
     /// 여행 **전체**의 동선. 전체 지도를 볼 때만 부른다 — 열지도 않을 날까지 미리 받지 않는다.
     func tripRoutes(tripId: String) async throws -> TripRoutesResponse
     func planPreview(tripId: String, document: TripDocument, dayIndex: Int, revision: Int) async throws -> PlanChangePreview
+    func planPreview(tripId: String, document: TripDocument, dayIndex: Int, revision: Int, sortByTime: Bool) async throws -> PlanChangePreview
 }
 
 struct PlanChangePreview: Codable, Hashable, Sendable {
     let before: DayPlanResponse
     let after: DayPlanResponse
+    /// 시간순 정렬을 요청했을 때 서버가 돌려준 검토·저장할 원문. 구버전 응답에는 없다.
+    let document: [String: JSONValue]?
+    var canonicalDocument: TripDocument? { document.map { TripDocument(raw: $0) } }
+
+    init(before: DayPlanResponse, after: DayPlanResponse, document: [String: JSONValue]? = nil) {
+        self.before = before; self.after = after; self.document = document
+    }
 }
 
 extension TripDocumentSource {
     func planPreview(tripId: String, document: TripDocument, dayIndex: Int, revision: Int) async throws -> PlanChangePreview {
         throw APIError.notFound("변경 미리보기를 아직 사용할 수 없어요.")
+    }
+
+    func planPreview(tripId: String, document: TripDocument, dayIndex: Int, revision: Int, sortByTime: Bool) async throws -> PlanChangePreview {
+        guard !sortByTime else { throw APIError.notFound("시간순 이동 미리보기를 아직 사용할 수 없어요.") }
+        return try await planPreview(tripId: tripId, document: document, dayIndex: dayIndex, revision: revision)
     }
 }
 
@@ -451,7 +464,12 @@ extension TripService: TripDocumentSource {
     }
 
     func planPreview(tripId: String, document: TripDocument, dayIndex: Int, revision: Int) async throws -> PlanChangePreview {
-        let body: [String: JSONValue] = ["document": .object(document.raw), "dayIndex": .number(dayIndex), "revision": .number(revision)]
+        try await planPreview(tripId: tripId, document: document, dayIndex: dayIndex, revision: revision, sortByTime: false)
+    }
+
+    func planPreview(tripId: String, document: TripDocument, dayIndex: Int, revision: Int, sortByTime: Bool) async throws -> PlanChangePreview {
+        var body: [String: JSONValue] = ["document": .object(document.raw), "dayIndex": .number(dayIndex), "revision": .number(revision)]
+        if sortByTime { body["sortByTime"] = .bool(true) }
         return try await api.post("/api/v1/trips/\(tripId)/plan-preview", jsonBody: try JSONValue.data(from: body))
     }
 

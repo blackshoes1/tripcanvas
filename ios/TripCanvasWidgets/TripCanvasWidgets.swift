@@ -187,7 +187,7 @@ struct TripCanvasLiveActivity: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Label(context.attributes.dayLabel, systemImage: ActivityPresentation.symbol(for: context.state.status))
+                    Label(context.attributes.dayLabel, systemImage: ActivityPresentation.symbol(for: context.state))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -198,7 +198,7 @@ struct TripCanvasLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.center) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("다음").font(.caption2).foregroundStyle(.secondary)
+                        Text(ActivityPresentation.heading(context.state)).font(.caption2).foregroundStyle(.secondary)
                         Text(context.state.nextTitle).font(.headline).lineLimit(1)
                     }
                 }
@@ -216,12 +216,12 @@ struct TripCanvasLiveActivity: Widget {
                     }
                 }
             } compactLeading: {
-                Image(systemName: ActivityPresentation.symbol(for: context.state.status))
+                Image(systemName: ActivityPresentation.symbol(for: context.state))
             } compactTrailing: {
                 Text(ActivityPresentation.compactTravel(context.state.travelMinutes))
                     .font(.caption2.monospacedDigit())
             } minimal: {
-                Image(systemName: ActivityPresentation.symbol(for: context.state.status))
+                Image(systemName: ActivityPresentation.symbol(for: context.state))
             }
             .keylineTint(.orange)
         }
@@ -239,14 +239,14 @@ struct LockScreenActivityView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Image(systemName: ActivityPresentation.symbol(for: context.state.status))
+                Image(systemName: ActivityPresentation.symbol(for: context.state))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("다음").font(.caption2).foregroundStyle(.secondary)
+                    Text(ActivityPresentation.heading(context.state)).font(.caption2).foregroundStyle(.secondary)
                     Text(context.state.nextTitle).font(.title3.weight(.semibold)).lineLimit(1)
                 }
                 Spacer()

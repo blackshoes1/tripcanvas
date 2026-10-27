@@ -5,14 +5,20 @@ import SwiftUI
 /// '여행 중 안내' 띠가 어디에 어떻게 나오는지 본다. 내용은 테스트 픽스처 `today.json`과 같다(`todayIndex` 0 = 여행 중).
 @MainActor struct TodayLiveReviewHarness: View {
     @State private var model: TodayViewModel?
-    private let response: TodayResponse? = try? JSONDecoder().decode(TodayResponse.self, from: Data(Self.fixture.utf8))
+    @State private var movedActivity: String?
+    private let response = Self.makeResponse()
 
     var body: some View {
         NavigationStack {
             if let response, let model {
-                TodayView(trip: response.trip, model: model, onOpenPlan: {})
+                TodayView(trip: response.trip, model: model, onOpenPlan: {}, onMoveActivity: { day, activity, revision in
+                    movedActivity = "Day \(day + 1) · \(activity.name) · 변경 기준 \(revision)"
+                })
                     .navigationTitle(response.trip.name)
                     .navigationBarTitleDisplayMode(.inline)
+                    .safeAreaInset(edge: .bottom) {
+                        if let movedActivity { Text(movedActivity).accessibilityIdentifier("todayMoveRequested") }
+                    }
             } else if response == nil {
                 Text("합성 오늘 화면을 읽지 못했어요")
             }
@@ -21,6 +27,31 @@ import SwiftUI
             guard let response, model == nil else { return }
             model = TodayViewModel(trip: response.trip, service: TodayLiveReviewSource(response: response))
         }
+    }
+
+    private static func makeResponse() -> TodayResponse? {
+        guard var raw = try? JSONSerialization.jsonObject(with: Data(fixture.utf8)) as? [String: Any] else { return nil }
+        raw["generatedAt"] = ISO8601DateFormatter().string(from: Date())
+        if ProcessInfo.processInfo.arguments.contains("--review-time-current") {
+            var next = raw["nextAction"] as? [String: Any] ?? [:]
+            next["status"] = "IN_PROGRESS"
+            raw["nextAction"] = next
+            for key in ["activities", "remainingActivities"] {
+                var activities = raw[key] as? [[String: Any]] ?? []
+                for index in activities.indices where activities[index]["id"] as? String == "d0s1" {
+                    activities[index]["status"] = "IN_PROGRESS"
+                }
+                raw[key] = activities
+            }
+        }
+        if ProcessInfo.processInfo.arguments.contains("--review-time-elapsed") {
+            raw["nextAction"] = NSNull()
+            var activityState = raw["activityState"] as? [String: Any] ?? [:]
+            activityState["status"] = "COMPLETED"
+            raw["activityState"] = activityState
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: raw) else { return nil }
+        return try? JSONDecoder().decode(TodayResponse.self, from: data)
     }
 
     static let fixture = #"""

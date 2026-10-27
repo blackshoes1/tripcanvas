@@ -317,6 +317,18 @@
     "POLITE": "남은 시간은 편하게 쓰셔도 됩니다.",
     "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
   },
+  "pulse.elapsed": {
+    "sourceHash": "a07df120894c375195141089a734fc1c75390d87c046937c07accc06a31eb500",
+    "CASUAL": "오늘 계획한 일정 시간이 지났어",
+    "POLITE": "오늘 계획하신 일정 시간이 지났습니다",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
+  "pulse.elapsedDetail": {
+    "sourceHash": "cfccd329960cb48a72d3225d387f1d8665fb41dfe01ed8750ce358bcec9a4acd",
+    "CASUAL": "아직 마무리하지 않은 일정은 목록에 그대로 남아 있어.",
+    "POLITE": "아직 마무리하지 않은 일정은 목록에 그대로 남아 있습니다.",
+    "guideHash": "993fff1afd671e0a74b83c439c314a2f4e572b2446c73922de3b676e70bae50b"
+  },
   "pulse.attention": {
     "sourceHash": "d405754cd4f52d4a592e34d973d7e968776b063fd267db9269da903d0ebd1025",
     "CASUAL": "일정을 조금 손보면 좋겠어",

@@ -20,6 +20,8 @@ struct TripCanvasActivityAttributes: ActivityAttributes {
         /// 서버가 만든 출발 안내 문장. 클라이언트가 다시 쓰지 않는다(톤이 갈라진다).
         var departureText: String?
         var status: TravelStatus
+        /// 예정 시간 경과와 사용자가 표시한 방문 완료를 구분한다. 이전 상태에는 없다.
+        var scheduleElapsed: Bool?
         /// 오늘 남은 고정 약속 — "13:00 Lunch" 한 줄.
         var fixedTitle: String?
         var fixedStartAt: Date?
@@ -34,6 +36,7 @@ struct TripCanvasActivityAttributes: ActivityAttributes {
             self.travelMinutes = state.travelMinutes
             self.departureText = state.departureText
             self.status = state.status
+            self.scheduleElapsed = state.scheduleElapsed
             self.fixedTitle = state.fixedTitle
             self.fixedStartAt = ISO8601DateFormatter.tripCanvas.date(from: state.fixedStartISO ?? "")
             self.pulseText = state.pulseText
@@ -63,6 +66,15 @@ enum ActivityPresentation {
         case .noPlan: "sparkles"
         case .upcoming, .unknown: "clock.fill"
         }
+    }
+
+    static func symbol(for state: TripCanvasActivityAttributes.ContentState) -> String {
+        state.scheduleElapsed == true ? "clock.fill" : symbol(for: state.status)
+    }
+
+    static func heading(_ state: TripCanvasActivityAttributes.ContentState) -> String {
+        if state.scheduleElapsed == true { return "오늘" }
+        return state.status == .inProgress ? "지금" : "다음"
     }
 
     /// 잠금화면 한 줄 요약. 출발 안내가 있으면 그것이 가장 쓸모 있다.

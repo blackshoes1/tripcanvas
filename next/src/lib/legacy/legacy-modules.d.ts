@@ -464,7 +464,7 @@ declare module '@legacy/adaptive.js' {
     } | null;
     tripPulse(state: TripState, replan: ReplanResult | null, departure?: unknown, opts?: Record<string, unknown>):
       { code: string; text: string; detail: string };
-    stateVersion(state: TripState, extra?: { stage?: string; pulse?: string }): string;
+    stateVersion(state: TripState, extra?: { stage?: string; pulse?: string; travelMinutes?: number | null; timeZone?: string }): string;
     notificationPlan(state: TripState, input?: {
       departure?: unknown; pulse?: unknown; replan?: unknown; suggestions?: unknown[];
       suppressUntilMin?: number; travelMode?: boolean; quiet?: boolean;

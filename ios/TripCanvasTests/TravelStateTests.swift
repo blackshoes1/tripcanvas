@@ -94,6 +94,34 @@ final class TravelStateTests: XCTestCase {
         }
     }
 
+    func testElapsedScheduleUsesAClockWithoutClaimingAVisitWasCompleted() throws {
+        let state = try fixture()
+        var raw = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(state.liveActivity)) as? [String: Any])
+        raw["scheduleElapsed"] = true
+        raw["status"] = "COMPLETED"
+        raw["nextTitle"] = "예정 시간 지남"
+        let live = try JSONDecoder().decode(LiveActivityState.self, from: JSONSerialization.data(withJSONObject: raw))
+        let content = TripCanvasActivityAttributes.ContentState(from: live)
+        XCTAssertEqual(content.scheduleElapsed, true)
+        XCTAssertEqual(ActivityPresentation.symbol(for: content), "clock.fill")
+        XCTAssertEqual(ActivityPresentation.heading(content), "오늘")
+    }
+
+    func testLegacyActivityStateKeepsTheCompletedSymbolAndCurrentHeadingFollowsTheServer() throws {
+        let state = try fixture()
+        XCTAssertNil(state.liveActivity.scheduleElapsed, "이전 API 응답도 그대로 읽는다")
+        var content = TripCanvasActivityAttributes.ContentState(from: state.liveActivity)
+        content.status = .completed
+        let old = try JSONDecoder().decode(TripCanvasActivityAttributes.ContentState.self, from: JSONEncoder().encode(content))
+        XCTAssertNil(old.scheduleElapsed, "이전 잠금화면 상태도 그대로 읽는다")
+        XCTAssertEqual(ActivityPresentation.symbol(for: old), "checkmark.circle.fill")
+        XCTAssertEqual(ActivityPresentation.heading(old), "다음")
+        content.status = .inProgress
+        XCTAssertEqual(ActivityPresentation.heading(content), "지금")
+        content.status = .upcoming
+        XCTAssertEqual(ActivityPresentation.heading(content), "다음")
+    }
+
     func testCompactTravelIsExtremelyShort() {
         XCTAssertEqual(ActivityPresentation.compactTravel(22), "22m")
         XCTAssertEqual(ActivityPresentation.compactTravel(0), "")
