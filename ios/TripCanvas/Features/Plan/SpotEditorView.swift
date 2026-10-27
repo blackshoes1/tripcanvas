@@ -46,6 +46,14 @@ enum SpotEditorTarget: Identifiable {
 
 /// 장소 하나를 만들거나 고친다.
 ///
+struct SpotMoveContext {
+    let tripId: String
+    let document: TripDocument
+    let revision: Int
+    let source: TripDocumentSource
+    let onSave: (TripDocument, Int) async -> String?
+}
+
 /// 시각을 세 가지로 나눠 묻는다 — **예약·입장 시각**(상대가 정한 약속)과 **도착 시각**(내가 정한 계획)은
 /// 뜻이 다르고, 머무는 시간은 또 다르다. 웹과 같은 구분이라 어느 쪽에서 고쳐도 같은 뜻이 된다.
 struct SpotEditorView: View {
@@ -65,6 +73,14 @@ struct SpotEditorView: View {
     let onSave: (TripSpot) async -> String?
     let onDelete: (Int) async -> String?
     let onMoveToDay: (Int, Int, TripSpot) async -> String?
+    let moveContext: SpotMoveContext?
+    private struct MoveReviewRequest: Identifiable {
+        let day: Int
+        let document: TripDocument
+        var id: Int { day }
+    }
+    @State private var moveReview: MoveReviewRequest?
+    @State private var moveSucceeded = false
 
     @Environment(\.dismiss) private var dismiss
     @State private var draft: TripSpot
@@ -98,7 +114,8 @@ struct SpotEditorView: View {
          allowsChoice: Bool = true,
          onSave: @escaping (TripSpot) async -> String?,
          onDelete: @escaping (Int) async -> String?,
-         onMoveToDay: @escaping (Int, Int, TripSpot) async -> String?) {
+         onMoveToDay: @escaping (Int, Int, TripSpot) async -> String?,
+         moveContext: SpotMoveContext? = nil) {
         self.target = target
         self.dayCount = dayCount
         self.currentDay = currentDay
@@ -111,6 +128,7 @@ struct SpotEditorView: View {
         self.onSave = onSave
         self.onDelete = onDelete
         self.onMoveToDay = onMoveToDay
+        self.moveContext = moveContext
         _draft = State(initialValue: target.spot)
         _costText = State(initialValue: MoneyInput.text(amount: target.spot.cost))
     }
@@ -287,6 +305,22 @@ struct SpotEditorView: View {
             }
             .onChange(of: draft) { _, _ in preserveInput() }
             .onChange(of: costText) { _, _ in preserveInput() }
+            .sheet(item: $moveReview, onDismiss: {
+                if moveSucceeded { dismiss() }
+            }) { request in
+                if let context = moveContext, let index = target.index {
+                    PlanMoveSheet(tripId: context.tripId, document: request.document, revision: context.revision,
+                                  sourceDay: currentDay, indexes: IndexSet(integer: index), source: context.source,
+                                  initialDay: request.day) { draft, revision in
+                        let error = await context.onSave(draft, revision)
+                        if error == nil {
+                            EditorDraftStore.shared.remove(draftKey)
+                            moveSucceeded = true
+                        }
+                        return error
+                    }
+                }
+            }
             .sheet(isPresented: $showsPreviousInput) {
                 if let recovery {
                     SpotInformationView(spot: TripSpot(raw: recovery.edited), contextLabel: "저장하지 않은 입력")
@@ -399,16 +433,30 @@ struct SpotEditorView: View {
         if let index = target.index {
             Section {
                 if dayCount > 1 {
-                    Menu("다른 날로 옮기기") {
+                    Menu {
                         ForEach(0..<dayCount, id: \.self) { day in
                             if day != currentDay {
                                 Button("Day \(day + 1)") {
-                                    Task {
-                                        await save(using: { await onMoveToDay(index, day, $0) })
+                                    if moveContext != nil {
+                                        if let error = Self.validationError(for: draft, costText: costText) {
+                                            Task { _ = await saving.perform { error } }
+                                        } else {
+                                            guard let context = moveContext else { return }
+                                            var document = context.document
+                                            document.updateSpot(dayIndex: currentDay, at: index, with: preparedSpot)
+                                            moveSucceeded = false
+                                            moveReview = MoveReviewRequest(day: day, document: document)
+                                        }
+                                    } else {
+                                        Task { await save(using: { await onMoveToDay(index, day, $0) }) }
                                     }
                                 }
                             }
                         }
+                    } label: {
+                        Text("다른 날로 옮기기")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                 }
                 Button("이 장소 빼기", role: .destructive) { showsDeleteConfirm = true }
@@ -563,6 +611,7 @@ struct SpotEditorView: View {
     }
 
     static func validationError(for draft: TripSpot, costText: String) -> String? {
+        guard !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "장소 이름을 입력해 주세요." }
         if let error = draft.choice?.validationError(current: draft) { return error }
         let value = costText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !value.isEmpty && MoneyInput.amount(from: value, currency: draft.currency) == nil {

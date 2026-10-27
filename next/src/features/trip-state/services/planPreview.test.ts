@@ -38,6 +38,84 @@ function request(body: unknown = { document: document(), dayIndex: 0, revision: 
 const preview = (body?: unknown) => handler().planPreview(request(body), 'trip-1');
 
 describe('일정 변경 미리보기', () => {
+  it('다른 날에서 옮긴 11시 장소는 9시와 13시 사이로 정렬하고 검토할 원문을 돌려준다', async () => {
+    const moved = { name: '옮길 곳', at: '11:00', stayMin: 0, bookAt: '11:30', bookingId: 'keep-booking',
+      provider: 'kakao', providerId: '1234', who: ['11111111-1111-4111-8111-111111111111'], futureSpot: { keep: true } };
+    row.data = { ...document(), days: [
+      { startAt: '09:00', spots: [moved,
+        { name: '원래 날 15시', at: '15:00' }, { name: '원래 날 8시', at: '08:00' }
+      ] },
+      { startAt: '09:00', spots: [{ name: '9시', at: '09:00' }, { name: '13시', at: '13:00' }] }
+    ] };
+    const original = structuredClone(row);
+    const draft = structuredClone(row.data);
+    draft.days![1].spots!.push(draft.days![0].spots!.shift()!);
+    const submitted = structuredClone(draft);
+
+    const res = await preview({ document: draft, dayIndex: 1, revision: 7, sortByTime: true });
+    expect(res.status).toBe(200);
+    const body = await res.json() as PlanPreviewResponse;
+    expect(body.before.day.spots.map(s => s.name)).toEqual(['9시', '13시']);
+    expect(body.after.day.spots.map(s => s.name)).toEqual(['9시', '옮길 곳', '13시']);
+    expect(body.document).toMatchObject({ custom: { keep: true }, days: [
+      { spots: submitted.days![0].spots },
+      { spots: [{ name: '9시' }, { name: '옮길 곳', at: '11:00', bookAt: '11:30', bookingId: 'keep-booking',
+        provider: 'kakao', providerId: '1234', who: ['11111111-1111-4111-8111-111111111111'], futureSpot: { keep: true } }, { name: '13시' }] }
+    ] });
+    expect([body.before.trip.revision, body.after.trip.revision]).toEqual([7, 7]);
+    expect(row).toEqual(original);
+    expect(draft).toEqual(submitted);
+    expect(saveTrip).not.toHaveBeenCalled();
+  });
+
+  it('시간순 미리보기는 같은 시각의 순서와 직전 도착 시각에 붙은 자동 장소들을 보존한다', async () => {
+    const draft = { ...document(), days: [{ startAt: '09:00', spots: [
+      { name: '9시', at: '09:00' }, { name: '9시 다음' },
+      { name: '13시', at: '13:00' }, { name: '13시 다음' },
+      { name: '11시 첫째', at: '11:00' }, { name: '11시 다음' }, { name: '11시 둘째', at: '11:00' }
+    ] }] };
+    const body = await (await preview({ document: draft, dayIndex: 0, revision: 7, sortByTime: true })).json() as PlanPreviewResponse;
+    expect(body.after.day.spots.map(s => s.name)).toEqual(['9시', '9시 다음', '11시 첫째', '11시 다음', '11시 둘째', '13시', '13시 다음']);
+    expect(saveTrip).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, false])('시간순 옵션이 %s이면 기존 순서와 응답 모양을 유지한다', async sortByTime => {
+    const draft = { ...document(), days: [{ spots: [{ name: '13시', at: '13:00' }, { name: '9시', at: '09:00' }] }] };
+    const body = await (await preview({ document: draft, dayIndex: 0, revision: 7, sortByTime })).json() as PlanPreviewResponse;
+    expect(body.after.day.spots.map(s => s.name)).toEqual(['13시', '9시']);
+    expect(body).not.toHaveProperty('document');
+  });
+
+  it.each([null, 0, 1, 'true', [], {}])('잘못된 시간순 옵션 %j는 저장 없이 거절한다', async sortByTime => {
+    const res = await preview({ document: document(), dayIndex: 0, revision: 7, sortByTime });
+    expect(res.status).toBe(400);
+    expect(saveTrip).not.toHaveBeenCalled();
+  });
+
+  it('시간순 이동 후 고정 도착 시각 충돌과 예약 지각은 같은 엔진과 캐시로 계산한다', async () => {
+    const a = { name: '9시', at: '09:00', lat: 37.5, lng: 127, stayMin: 90 };
+    const moved = { name: '옮긴 11시', at: '11:00', lat: 37.6, lng: 127.1, stayMin: 180 };
+    const booked = { name: '13시 예약', bookAt: '13:00', lat: 37.7, lng: 127.2, stayMin: 0 };
+    row.data.days![0].spots = [a, booked];
+    const draft = { ...document(), days: [{ startAt: '09:00', mode: 'car', spots: [a, moved, booked] }] };
+    const read = vi.fn(async () => ({ cache: {
+      [lib.legKey(a, moved, 'car')]: { sec: 7200, m: 20000 },
+      [lib.legKey(moved, booked, 'car')]: { sec: 1800, m: 10000 }
+    }, pending: 0 }));
+    const legs: LegSupport = { read, readTrip: vi.fn(), fillLater: vi.fn(), fillTripLater: vi.fn() };
+    const res = await handler(legs).planPreview(request({ document: draft, dayIndex: 0, revision: 7, sortByTime: true }), 'trip-1');
+    expect(res.status).toBe(200);
+    const body = await res.json() as PlanPreviewResponse;
+    expect(body.after.day.spots[1]).toMatchObject({ name: '옮긴 11시', fixed: true, conflict: true,
+      etaMinutes: 660, bookedAtMinutes: null, incomingLeg: { source: 'ROUTED', minutes: 120 } });
+    expect(body.after.day.spots[2]).toMatchObject({ name: '13시 예약', etaMinutes: 870, bookingLateMinutes: 90 });
+    expect(read.mock.calls).toHaveLength(2);
+    expect(vi.mocked(legs.read).mock.calls.every(call => call[1] === 0 && call[2] === 0)).toBe(true);
+    expect(legs.fillLater).not.toHaveBeenCalled();
+    expect(legs.fillTripLater).not.toHaveBeenCalled();
+    expect(saveTrip).not.toHaveBeenCalled();
+  });
+
   it('같은 공통 엔진으로 전후 도착·예약 시각을 계산하며 서버 원문과 초안은 보존한다', async () => {
     const original = structuredClone(row);
     const draft = document();

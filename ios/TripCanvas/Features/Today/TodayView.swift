@@ -9,6 +9,7 @@ struct TodayView: View {
     let model: TodayViewModel
     let onOpenPlan: () -> Void
     var onOpenActivity: ((Int, ActivitySummary) -> Void)? = nil
+    var onMoveActivity: ((Int, ActivitySummary, Int) -> Void)? = nil
     var onOpenPlanDay: ((Int) -> Void)? = nil
     var onOpenOffline: (() -> Void)? = nil
     @State private var coverRefresh = UUID()
@@ -87,7 +88,8 @@ struct TodayView: View {
                                            isBusy: !model.pending.isEmpty || model.isRetrying,
                                            canEdit: model.canAct && activity.choiceState != "PENDING",
                                            onComplete: { Task { await model.complete(activity) } },
-                                           onSkip: { Task { await model.skip(activity) } })
+                                           onSkip: { Task { await model.skip(activity) } },
+                                           onMove: moveAction(for: activity, day: today.day.index, revision: model.revision))
                             if activity.choiceState == "PENDING" {
                                 if model.canAct, !model.isOffline {
                                     Button("두 곳 비교하고 고르기") {
@@ -124,6 +126,14 @@ struct TodayView: View {
                                     ? "아래 제안 중에서 골라 시작해도 되고, 그냥 쉬어도 괜찮아요."
                                     : "일행이 일정을 추가하면 여기서 확인할 수 있어요.")
                                 .card()
+                        } else if model.hasUnrecordedPastSchedule {
+                            VStack(alignment: .leading, spacing: Space.s) {
+                                Label(JCopy.text("pulse.elapsed", tone: env.jTone.selected), systemImage: "clock")
+                                    .font(.headline)
+                                Text(JCopy.text("pulse.elapsedDetail", tone: env.jTone.selected))
+                                    .font(.subheadline).foregroundStyle(Ink.soft)
+                            }.frame(maxWidth: .infinity, alignment: .leading).card()
+                                .accessibilityIdentifier("todayElapsedSchedule")
                         } else {
                             DoneForTodayCard(tone: env.jTone.selected)
                         }
@@ -162,7 +172,8 @@ struct TodayView: View {
                                               isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canAct,
                                               onComplete: { activity in Task { await model.complete(activity) } },
                                               onSkip: { activity in Task { await model.skip(activity) } },
-                                              onUndo: { activity in Task { await model.undo(activity) } })
+                                              onUndo: { activity in Task { await model.undo(activity) } },
+                                              onMove: timelineMoveAction(day: today.day.index, revision: model.revision))
                         }
 
                         if model.canAct && !model.otherSuggestions.isEmpty {
@@ -230,6 +241,14 @@ struct TodayView: View {
             // 여행 모드 갱신도 실제로 서버에 물었을 때만 따라간다(탭 전환은 앱 복귀가 아니다).
             if await model.loadIfStale() { await refreshTravelMode(reason: .foreground) }
         }
+        .task(id: scheduleRefreshKey) {
+            guard scheduleRefreshKey != nil, let today = model.today,
+                  let boundary = TodayRefreshTiming.nextBoundary(for: today) else { return }
+            do { try await Task.sleep(for: .seconds(max(0, boundary.timeIntervalSinceNow + 0.5))) } catch { return }
+            guard !Task.isCancelled else { return }
+            // 새 응답으로 대기 작업이 교체돼도 잠금화면 반영까지 마친다.
+            Task { await refreshToday(reason: .foreground) }
+        }
         .onChange(of: scenePhase) { _, phase in
             // 앱 복귀 — 방금 받은 것이면 오늘을 다시 묻지 않는다(2026-09-18, 짧은 앱 전환마다 2건이 나갔다).
             // 여행 모드는 위치·시각이 바뀌었으니 그대로 갱신한다(`refreshTravelMode`는 켜져 있을 때만 나간다).
@@ -277,6 +296,21 @@ struct TodayView: View {
         await refreshTravelMode(reason: reason)
     }
 
+    private var scheduleRefreshKey: String? {
+        guard scenePhase == .active, !model.isOffline, model.today?.currentState.live == true else { return nil }
+        return model.today?.generatedAt
+    }
+
+    private func moveAction(for activity: ActivitySummary, day: Int, revision: Int) -> (() -> Void)? {
+        guard let move = timelineMoveAction(day: day, revision: revision), activity.choiceState != "PENDING" else { return nil }
+        return { move(activity) }
+    }
+
+    private func timelineMoveAction(day: Int, revision: Int) -> ((ActivitySummary) -> Void)? {
+        guard model.canAct, (model.today?.trip ?? trip).dayCount > 1, let onMoveActivity else { return nil }
+        return { activity in onMoveActivity(day, activity, revision) }
+    }
+
     private func refreshTravelMode(reason: TravelModeController.RefreshReason) async {
         guard !Task.isCancelled, env.travelMode.isActive, env.travelMode.snapshot.tripId == trip.id else { return }
         await env.push.refreshPermission()
@@ -314,6 +348,12 @@ struct TodayView: View {
     /// 여행 중 안내를 켰는데 잠금화면 실시간 현황이 꺼져 있다 — 이 여행의 안내가 켜져 있을 때만 말한다.
     @ViewBuilder
     private var liveActivityNoticeSection: some View {
+        if env.travelMode.isActive, env.travelMode.snapshot.tripId == trip.id,
+           let error = env.liveActivity.remoteUpdatesError {
+            InlineErrorBanner(message: "잠금화면 자동 갱신을 연결하지 못했어요", detail: error) {
+                Task { await refreshTravelMode(reason: .manual) }
+            }
+        }
         if LiveActivitySettingsNotice.isShown(travelModeTripId: env.travelMode.isActive ? env.travelMode.snapshot.tripId : nil,
                                               tripId: trip.id,
                                               disabledInSettings: env.liveActivity.isDisabledInSettings,
@@ -411,9 +451,13 @@ struct TodayView: View {
                 Spacer()
                 // 아직 받지 못했으면 상태를 말하지 않는다 — '일정 없음'은 받아 본 뒤에만 할 수 있는 말이다.
                 if model.today != nil, !model.isOutsideTrip {
-                    StatusChip(text: StatusPalette.label(for: model.status),
-                               symbol: StatusPalette.symbol(for: model.status),
-                               tint: StatusPalette.tint(for: model.status))
+                    if model.hasUnrecordedPastSchedule {
+                        StatusChip(text: "예정 시간 지남", symbol: "clock", tint: Ink.soft)
+                    } else {
+                        StatusChip(text: StatusPalette.label(for: model.status),
+                                   symbol: StatusPalette.symbol(for: model.status),
+                                   tint: StatusPalette.tint(for: model.status))
+                    }
                 }
             }
             if let day = model.today?.day {
@@ -511,13 +555,25 @@ struct NextActionCard: View {
     var canEdit = true
     let onComplete: () -> Void
     var onSkip: () -> Void = {}
+    var onMove: (() -> Void)? = nil
+    private var heading: String { next.status == .inProgress ? "지금 일정" : "다음 일정" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.l) {
             VStack(alignment: .leading, spacing: Space.s) {
                 HStack(spacing: Space.s) {
                     Circle().fill(Ink.accent).frame(width: 7, height: 7)
-                    Text("다음 일정")
+                    Text(heading)
+                    Spacer(minLength: 0)
+                    if canEdit, let onMove {
+                        Menu {
+                            Button("다른 날로 옮기기", systemImage: "calendar.badge.clock", action: onMove)
+                        } label: {
+                            Image(systemName: "ellipsis").foregroundStyle(Ink.soft).frame(width: 44, height: 44)
+                        }
+                        .disabled(isBusy)
+                        .accessibilityLabel("\(activity.name) 작업")
+                    }
                 }
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Ink.accent)
@@ -605,7 +661,7 @@ struct NextActionCard: View {
         }
         .card()
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("다음 일정 \(next.title), \(StatusPalette.label(for: next.status))")
+        .accessibilityLabel("\(heading) \(next.title), \(StatusPalette.label(for: next.status))")
     }
 }
 
@@ -667,6 +723,7 @@ struct TodayTimelineCard: View {
     let onComplete: (ActivitySummary) -> Void
     let onSkip: (ActivitySummary) -> Void
     let onUndo: (ActivitySummary) -> Void
+    var onMove: ((ActivitySummary) -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -675,11 +732,14 @@ struct TodayTimelineCard: View {
                     Rectangle().fill(Ink.hairline).frame(height: 1).padding(.leading, 86)
                 }
                 if activity.status.isDone {
-                    FinishedRow(activity: activity, isBusy: isBusy, canEdit: canEdit) { onUndo(activity) }
+                    FinishedRow(activity: activity, isBusy: isBusy, canEdit: canEdit,
+                                onUndo: { onUndo(activity) },
+                                onMove: onMove.map { move in { move(activity) } })
                 } else {
                     ActivityRow(activity: activity, isNext: activity.id == nextId, isBusy: isBusy,
                                 canEdit: canEdit && activity.id != nextId && activity.choiceState != "PENDING",
-                                onComplete: { onComplete(activity) }, onSkip: { onSkip(activity) })
+                                onComplete: { onComplete(activity) }, onSkip: { onSkip(activity) },
+                                onMove: activity.choiceState == "PENDING" ? nil : onMove.map { move in { move(activity) } })
                 }
             }
         }
@@ -723,6 +783,7 @@ struct ActivityRow: View {
     var canEdit = true
     let onComplete: () -> Void
     let onSkip: () -> Void
+    var onMove: (() -> Void)? = nil
     /// 옆으로 민 거리. ⚠️ `.swipeActions`는 `List` 행에서만 동작한다 — 이 행은 `ScrollView > VStack` 안이라
     /// 전에는 코드만 있고 밀어도 아무 일이 없었다. 그래서 제스처를 직접 둔다.
     @State private var offset: CGFloat = 0
@@ -785,7 +846,7 @@ struct ActivityRow: View {
                         .font(.body.weight(isNext ? .semibold : .regular))
                         .foregroundStyle(Ink.ink)
                         .lineLimit(1)
-                    if isNext { TagChip(text: "다음", tint: Ink.accent) }
+                    if isNext { TagChip(text: activity.status == .inProgress ? "지금" : "다음", tint: Ink.accent) }
                     if activity.isFixedCommitment { TagChip(text: "예약", tint: Ink.info) }
                     if activity.mustVisit { TagChip(text: "꼭 가기", tint: Ink.warning) }
                 }
@@ -800,6 +861,7 @@ struct ActivityRow: View {
                 Menu {
                     Button("다녀왔어요", systemImage: "checkmark", action: onComplete)
                     Button("건너뛰기", systemImage: "arrow.uturn.forward", action: onSkip)
+                    if let onMove { Button("다른 날로 옮기기", systemImage: "calendar.badge.clock", action: onMove) }
                 } label: {
                     Image(systemName: "ellipsis").foregroundStyle(Ink.soft).frame(width: 44, height: 44)
                 }
@@ -810,14 +872,16 @@ struct ActivityRow: View {
             if canEdit {
                 Button("다녀왔어요", systemImage: "checkmark", action: onComplete)
                 Button("건너뛰기", systemImage: "arrow.uturn.forward", action: onSkip)
+                if let onMove { Button("다른 날로 옮기기", systemImage: "calendar.badge.clock", action: onMove) }
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(TimeFormat.clock(activity.startMinutes)) \(activity.name)\(isNext ? ", 다음 일정" : "")")
+        .accessibilityLabel("\(TimeFormat.clock(activity.startMinutes)) \(activity.name)\(isNext ? (activity.status == .inProgress ? ", 지금 일정" : ", 다음 일정") : "")")
         .accessibilityActions {
             if canEdit {
                 Button("다녀왔어요", action: onComplete)
                 Button("건너뛰기", action: onSkip)
+                if let onMove { Button("다른 날로 옮기기", action: onMove) }
             }
         }
     }
@@ -828,6 +892,7 @@ struct FinishedRow: View {
     let isBusy: Bool
     var canEdit = true
     let onUndo: () -> Void
+    var onMove: (() -> Void)? = nil
 
     private var completed: Bool { activity.status == .completed }
 
@@ -845,6 +910,7 @@ struct FinishedRow: View {
             if canEdit {
                 Menu {
                     Button("되돌리기", systemImage: "arrow.uturn.backward", action: onUndo)
+                    if let onMove { Button("다른 날로 옮기기", systemImage: "calendar.badge.clock", action: onMove) }
                 } label: {
                     Image(systemName: "ellipsis").foregroundStyle(Ink.faint).frame(width: 44, height: 44)
                 }
@@ -855,7 +921,10 @@ struct FinishedRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(activity.name), \(completed ? "다녀옴" : "건너뜀")")
         .accessibilityActions {
-            if canEdit { Button("되돌리기", action: onUndo) }
+            if canEdit {
+                Button("되돌리기", action: onUndo)
+                if let onMove { Button("다른 날로 옮기기", action: onMove) }
+            }
         }
     }
 }

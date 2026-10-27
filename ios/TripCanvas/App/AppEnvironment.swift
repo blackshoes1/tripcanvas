@@ -65,7 +65,7 @@ final class AppEnvironment {
         let tripService = service ?? TripService(api: apiClient, cache: TripCache(scope: scope), cacheScope: scope)
         SharedStore.prepare(accountID: authStore.session?.userId)
         let locationProvider = LocationProvider()
-        let liveActivityController = LiveActivityController()
+        let liveActivityController = LiveActivityController(remoteSource: tripService)
         let pushService = PushService(handlesSystemNotifications: handlesSystemNotifications) { token in
             try await tripService.registerDevice(
                 deviceId: DeviceIdentity.current, pushToken: token,

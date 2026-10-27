@@ -67,7 +67,10 @@ export function buildTravelState(input: TravelStateInput): TravelStateResponse {
   const rawPulse = adapt.tripPulse(state, computed.replan, rawDeparture);
   const pulse: TripPulse = { code: rawPulse.code as TripPulse['code'], text: rawPulse.text, detail: rawPulse.detail };
 
-  const stateVersion = adapt.stateVersion(state, { stage: rawDeparture?.stage ?? '', pulse: rawPulse.code });
+  const stateVersion = adapt.stateVersion(state, {
+    stage: rawDeparture?.stage ?? '', pulse: rawPulse.code,
+    travelMinutes: next ? travelMinutes : null, timeZone
+  });
   const expiresMinutes = adapt.suggestionExpiryMin(state);
 
   const rawPlan = adapt.notificationPlan(state, {
@@ -93,12 +96,14 @@ export function buildTravelState(input: TravelStateInput): TravelStateResponse {
 
   // 잠금화면·Dynamic Island가 쓸 압축 상태. 여행 전체 일정표를 넣지 않는다(§75.5).
   // 예약번호·항공편 같은 민감한 값도 넣지 않는다(§54).
-  const fixed = state.fixedCommitments.find((f) => f.startMin >= state.nowMin) ?? null;
+  const fixed = state.nextFixed;
+  const scheduleElapsed = state.live && !next && state.remainingItems.length > 0;
   const liveActivity: LiveActivityState = {
     tripName: today.trip.name,
     dayLabel: `Day ${day.index + 1}`,
-    status: today.nextAction?.status ?? (state.items.length ? 'UPCOMING' : 'NO_PLAN'),
-    nextTitle: next ? next.name : '오늘 남은 일정 없음',
+    status: today.activityState.status,
+    ...(scheduleElapsed ? { scheduleElapsed: true } : {}),
+    nextTitle: next ? next.name : (scheduleElapsed ? '예정 시간 지남' : '오늘 남은 일정 없음'),
     nextStartISO: next ? isoAt(day.date, next.depart, timeZone) : null,
     travelMinutes: next ? travelMinutes : null,
     departureText: departure?.text ?? null,

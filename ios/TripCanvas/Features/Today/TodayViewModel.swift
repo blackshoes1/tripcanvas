@@ -77,8 +77,12 @@ final class TodayViewModel {
         return summary.daysUntilStart
     }
     var revision: Int { today?.trip.revision ?? trip.revision }
-    var status: TravelStatus { today?.nextAction?.status ?? (today?.activities.isEmpty == false ? .upcoming : .noPlan) }
+    var status: TravelStatus { today?.nextAction?.status ?? today?.activityState.status ?? .noPlan }
     var isOffline: Bool { cachedAt != nil }
+    var hasUnrecordedPastSchedule: Bool {
+        guard let today else { return false }
+        return today.currentState.live && today.nextAction == nil && !today.remainingActivities.isEmpty
+    }
 
     /// 이동시간이 추정치면 화면이 그렇게 말해야 한다 — 실제 경로 시간인 척하지 않는다.
     var travelTimeIsEstimate: Bool { today?.travelTimeSource != .routed }
@@ -99,7 +103,10 @@ final class TodayViewModel {
     func loadIfStale(maxAge: TimeInterval = 60, now: Date = Date()) async -> Bool {
         guard !ReadCancellation.shouldIgnore() else { return false }
         if isLoading { reloadRequestedWhileLoading = true; return false }
-        if !needsReloadAfterCancelledRead, today != nil, cachedAt == nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge { return false }
+        if !needsReloadAfterCancelledRead, let today, cachedAt == nil, let loadedAt, now.timeIntervalSince(loadedAt) < maxAge {
+            let boundary = TodayRefreshTiming.nextBoundary(for: today)
+            if boundary.map({ $0 > now }) ?? true { return false }
+        }
         await load()
         return !ReadCancellation.shouldIgnore() && !needsReloadAfterCancelledRead
     }

@@ -6,11 +6,11 @@
 
 export type ErrorCode =
   | 'UNAUTHORIZED' | 'FORBIDDEN' | 'NOT_FOUND' | 'VALIDATION_ERROR'
-  | 'CONFLICT' | 'STALE_VERSION' | 'RATE_LIMITED' | 'UPSTREAM_ERROR' | 'MAINTENANCE' | 'INTERNAL_ERROR';
+  | 'CONFLICT' | 'STALE_VERSION' | 'RATE_LIMITED' | 'UPSTREAM_ERROR' | 'MAINTENANCE' | 'SERVICE_UNAVAILABLE' | 'INTERNAL_ERROR';
 
 const STATUS: Record<ErrorCode, number> = {
   UNAUTHORIZED: 401, FORBIDDEN: 403, NOT_FOUND: 404, VALIDATION_ERROR: 400,
-  CONFLICT: 409, STALE_VERSION: 409, RATE_LIMITED: 429, UPSTREAM_ERROR: 502, MAINTENANCE: 503, INTERNAL_ERROR: 500
+  CONFLICT: 409, STALE_VERSION: 409, RATE_LIMITED: 429, UPSTREAM_ERROR: 502, MAINTENANCE: 503, SERVICE_UNAVAILABLE: 503, INTERNAL_ERROR: 500
 };
 
 const MESSAGE: Record<ErrorCode, string> = {
@@ -24,6 +24,7 @@ const MESSAGE: Record<ErrorCode, string> = {
   UPSTREAM_ERROR: '바깥 서비스가 지금 응답하지 않아요 — 잠시 뒤 다시 시도해 주세요.',
   // 쓰기만 잠깐 막는다(전환 직전 write freeze). 404·200이 아니라 503이어야 클라이언트가 재생성·덮어쓰기를 하지 않는다
   MAINTENANCE: '점검 중이에요 — 잠시 뒤 자동으로 다시 저장해요. 편집은 이 기기에 남아 있어요.',
+  SERVICE_UNAVAILABLE: '잠금화면 자동 갱신을 아직 사용할 수 없어요.',
   INTERNAL_ERROR: '서버에서 문제가 생겼어요 — 잠시 뒤 다시 시도해 주세요.'
 };
 

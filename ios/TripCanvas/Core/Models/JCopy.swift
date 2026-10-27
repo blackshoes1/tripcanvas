@@ -19,6 +19,8 @@ enum JCopy {
         "replan.moveNote": ["FRIENDLY": "{topic} 다음 날 앞쪽으로 옮겨요", "CASUAL": "{topic} 다음 날 앞쪽으로 옮겨", "POLITE": "{topic} 다음 날 앞쪽으로 옮깁니다"],
         "replan.skipNote": ["FRIENDLY": "{topic} '건너뜀'으로 표시해요", "CASUAL": "{topic} '건너뜀'으로 표시해", "POLITE": "{topic} '건너뜀'으로 표시합니다"],
         "pulse.complete": ["FRIENDLY": "오늘 계획한 일정은 다 마쳤어요", "CASUAL": "오늘 계획한 일정은 다 마쳤어", "POLITE": "오늘 계획하신 일정은 모두 마치셨습니다"],
+        "pulse.elapsed": ["FRIENDLY": "오늘 계획한 일정 시간이 지났어요", "CASUAL": "오늘 계획한 일정 시간이 지났어", "POLITE": "오늘 계획하신 일정 시간이 지났습니다"],
+        "pulse.elapsedDetail": ["FRIENDLY": "아직 마무리하지 않은 일정은 목록에 그대로 남아 있어요.", "CASUAL": "아직 마무리하지 않은 일정은 목록에 그대로 남아 있어.", "POLITE": "아직 마무리하지 않은 일정은 목록에 그대로 남아 있습니다."],
         "tone.preview": ["FRIENDLY": "많이 걸었네요. 잠깐 쉬어갈까요?", "CASUAL": "많이 걸었네. 잠깐 쉬어갈까?", "POLITE": "많이 걸으셨네요. 잠시 쉬어가시면 어떨까요?"],
         "kicker.next": ["FRIENDLY": "지금 한 곳 더 들를 수 있어요", "CASUAL": "지금 한 곳 더 들를 수 있어", "POLITE": "지금 한 곳 더 들르실 수 있습니다"],
         "kicker.rest": ["FRIENDLY": "쉬어도 괜찮아요", "CASUAL": "쉬어도 괜찮아", "POLITE": "쉬셔도 괜찮습니다"],
