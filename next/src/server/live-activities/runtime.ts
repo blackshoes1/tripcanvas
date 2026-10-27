@@ -1,3 +1,6 @@
+import type { Trip } from '@/features/trip/domain/types';
+import { PgLegCacheRepository } from '../infrastructure/database/pgLegCacheRepository';
+import { legRequestsFor, toLegCache } from '../routing/legFiller';
 import type { HealthComponent } from '../api/health';
 import { getEnv } from '../config/env';
 import { getDb } from '../infrastructure/database/client';
@@ -44,13 +47,17 @@ export function startLiveActivityWorker(): void {
   const db = getDb();
   if (!db) return;
   const repo = new PgLiveActivityRepository(db);
+  const legs = new PgLegCacheRepository(db);
   const send = createApnsSender(config);
   let running = false;
   const tick = async () => {
     if (running) return;
     running = true;
     try {
-      const result = await runLiveActivityBatch({ repo, send });
+      const result = await runLiveActivityBatch({ repo, send,
+        cachedLegs: async (trip, dayIndex) => toLegCache(await legs.getMany(
+          legRequestsFor(trip as unknown as Trip, dayIndex).map(request => request.key)))
+      });
       if (result.failed) worker.lastError = true;
       else if (result.sent) worker.lastError = false;
     }

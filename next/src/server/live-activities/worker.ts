@@ -1,6 +1,8 @@
 import lib from '@legacy/lib.js';
 import type { TravelStateResponse } from '@/features/trip-state/domain/contract';
 import { buildTravelState } from '@/features/trip-state/domain/travelState';
+import { resolveDayIndex, type TripDoc } from '@/features/trip-state/domain/todayView';
+import type { LegCache } from '@/features/itinerary/domain/types';
 import { resolveClock } from '@/features/trip-state/services/handlerKit';
 import { LIVE_ACTIVITY_LEASE_MS, type LiveActivityRepository, type LiveActivitySender } from './types';
 
@@ -26,6 +28,7 @@ export function nextLiveActivityBoundary(state: TravelStateResponse, now: Date):
 /** 호출당 bounded batch. HTTP2 재시도는 여기서 예약하며 sleep하지 않는다. */
 export async function runLiveActivityBatch(deps: {
   repo: LiveActivityRepository; send: LiveActivitySender; now?: () => Date;
+  cachedLegs?: (trip: TripDoc, dayIndex: number) => Promise<LegCache>;
 }): Promise<{ sent: number; failed: number }> {
   const stats = { sent: 0, failed: 0 };
   const claimedAt = deps.now?.() ?? new Date();
@@ -45,9 +48,20 @@ export async function runLiveActivityBatch(deps: {
       if (now.getTime() >= leaseDeadline) {
         await deps.repo.retry(claim, now, 'LeaseExpired'); return;
       }
-      const clock = resolveClock(delivery.document, null, new URL('http://worker.invalid'), now);
+      let clock = resolveClock(delivery.document, null, new URL('http://worker.invalid'), now);
+      const cacheDay = resolveDayIndex(delivery.document, clock.todayISO);
+      const legCache = await deps.cachedLegs?.(delivery.document, cacheDay) ?? {};
+      now = deps.now?.() ?? new Date();
+      if (now.getTime() >= leaseDeadline) {
+        await deps.repo.retry(claim, now, 'LeaseExpired'); return;
+      }
+      clock = resolveClock(delivery.document, null, new URL('http://worker.invalid'), now);
+      if (cacheDay !== resolveDayIndex(delivery.document, clock.todayISO)) {
+        // 조회 중 자정을 넘었으면 새 날의 캐시로 다음 tick에 계산한다.
+        await deps.repo.complete(claim, now, claim.lastStateVersion); return;
+      }
       const state = buildTravelState({ tripId: delivery.tripId, trip: delivery.document, revision: delivery.revision,
-        updatedAt: delivery.updatedAt, ...clock, generatedAt: now.toISOString(), jTone: delivery.jTone, travelMode: true });
+        updatedAt: delivery.updatedAt, ...clock, generatedAt: now.toISOString(), jTone: delivery.jTone, travelMode: true, legCache });
       const outsideTravel = !state.today.currentState.live;
       const boundary = outsideTravel ? null : nextLiveActivityBoundary(state, now);
       // 시간 경계에는 즉시, 다른 기기의 일정 수정은 최대 1분 뒤 확인한다. 외부 경로 제공자는 호출하지 않는다.

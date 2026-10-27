@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LiveActivityClaim, LiveActivityDelivery, LiveActivityRepository, LiveActivitySender } from './types';
 import { runLiveActivityBatch, nextLiveActivityBoundary } from './worker';
 import { buildTravelState } from '@/features/trip-state/domain/travelState';
+import { legRequestsFor, toLegCache } from '../routing/legFiller';
+import type { Trip } from '@/features/trip/domain/types';
 
 const at = (time: string) => new Date(`2026-10-27T${time}:00Z`);
 const claim: LiveActivityClaim = { userId: 'u', deviceId: 'd', activityId: 'a', leaseId: 'lease',
@@ -147,4 +149,26 @@ it('worker 결과는 실제 APNs 수락과 운영 실패를 빈 batch와 구분�
   expect(await runLiveActivityBatch({ repo, send, now: () => at('11:30') })).toEqual({ sent: 0, failed: 1 });
   vi.mocked(repo.claimDue).mockResolvedValue([]);
   expect(await runLiveActivityBatch({ repo, send, now: () => at('11:30') })).toEqual({ sent: 0, failed: 0 });
+});
+
+
+it('백그라운드도 기존 도로 캐시로 API와 같은 현재 장소·이동시간을 보낸다', async () => {
+  const document = { name: '경로 회귀', start: '2026-10-27', timeZone: 'UTC', days: [{ startAt: '09:00', mode: 'walk', spots: [
+    { name: '출발 장소', lat: 40, lng: -3, at: '09:00', stayMin: 60, status: 'COMPLETED' },
+    { name: '도로 경유 장소', lat: 40.0067, lng: -3, stayMin: 30 },
+    { name: '오후 예약', lat: 40.0067, lng: -3, at: '12:00', stayMin: 60 }
+  ] }] };
+  const key = legRequestsFor(document as unknown as Trip, 0)[0].key;
+  const legCache = toLegCache([{ key, sec: 1800, m: 2000, path: null, taxi: null, snapped: false,
+    fail: false, provider: 'google', fetchedAt: at('08:00') }]);
+  const input = { tripId: delivery.tripId, trip: document, revision: delivery.revision, updatedAt: delivery.updatedAt,
+    todayISO: '2026-10-27', nowMinutes: 645, generatedAt: at('10:45').toISOString(), jTone: delivery.jTone, travelMode: true };
+  expect(buildTravelState(input).liveActivity.nextTitle).toBe('오후 예약');
+  const expected = buildTravelState({ ...input, legCache });
+  expect(expected.liveActivity).toMatchObject({ nextTitle: '도로 경유 장소', status: 'IN_PROGRESS' });
+  vi.mocked(repo.delivery).mockResolvedValue({ ...delivery, document });
+  const cachedLegs = vi.fn().mockResolvedValue(legCache);
+  await runLiveActivityBatch({ repo, send, now: () => at('10:45'), cachedLegs });
+  expect(cachedLegs).toHaveBeenCalledWith(document, 0);
+  expect(vi.mocked(send).mock.calls[0][1].state).toEqual(expected.liveActivity);
 });
