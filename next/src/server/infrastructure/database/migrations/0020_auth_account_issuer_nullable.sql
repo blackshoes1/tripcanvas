@@ -1,0 +1,1 @@
+ALTER TABLE "auth_account" ALTER COLUMN "issuer" DROP NOT NULL;
