@@ -348,6 +348,12 @@ struct TodayView: View {
     /// 여행 중 안내를 켰는데 잠금화면 실시간 현황이 꺼져 있다 — 이 여행의 안내가 켜져 있을 때만 말한다.
     @ViewBuilder
     private var liveActivityNoticeSection: some View {
+        if env.travelMode.isActive, env.travelMode.snapshot.tripId == trip.id,
+           let error = env.liveActivity.remoteUpdatesError {
+            InlineErrorBanner(message: "잠금화면 자동 갱신을 연결하지 못했어요", detail: error) {
+                Task { await refreshTravelMode(reason: .manual) }
+            }
+        }
         if LiveActivitySettingsNotice.isShown(travelModeTripId: env.travelMode.isActive ? env.travelMode.snapshot.tripId : nil,
                                               tripId: trip.id,
                                               disabledInSettings: env.liveActivity.isDisabledInSettings,

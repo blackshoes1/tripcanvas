@@ -12,7 +12,7 @@ test('하단에서 날짜를 고르고 첫날·마지막 날까지 이동한다'
   await page.locator('#mobileCurrentDay').click();
   await page.locator('#mobileDayList button[data-ad="3"]').click();
   await expect(page.locator('#mobileCurrentDay')).toContainText('Day 3');
-  await expect(page.locator('#filterbar .chip.active')).toContainText('Day 3');
+  await expect(page.locator('#filterbar .chip.active').filter({hasText:'Day 3'})).toHaveCount(1);
   await page.locator('#mobilePrevDay').click();
   await page.locator('#mobilePrevDay').click();
   await expect(page.locator('#mobilePrevDay')).toBeDisabled();

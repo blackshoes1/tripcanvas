@@ -25,7 +25,7 @@ final class TodayScheduleUITests: XCTestCase {
 
     func testElapsedUnrecordedScheduleRemainsAvailableToMove() {
         let app = launch("--review-time-elapsed")
-        XCTAssertTrue(app.otherElements["todayElapsedSchedule"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.matching(identifier: "todayElapsedSchedule").firstMatch.waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["지금 일정"].exists)
         let menu = app.buttons["숙소 작업"]
         for _ in 0..<6 where !menu.isHittable { app.swipeUp() }

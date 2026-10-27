@@ -74,8 +74,12 @@ struct SpotEditorView: View {
     let onDelete: (Int) async -> String?
     let onMoveToDay: (Int, Int, TripSpot) async -> String?
     let moveContext: SpotMoveContext?
-    @State private var showsMoveReview = false
-    @State private var moveDay = 0
+    private struct MoveReviewRequest: Identifiable {
+        let day: Int
+        let document: TripDocument
+        var id: Int { day }
+    }
+    @State private var moveReview: MoveReviewRequest?
     @State private var moveSucceeded = false
 
     @Environment(\.dismiss) private var dismiss
@@ -301,15 +305,13 @@ struct SpotEditorView: View {
             }
             .onChange(of: draft) { _, _ in preserveInput() }
             .onChange(of: costText) { _, _ in preserveInput() }
-            .sheet(isPresented: $showsMoveReview, onDismiss: {
+            .sheet(item: $moveReview, onDismiss: {
                 if moveSucceeded { dismiss() }
-            }) {
+            }) { request in
                 if let context = moveContext, let index = target.index {
-                    var document = context.document
-                    let _ = document.updateSpot(dayIndex: currentDay, at: index, with: preparedSpot)
-                    PlanMoveSheet(tripId: context.tripId, document: document, revision: context.revision,
+                    PlanMoveSheet(tripId: context.tripId, document: request.document, revision: context.revision,
                                   sourceDay: currentDay, indexes: IndexSet(integer: index), source: context.source,
-                                  initialDay: moveDay) { draft, revision in
+                                  initialDay: request.day) { draft, revision in
                         let error = await context.onSave(draft, revision)
                         if error == nil {
                             EditorDraftStore.shared.remove(draftKey)
@@ -431,7 +433,7 @@ struct SpotEditorView: View {
         if let index = target.index {
             Section {
                 if dayCount > 1 {
-                    Menu("다른 날로 옮기기") {
+                    Menu {
                         ForEach(0..<dayCount, id: \.self) { day in
                             if day != currentDay {
                                 Button("Day \(day + 1)") {
@@ -439,7 +441,11 @@ struct SpotEditorView: View {
                                         if let error = Self.validationError(for: draft, costText: costText) {
                                             Task { _ = await saving.perform { error } }
                                         } else {
-                                            moveDay = day; moveSucceeded = false; showsMoveReview = true
+                                            guard let context = moveContext else { return }
+                                            var document = context.document
+                                            document.updateSpot(dayIndex: currentDay, at: index, with: preparedSpot)
+                                            moveSucceeded = false
+                                            moveReview = MoveReviewRequest(day: day, document: document)
                                         }
                                     } else {
                                         Task { await save(using: { await onMoveToDay(index, day, $0) }) }
@@ -447,6 +453,10 @@ struct SpotEditorView: View {
                                 }
                             }
                         }
+                    } label: {
+                        Text("다른 날로 옮기기")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                 }
                 Button("이 장소 빼기", role: .destructive) { showsDeleteConfirm = true }

@@ -98,16 +98,28 @@ final class LiveActivityController: LiveActivityControlling {
     private var generation = 0
     private let authorization: LiveActivityAuthorization
     @ObservationIgnored private nonisolated(unsafe) var enablementTask: Task<Void, Never>?
+    @ObservationIgnored private nonisolated(unsafe) var pushTokenTask: Task<Void, Never>?
+    @ObservationIgnored private nonisolated(unsafe) var activityStateTask: Task<Void, Never>?
+    private let remoteSource: LiveActivityPushSource?
+    private let pushRegistration: LiveActivityPushRegistration?
+    private var observedActivityID: String?
+    private var observedDeviceID: String?
+    private var observedScope: TripCache.Scope?
+    private static let startsKey = "withj.liveActivity.remoteStarts.v1"
+    var remoteUpdatesError: String? { pushRegistration?.error }
 
     #if canImport(ActivityKit)
     private var activity: Activity<TripCanvasActivityAttributes>?
     #endif
 
     /// 기본값은 init 안에서 만든다 — 기본 인자는 메인 액터 밖에서 평가된다.
-    init(authorization: LiveActivityAuthorization? = nil, defaults: UserDefaults = .standard) {
+    init(authorization: LiveActivityAuthorization? = nil, defaults: UserDefaults = .standard,
+         remoteSource: LiveActivityPushSource? = nil) {
         let authorization = authorization ?? SystemLiveActivityAuthorization()
         self.authorization = authorization
         self.defaults = defaults
+        self.remoteSource = remoteSource
+        self.pushRegistration = remoteSource.map { LiveActivityPushRegistration(source: $0, defaults: defaults) }
         let disabled = authorization.isSupported && !authorization.areActivitiesEnabled
         self.isDisabledInSettings = disabled
         // 앱이 꺼져 있는 동안 켜졌다면 접어 둔 것은 지난 일이다.
@@ -122,7 +134,7 @@ final class LiveActivityController: LiveActivityControlling {
         }
     }
 
-    deinit { enablementTask?.cancel() }
+    deinit { enablementTask?.cancel(); pushTokenTask?.cancel(); activityStateTask?.cancel() }
 
     /// 꺼져 있던 실시간 현황이 다시 켜졌을 때 부를 것. 띄울 내용은 부르는 쪽이 새로 받는다(`TravelModeController`).
     func onReenable(_ handler: @escaping @MainActor () -> Void) { reenableHandler = handler }
@@ -152,7 +164,11 @@ final class LiveActivityController: LiveActivityControlling {
         guard authorization.isSupported else { return }
         let wasDisabled = isDisabledInSettings
         setDisabled(!enabled)
-        guard enabled else { restartWhenActive = false; return }
+        guard enabled else {
+            restartWhenActive = false
+            stopRemoteObservation()
+            return
+        }
         if wasDisabled { restartWhenActive = true }
         guard appActive, restartWhenActive else { return }
         restartWhenActive = false
@@ -174,11 +190,21 @@ final class LiveActivityController: LiveActivityControlling {
         let state = TripCanvasActivityAttributes.ContentState(from: response.liveActivity)
         let trip = response.today.trip
         let dayLabel = response.liveActivity.dayLabel
-        let running = Activity<TripCanvasActivityAttributes>.activities.filter { $0.activityState == .active || $0.activityState == .stale }
+        var running = Activity<TripCanvasActivityAttributes>.activities.filter { $0.activityState == .active || $0.activityState == .stale }
+        // 이전 앱의 pushType:nil 안내는 앞에 있을 때 한 번 다시 만들어 원격 갱신에 연결한다.
+        if remoteSource != nil, authorization.isAppActive {
+            let known = defaults.dictionary(forKey: Self.startsKey) ?? [:]
+            for old in running where known[old.id] == nil && old.pushToken == nil {
+                await old.end(nil, dismissalPolicy: .immediate)
+                guard request == generation else { return }
+            }
+            running = running.filter { $0.activityState == .active || $0.activityState == .stale }
+        }
         let recovery = LiveActivityRecovery.decide(running.map {
             .init(id: $0.id, tripId: $0.attributes.tripId, tripName: $0.attributes.tripName, dayLabel: $0.attributes.dayLabel)
         }, tripId: trip.id, tripName: trip.name, dayLabel: dayLabel)
         for old in running where recovery.endIDs.contains(old.id) {
+            removeRemoteActivity(old.id)
             await old.end(nil, dismissalPolicy: .immediate)
             guard request == generation else { return }
         }
@@ -189,6 +215,7 @@ final class LiveActivityController: LiveActivityControlling {
         }
         if let current = activity {
             isRunning = true; lastError = nil
+            observeRemoteUpdates(current, tripId: trip.id)
             // 지문이 같으면 갱신하지 않는다. 이것이 여기서 가장 중요한 한 줄이다.
             guard changed || current.content.state.stateVersion != state.stateVersion else { return }
             await current.update(ActivityContent(state: state, staleDate: staleDate(for: response)))
@@ -203,7 +230,13 @@ final class LiveActivityController: LiveActivityControlling {
             activity = try Activity.request(
                 attributes: attributes,
                 content: ActivityContent(state: state, staleDate: staleDate(for: response)),
-                pushType: nil)      // remote update는 다음 단계 — 지금은 앱이 밀어준다
+                pushType: .token)
+            if let activity {
+                var starts = defaults.dictionary(forKey: Self.startsKey) ?? [:]
+                starts[activity.id] = Date().timeIntervalSince1970
+                defaults.set(starts, forKey: Self.startsKey)
+                observeRemoteUpdates(activity, tripId: trip.id)
+            }
             isRunning = true
             lastError = nil
             Analytics.track(.liveActivityStarted, ["tripId": response.today.trip.id])
@@ -224,6 +257,8 @@ final class LiveActivityController: LiveActivityControlling {
 
     func end() async {
         generation += 1
+        stopRemoteObservation()
+        pushRegistration?.reset()
         // 안내를 껐다 — 다시 켜졌다고 되살릴 것도, 접어 둔 안내도 없다.
         restartWhenActive = false
         setNoticeDismissed(false)
@@ -231,19 +266,87 @@ final class LiveActivityController: LiveActivityControlling {
         let running = Activity<TripCanvasActivityAttributes>.activities
         activity = nil
         isRunning = false
+        var starts = defaults.dictionary(forKey: Self.startsKey) ?? [:]
+        for current in running { starts.removeValue(forKey: current.id) }
+        defaults.set(starts, forKey: Self.startsKey)
         for current in running { await current.end(nil, dismissalPolicy: .immediate) }
         Analytics.track(.liveActivityEnded, [:])
         #endif
     }
 
     #if canImport(ActivityKit)
-    /// 다음 고정 일정 시각이 지나면 이 화면은 낡은 것이다 — 시스템이 흐리게 처리하도록 알려 준다.
+    private func observeRemoteUpdates(_ current: Activity<TripCanvasActivityAttributes>, tripId: String) {
+        guard let remoteSource, pushRegistration != nil,
+              let scope = remoteSource.liveActivityRegistrationScope, scope.accountID != nil else { return }
+        if observedActivityID == current.id, observedScope == scope {
+            if let token = current.pushToken {
+                Task { await register(token, activity: current, tripId: tripId, scope: scope) }
+            }
+            return
+        }
+        stopRemoteObservation()
+        observedActivityID = current.id; observedDeviceID = DeviceIdentity.current; observedScope = scope
+        pushTokenTask = Task { [weak self] in
+            if let token = current.pushToken { await self?.register(token, activity: current, tripId: tripId, scope: scope) }
+            for await token in current.pushTokenUpdates {
+                guard !Task.isCancelled else { return }
+                await self?.register(token, activity: current, tripId: tripId, scope: scope)
+            }
+        }
+        activityStateTask = Task { [weak self] in
+            for await state in current.activityStateUpdates {
+                guard !Task.isCancelled else { return }
+                if state == .ended || state == .dismissed {
+                    self?.removeRemoteActivity(current.id)
+                    self?.isRunning = false
+                    return
+                }
+            }
+        }
+    }
+
+    private func register(_ token: Data, activity: Activity<TripCanvasActivityAttributes>, tripId: String,
+                          scope: TripCache.Scope) async {
+        guard observedActivityID == activity.id, observedScope == scope,
+              remoteSource?.liveActivityRegistrationScope == scope, let deviceId = observedDeviceID,
+              let pushRegistration else { return }
+        var starts = defaults.dictionary(forKey: Self.startsKey) ?? [:]
+        let startedAt = starts[activity.id] as? Double ?? Date().timeIntervalSince1970
+        starts[activity.id] = startedAt
+        defaults.set(starts, forKey: Self.startsKey)
+        #if DEBUG
+        let environment = "sandbox"
+        #else
+        let environment = "production"
+        #endif
+        await pushRegistration.register(deviceId: deviceId, activityId: activity.id, tripId: tripId,
+            token: token.map { String(format: "%02x", $0) }.joined(), environment: environment,
+            startedAt: Date(timeIntervalSince1970: startedAt))
+    }
+
+    /// 일정 경계를 지나도 갱신이 도착하지 않으면 최근 안내임을 표시한다.
     private func staleDate(for response: TravelStateResponse) -> Date? {
-        let iso = response.liveActivity.fixedStartISO ?? response.liveActivity.nextStartISO
-        guard let iso, let date = ISO8601DateFormatter.tripCanvas.date(from: iso) else { return nil }
-        return date.addingTimeInterval(30 * 60)
+        TodayRefreshTiming.nextBoundary(for: response.today)?.addingTimeInterval(30)
     }
     #endif
+
+    private func removeRemoteActivity(_ id: String) {
+        guard observedActivityID == id else { return }
+        stopRemoteObservation()
+        var starts = defaults.dictionary(forKey: Self.startsKey) ?? [:]
+        starts.removeValue(forKey: id)
+        defaults.set(starts, forKey: Self.startsKey)
+    }
+
+    private func stopRemoteObservation() {
+        pushTokenTask?.cancel(); pushTokenTask = nil
+        activityStateTask?.cancel(); activityStateTask = nil
+        let id = observedActivityID, device = observedDeviceID, scope = observedScope
+        observedActivityID = nil; observedDeviceID = nil; observedScope = nil
+        if let id, let device, let pushRegistration {
+            Task { await pushRegistration.remove(deviceId: device, activityId: id, scope: scope) }
+        }
+    }
 }
 
 #if canImport(ActivityKit)

@@ -26,8 +26,12 @@ final class PlanMoveReviewUITests: XCTestCase {
     }
     private func openMove(_ app: XCUIApplication) {
         let menu = app.buttons["다른 날로 옮기기"]
-        reveal(menu, app: app); menu.tap()
-        app.buttons["Day 2"].tap()
+        reveal(menu, app: app)
+        menu.tap()
+        let day = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Day 2")).firstMatch
+        XCTAssertTrue(day.waitForExistence(timeout: 5))
+        captureTravelUX(app, "move-review-day-menu")
+        day.tap()
         XCTAssertTrue(app.navigationBars["날짜·순서 옮기기"].waitForExistence(timeout: 5))
         waitForConfirmation(app)
     }
@@ -55,11 +59,12 @@ final class PlanMoveReviewUITests: XCTestCase {
         reveal(conflict, app: app)
         captureTravelUX(app, "move-review-at-conflict")
         let arrival = app.switches["내가 정한 도착 시각"]
-        reveal(arrival, app: app, upward: false); arrival.tap()
+        reveal(arrival, app: app, upward: false); arrival.switches.firstMatch.tap()
+        XCTAssertEqual(arrival.value as? String, "0")
         waitForConfirmation(app)
         XCTAssertTrue(app.staticTexts["3. 이동할 장소"].exists)
         XCTAssertFalse(conflict.exists)
-        let position = app.descendants(matching: .any)["movePosition"]
+        let position = app.buttons["movePosition"]
         reveal(position, app: app, upward: false); position.tap()
         app.buttons["오전 일정 뒤"].tap()
         waitForConfirmation(app)
@@ -74,9 +79,9 @@ final class PlanMoveReviewUITests: XCTestCase {
         openMove(app)
         app.buttons["이대로 옮기기"].tap()
         let error = app.staticTexts["합성 저장 실패 · 선택은 그대로예요"]
-        XCTAssertTrue(error.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["2. 이동할 장소"].exists)
+        reveal(error, app: app)
         captureTravelUX(app, "move-review-failed-confirmation")
+        reveal(app.staticTexts["2. 이동할 장소"], app: app, upward: false)
         app.buttons["이대로 옮기기"].tap()
         XCTAssertTrue(app.staticTexts["저장 시도 2회 · 저장 완료 1회"].waitForExistence(timeout: 10))
     }

@@ -326,7 +326,9 @@ final class ReadCancellationTests: XCTestCase {
         XCTAssertFalse(model.needsReloadAfterCancelledRead)
         source.todayError = nil
         let reads = source.todayCallCount
-        let refreshed = await model.loadIfStale()
+        // 취소 상태만 확인한다. 픽스처가 생성된 시각은 다음 일정 경계 전이다.
+        let generatedAt = try XCTUnwrap(ISO8601DateFormatter.tripCanvas.date(from: today.generatedAt))
+        let refreshed = await model.loadIfStale(now: generatedAt)
         XCTAssertFalse(refreshed)
         XCTAssertEqual(source.todayCallCount, reads)
     }

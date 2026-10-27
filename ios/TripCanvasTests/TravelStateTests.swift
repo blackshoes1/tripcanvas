@@ -83,6 +83,41 @@ final class TravelStateTests: XCTestCase {
         }
     }
 
+    /// 서버 sender가 만든 APNs body를 ActivityKit과 같은 기본 JSONDecoder로 읽는다.
+    func testDecodesRealAPNsContentStateWithDefaultDateStrategy() throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "live-activity-push", withExtension: "json"))
+        let payloads = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
+        XCTAssertEqual(payloads.count, 2)
+        func decode(_ payload: [String: Any]) throws -> TripCanvasActivityAttributes.ContentState {
+            let aps = try XCTUnwrap(payload["aps"] as? [String: Any])
+            let raw = try XCTUnwrap(aps["content-state"] as? [String: Any])
+            for key in ["tripId", "confirmation", "bookUrl", "placeId", "bookingId", "lat", "lng", "authorization", "pushToken"] {
+                XCTAssertNil(raw[key], "\(key)는 잠금화면 payload에 나가면 안 된다")
+            }
+            return try JSONDecoder().decode(TripCanvasActivityAttributes.ContentState.self,
+                                            from: JSONSerialization.data(withJSONObject: raw))
+        }
+        let current = try decode(XCTUnwrap(payloads.first))
+        XCTAssertEqual(current.tripName, "잠금화면 정합성")
+        XCTAssertEqual(current.dayLabel, "Day 2")
+        XCTAssertEqual(current.nextTitle, "점심")
+        XCTAssertEqual(try XCTUnwrap(current.nextStartAt).timeIntervalSince1970, 1_793_104_200.25, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(current.fixedStartAt).timeIntervalSince1970, 1_793_106_000, accuracy: 0.001)
+        XCTAssertEqual(current.fixedTitle, "미술관 예약")
+        XCTAssertEqual(current.travelMinutes, 12)
+        XCTAssertNil(current.departureText)
+        XCTAssertEqual(current.scheduleElapsed, false)
+        let elapsed = try decode(XCTUnwrap(payloads.last))
+        XCTAssertEqual(elapsed.dayLabel, "Day 2")
+        XCTAssertEqual(elapsed.scheduleElapsed, true)
+        XCTAssertEqual(elapsed.status, .completed)
+        XCTAssertNil(elapsed.nextStartAt)
+        XCTAssertNil(elapsed.fixedStartAt)
+        XCTAssertNil(elapsed.fixedTitle)
+        XCTAssertNil(elapsed.travelMinutes)
+        XCTAssertNil(elapsed.departureText)
+    }
+
     func testActivityContentStateMapping() throws {
         let state = try fixture()
         let content = TripCanvasActivityAttributes.ContentState(from: state.liveActivity)

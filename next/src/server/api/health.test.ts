@@ -109,3 +109,16 @@ describe('probeRealtimeHealth', () => {
     expect(await probeRealtimeHealth('http://realtime:3001/health', fetchLike(200, 'not json'))).toEqual({ listening: false });
   });
 });
+
+describe('잠금화면 서버 갱신 준비 상태', () => {
+  it('미설정은 꺼짐으로, 잘못된 설정·worker 오류는 DEGRADED로 구분한다', async () => {
+    const disabled = await healthReport({ databaseConfigured: true, checkDatabase: ok, liveActivity: { status: 'unconfigured' } });
+    expect(disabled.components.liveActivity?.status).toBe('unconfigured');
+    expect(disabled.status).toBe('HEALTHY');
+    const broken = await healthReport({ databaseConfigured: true, checkDatabase: ok,
+      liveActivity: { status: 'error', detail: 'APNs 설정 오류' } });
+    expect(broken.ok).toBe(true);
+    expect(broken.status).toBe('DEGRADED');
+    expect(broken.database).toBe('ok');
+  });
+});

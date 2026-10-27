@@ -1,0 +1,37 @@
+[
+  {
+    "aps": {
+      "timestamp": 1793102400,
+      "event": "update",
+      "content-state": {
+        "tripName": "잠금화면 정합성",
+        "dayLabel": "Day 2",
+        "nextTitle": "점심",
+        "nextStartAt": 814797000.25,
+        "travelMinutes": 12,
+        "status": "UPCOMING",
+        "scheduleElapsed": false,
+        "fixedTitle": "미술관 예약",
+        "fixedStartAt": 814798800,
+        "pulseText": "여유 있게 가요",
+        "stateVersion": "v2"
+      },
+      "stale-date": 1793104200
+    }
+  },
+  {
+    "aps": {
+      "timestamp": 1793109600,
+      "event": "update",
+      "content-state": {
+        "tripName": "잠금화면 정합성",
+        "dayLabel": "Day 2",
+        "nextTitle": "예정 시간 지남",
+        "status": "COMPLETED",
+        "scheduleElapsed": true,
+        "pulseText": "예정한 시간은 지났어요",
+        "stateVersion": "elapsed-v2"
+      }
+    }
+  }
+]

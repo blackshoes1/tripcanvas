@@ -15,6 +15,9 @@ struct TripCanvasActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
         /// 다음에 할 일. 없으면 "오늘 남은 일정 없음".
         var nextTitle: String
+        /// 원격 갱신으로 날짜·이름이 바뀌어도 최초 생성 시의 attributes에 묶이지 않는다.
+        var tripName: String?
+        var dayLabel: String?
         var nextStartAt: Date?
         var travelMinutes: Int?
         /// 서버가 만든 출발 안내 문장. 클라이언트가 다시 쓰지 않는다(톤이 갈라진다).
@@ -32,6 +35,8 @@ struct TripCanvasActivityAttributes: ActivityAttributes {
 
         init(from state: LiveActivityState) {
             self.nextTitle = state.nextTitle
+            self.tripName = state.tripName
+            self.dayLabel = state.dayLabel
             self.nextStartAt = ISO8601DateFormatter.tripCanvas.date(from: state.nextStartISO ?? "")
             self.travelMinutes = state.travelMinutes
             self.departureText = state.departureText

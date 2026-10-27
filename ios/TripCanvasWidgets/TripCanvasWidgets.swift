@@ -187,7 +187,7 @@ struct TripCanvasLiveActivity: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Label(context.attributes.dayLabel, systemImage: ActivityPresentation.symbol(for: context.state))
+                    Label(context.state.dayLabel ?? context.attributes.dayLabel, systemImage: ActivityPresentation.symbol(for: context.state))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -235,7 +235,7 @@ struct LockScreenActivityView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("\(context.attributes.tripName) · \(context.attributes.dayLabel)")
+                Text("\(context.state.tripName ?? context.attributes.tripName) · \(context.state.dayLabel ?? context.attributes.dayLabel)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -258,7 +258,7 @@ struct LockScreenActivityView: View {
                 }
             }
 
-            Text(ActivityPresentation.headline(context.state))
+            Text(context.isStale ? "최근 안내예요 · 앱에서 새로 확인해 주세요" : ActivityPresentation.headline(context.state))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
