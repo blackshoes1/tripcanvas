@@ -130,7 +130,7 @@ def verify_app(app, distribution):
             raise SigningError("PROFILE_IS_NOT_APP_STORE_DISTRIBUTION")
         with tempfile.TemporaryDirectory(prefix="withj-certificate-") as temporary:
             prefix = Path(temporary) / "signer"
-            run(["/usr/bin/codesign", "--display", "--extract-certificates", prefix, bundle])
+            run(["/usr/bin/codesign", "--display", "--extract-certificates=" + str(prefix), bundle])
             leaf = Path(str(prefix) + "0")
             if not leaf.is_file() or leaf.read_bytes() not in profile.get("DeveloperCertificates", []):
                 raise SigningError("PROFILE_CERTIFICATE_MISMATCH")

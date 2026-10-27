@@ -79,7 +79,10 @@ class SigningTests(unittest.TestCase):
                 raise signing.SigningError("SIGNATURE_INVALID")
             if "--display" in args:
                 if "--extract-certificates" in args:
-                    prefix = args[args.index("--extract-certificates") + 1]
+                    raise AssertionError("codesign requires the optional prefix joined with '='")
+                extract = next((arg for arg in args if arg.startswith("--extract-certificates=")), None)
+                if extract:
+                    prefix = extract.split("=", 1)[1]
                     Path(prefix + "0").write_bytes(b"distribution-certificate")
                     return b""
                 bundle_id = plistlib.loads((bundle / "Info.plist").read_bytes())["CFBundleIdentifier"]
