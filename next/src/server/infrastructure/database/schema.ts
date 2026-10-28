@@ -352,7 +352,11 @@ export const liveActivitySubscriptions = pgTable('live_activity_subscriptions', 
 
 export const authAccount = pgTable('auth_account', {
   id: text('id').primaryKey(),
-  issuer: text('issuer').notNull(),
+  // better-auth 1.7.0~1.7.2만 쓰던 칸이다(계정 열쇠가 (issuer, accountId)였다). 1.7.3부터 열쇠가 다시
+  // (providerId, accountId)라 라이브러리가 쓰지 않고, NOT NULL이면 새 계정 INSERT가 실패한다 — 그래서 비울 수
+  // 있게 했다(0020). 비어 들어오면 트리거가 1.7.2의 값으로 채운다 — 이미지를 1.7.2로 롤백해도 새 계정이 보이게.
+  // 칸과 트리거를 지우는 것은 나중 단계다(docs/migration-policy.md).
+  issuer: text('issuer'),
   accountId: text('account_id').notNull(),
   providerId: text('provider_id').notNull(),
   userId: text('user_id').notNull().references(() => authUser.id, { onDelete: 'cascade' }),
@@ -383,7 +387,9 @@ export const authRateLimit = pgTable('auth_rate_limit', {
   key: text('key').notNull(),
   count: integer('count').notNull(),
   lastRequest: bigint('last_request', { mode: 'number' }).notNull()
-}, (t) => [index('auth_rate_limit_key_idx').on(t.key)]);
+  // ⚠️ key는 **하나뿐이어야** 한다(better-auth 정의도 unique다). 아니면 처음 들어온 요청들이 동시에 줄을 하나씩 만들고
+  // (읽어서 없으면 만든다), 줄마다 따로 세어 로그인 10초 3번이 N×3번이 됐다 — GHSA-44jh-23m7-hpcf와 같은 우회다(0021).
+}, (t) => [uniqueIndex('auth_rate_limit_key_uidx').on(t.key)]);
 
 /** 메일 쿨다운(§67) — (이메일, 종류)당 마지막 발송 시각. 재시작·다중 인스턴스에서도 유지되도록 DB에 둔다 */
 export const authMailCooldown = pgTable('auth_mail_cooldown', {
