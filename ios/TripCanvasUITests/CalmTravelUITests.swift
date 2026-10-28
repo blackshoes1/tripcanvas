@@ -5,6 +5,7 @@ final class CalmTravelUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--ios-review-ui", "--review-calm", "-AppleLanguages", "(ko)", "-AppleLocale", "ko_KR"] + extras
+        addTeardownBlock { app.terminate() }
         app.launch(); return app
     }
     func testChooseAlternativeAndUndoSaveWithoutOpeningThePlaceEditor() {
@@ -34,9 +35,25 @@ final class CalmTravelUITests: XCTestCase {
         captureTravelUX(app, "quick-choice-failed-save")
     }
     func testStaffOriginalPreservesTypedSpaceAndTomorrowShowsExactDate() {
+        checkStaffOriginalAndTomorrow(launch())
+    }
+    func testStaffOriginalAfterRelaunchWithChoiceSheetOpen() {
         let app = launch()
-        XCTAssertTrue(app.buttons["calmEditOriginal"].waitForExistence(timeout: 10)); app.buttons["calmEditOriginal"].tap()
-        app.buttons["직원에게 보여줄 원문"].tap()
+        let choice = app.buttons["calmOpenChoice"]
+        XCTAssertTrue(choice.waitForExistence(timeout: 10)); choice.tap()
+        XCTAssertTrue(app.buttons["quickChooseCurrent"].waitForExistence(timeout: 5))
+        app.terminate(); app.launch()
+        checkStaffOriginalAndTomorrow(app)
+    }
+    private func checkStaffOriginalAndTomorrow(_ app: XCUIApplication) {
+        let original = app.buttons["calmEditOriginal"]
+        XCTAssertTrue(original.waitForExistence(timeout: 10))
+        // Accessibility can find the button before the relaunched screen accepts taps.
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in original.isHittable }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+        original.tap()
+        let section = app.buttons["직원에게 보여줄 원문"]
+        XCTAssertTrue(section.waitForExistence(timeout: 5)); section.tap()
         let name = app.textFields["staffBookingName"]
         XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText("John Doe")
         app.buttons["calmOriginalDone"].tap()
