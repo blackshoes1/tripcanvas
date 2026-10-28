@@ -98,7 +98,7 @@ struct CandidateBoardView: View {
             }
         }
         .confirmationDialog(
-            "\"\(removing?.title ?? "")\" 을(를) 후보에서 뺄까요?",
+            "\"\(removing?.title ?? "")\"\(CollabModel.josa(removing?.title ?? "", "을", "를")) 후보에서 뺄까요?",
             isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
             titleVisibility: .visible
         ) {

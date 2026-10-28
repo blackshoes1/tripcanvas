@@ -55,7 +55,7 @@ struct CostOverviewSummary: View {
                         VStack(alignment: .leading, spacing: Space.m) { payment(.paid); payment(.reserved) }
                     }
                     if (response.payTotals["NONE"] ?? 0) > 0 {
-                        Text("결제 상태 미구분 \(TimeFormat.money(response.payTotals["NONE"] ?? 0, currency: "KRW"))")
+                        Text("\(CostPayState.none.label) \(TimeFormat.money(response.payTotals["NONE"] ?? 0, currency: "KRW"))")
                             .font(.caption).foregroundStyle(Ink.soft)
                     }
                     if response.transportUnpriced {

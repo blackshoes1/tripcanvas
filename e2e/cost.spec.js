@@ -41,7 +41,9 @@ test('하단 비용 입구를 누르면 전체 비용과 내역이 화면 안에
   const panel=page.locator('#mobileCostDialog');
   await expect(panel).toBeVisible();
   await expect(panel).toContainText('₩1,239,000');
-  await expect(panel).toContainText('렌터카');
+  await expect(panel).not.toContainText('미구분');   // F-3(AC-5): 화면에 '미구분'이 나오지 않는다(고르지 않음)
+  await expect(panel).toContainText('고르지 않음');
+  await expect(panel).toContainText('렌트');   // F-4(AC-6): 비용 내역의 분류 이름은 편집기 이름(COST_KIND)이다 — 예전 '렌터카'가 아니다
   // getBoundingClientRect는 '레이아웃'이라 잘려도 그대로 나온다 → 실제로 눌리는지(히트테스트)로 본다.
   // elementFromPoint는 overflow 클리핑을 반영하므로, 필터바에 잘리면 다른 요소가 잡힌다.
   const reachable=await page.evaluate(()=>{

@@ -50,6 +50,13 @@ function boot(url = 'http://localhost/', storage = {}) {
   window.TC_AUTH.configure({ fetchImpl: boom });
   return window;
 }
+// F-7(2026-10-16): 후보를 넣을 날은 prompt()가 아니라 앱 안의 날짜 목록(#modePicker)에서 고른다 — n은 1부터
+function pickDayOption(w, n) {
+  const opt = [...w.document.querySelectorAll('#modePickerList .modeOpt')].find(b => b.textContent.startsWith(`Day ${n}`));
+  assert.ok(opt, `날짜 목록에 Day ${n}이 있어야 한다`);
+  opt.click();
+}
+const tickAsync = async () => { for (let i = 0; i < 4; i++) await new Promise(r => setTimeout(r, 0)); };
 // 여행 하나를 store에 넣고 activeId·activeDay 지정
 function withTrip(w, daysJson, activeDay = 0) {
   w.eval(`store.trips.push({id:'__it__',name:'T',start:'2026-08-01',days:${daysJson}}); store.activeId='__it__'; activeDay=${activeDay};`);
@@ -78,6 +85,18 @@ test('UX4: 장소 이동 버튼은 변경할 두 날짜를 저장 전에 알린�
     const b=w.eval("sgPrimaryButtons({type:'NEXT_ACTIVITY',title:'왕궁',action:{fromDay:1,si:0}},0)[0]");
     assert.equal(b.textContent,'Day 2 → Day 1로 옮기기');
     assert.equal(w.eval('trip().days[1].spots.length'),1);
+  } finally { w.close(); }
+});
+
+test('AC-17: 장소 이동 버튼의 조사는 도착 날의 받침을 따른다 — Day 2(로) · Day 3(으로)', {skip:noJsdom}, () => {
+  const w=boot();
+  try {
+    withTrip(w, `[{spots:[{name:'왕궁',lat:40.4,lng:-3.7}]},{spots:[]},{spots:[]}]`);
+    w.eval("travelClock=()=>({todayISO:'2026-07-01',nowMin:600})");
+    const label=(di)=>w.eval(`sgPrimaryButtons({type:'NEXT_ACTIVITY',title:'왕궁',action:{fromDay:0,si:0}},${di})[0]`).textContent;
+    assert.equal(label(1),'Day 1 → Day 2로 옮기기');
+    assert.equal(label(2),'Day 1 → Day 3으로 옮기기');
+    assert.ok(!/\(으\)로|으\(로\)/.test(label(2)));
   } finally { w.close(); }
 });
 
@@ -2166,7 +2185,9 @@ test('통합: 하루 비용에 예약 하루치가 들어가고, 하루 합계�
   assert.ok(panel.includes('Hotel') && panel.includes('Fiat'), '예약 전액이 전체 목록에 한 줄씩 보인다');
   w.eval(`delete trip().costItems; render();`);   // 아래 단정은 준비 비용 없는 기준
   assert.match(w.document.querySelector('.costChip').textContent, /₩1,239,000/);
-  assert.match(w.document.getElementById('mobileCostDialog').textContent, /렌터카/);
+  // F-4(AC-6, 결정 3): 비용 내역의 분류 이름은 원본 COST_KIND다 — 예전 로컬 표의 '렌터카'가 아니라 '렌트'.
+  assert.match(w.document.getElementById('mobileCostDialog').textContent, /렌트/);
+  assert.doesNotMatch(w.document.getElementById('mobileCostDialog').textContent, /렌터카/);
 
   // 날짜가 있는 예약은 하루 합계에도 한 번씩 나타나 전체와 일치한다.
   assert.equal(dayCosts().reduce((a,x)=>a+x,0), cb.total);
@@ -3423,21 +3444,31 @@ test('통합: 후보를 일정에 넣으면 고른 날의 맨 뒤에 붙고 후�
   w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',start:'2026-10-25',days:[{title:'',spots:[{name:'기존'}]},{title:'',spots:[]}]}];
     store.activeId='t1'; activeDay=0; syncMeta={t1:{revision:3,status:'clean'}};
     tripRoles={t1:{role:'EDITOR',count:2,owner:false}}; candTripId='t1'; candRows=[];`);
-  w.prompt = () => '2';
   w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: name === 'list_trip_candidates' ? [] : true, error: null }; } };
   w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc`);
+  // F-7(AC-10): prompt()가 아니라 앱 안의 날짜 목록이 열린다 — 날을 누르면 그 날에 들어간다
+  let prompted = 0; w.prompt = () => { prompted++; return '2'; };
   await w.eval(`scheduleCandidate({id:7,title:'카사 바트요',note:'가우디',lat:41.39,lng:2.16})`);
+  assert.equal(prompted, 0, 'prompt()를 쓰지 않는다');
+  assert.equal(w.document.getElementById('modePicker').open, true, '앱 안의 날짜 목록이 열렸다');
+  assert.equal(w.eval(`store.trips[0].days.reduce((n,d)=>n+d.spots.length,0)`), 1, '고르기 전에는 아무것도 들어가지 않는다');
+  pickDayOption(w, 2); await tickAsync();
   const days = w.eval(`JSON.stringify(store.trips[0].days.map(d=>d.spots.map(s=>s.name)))`);
   assert.deepEqual(JSON.parse(days), [['기존'], ['카사 바트요']], '고른 날의 맨 뒤에만 붙는다');
   assert.equal(w.eval(`store.trips[0].days[1].spots[0].lat`), 41.39);
   assert.deepEqual(rpc.find(r => r[0] === 'manage_trip_candidate')[1],
     { p_candidate_id: 7, p_action: 'SCHEDULE', p_value: '2' });
-  // 일정에 없는 날을 고르면 아무것도 하지 않는다
-  w.prompt = () => '9';
+  // 목록에는 일정에 있는 날만 있다 — 없는 날을 칠 길이 없고, 닫으면 아무것도 바뀌지 않는다
   rpc.length = 0;
   await w.eval(`scheduleCandidate({id:8,title:'몬주익'})`);
-  assert.equal(w.eval(`store.trips[0].days.reduce((n,d)=>n+d.spots.length,0)`), 2, '없는 날짜에는 넣지 않는다');
-  assert.equal(rpc.length, 0);
+  const labels = [...w.document.querySelectorAll('#modePickerList .modeOpt')].map(b => b.textContent);
+  assert.equal(labels.length, 2, '일정의 날 수만큼만');
+  assert.match(labels[0], /^Day 1 · /); assert.match(labels[1], /^Day 2 · /);
+  w.document.getElementById('modePickerCancel').click();
+  await tickAsync();
+  assert.equal(w.document.getElementById('modePicker').open, false);
+  assert.equal(w.eval(`store.trips[0].days.reduce((n,d)=>n+d.spots.length,0)`), 2, '닫으면 넣지 않는다');
+  assert.equal(rpc.length, 0, '닫으면 서버도 부르지 않는다');
   w.close();
 });
 
@@ -3515,8 +3546,9 @@ test('통합: 갈린 후보의 "자유시간으로 분리"는 버튼이 서고 �
   const splitBtn = splitRow.querySelector('button');
   assert.ok(splitBtn, '분리에도 버튼이 선다');
 
-  w.prompt = () => '2';
   await w.eval(`splitCandidate(candRows[0])`);
+  assert.equal(w.document.getElementById('modePicker').open, true, 'prompt()가 아니라 날짜 목록이 열린다');
+  pickDayOption(w, 2); await tickAsync();
   const spots = JSON.parse(w.eval(`JSON.stringify(store.trips[0].days[1].spots)`));
   assert.deepEqual(spots.map(s => s.name), ['캄프 누', '자유시간', '다시 만나기'], '고른 날 맨 뒤에 세 줄');
   assert.deepEqual(spots[0].who, [U1], '가고 싶은 사람');
@@ -3804,7 +3836,7 @@ test('통합: 갈린 후보 — 자동으로 빼지 않고 선택지를 보여�
   assert.deepEqual(opts.map(o => o.dataset.option), ['TOGETHER', 'SPLIT', 'SKIP']);
   // 반응에 user_id가 없는(옛 서버) 응답은 누가 어느 쪽인지 가릴 수 없어 분리를 만들지 않는다 — 안내만 남는다
   assert.equal(opts[1].querySelector('button'), null, 'id 없이는 갈라 세울 수 없다');
-  assert.match(opts[1].textContent, /민수은\(는\) 캄프 누 · 영희은\(는\) 다른 곳/);
+  assert.match(opts[1].textContent, /민수는 캄프 누 · 영희는 다른 곳/);
   assert.equal(w.document.querySelector('#candList .candGroup').textContent, '의견이 필요해요', '갈린 후보는 결정 못 한 묶음에 있다');
   // 제외 → REJECT RPC → '이번엔 뺐어요' 묶음으로, 의견은 그대로, 되돌리기 버튼
   opts[2].querySelector('button').click();
@@ -4026,7 +4058,6 @@ test('통합: 갈린 후보를 자유시간으로 분리하면 같은 시간에 
     tripMembers=[{user_id:'${SU1}',display_name:'민수',me:true},{user_id:'${SU2}',display_name:'영희',me:false}];`);
   w.sb = { rpc: async (name, args) => { rpc.push([name, args]); return { data: name === 'list_trip_candidates' ? [row()] : true, error: null }; } };
   w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc;`);
-  w.prompt = () => '1';
   await w.eval(`renderCandidates()`);
 
   const opts = [...w.document.querySelectorAll('#candList .candOption')];
@@ -4034,6 +4065,8 @@ test('통합: 갈린 후보를 자유시간으로 분리하면 같은 시간에 
   const btn = split.querySelector('button');
   assert.ok(btn, 'user_id가 있으면 분리를 실제로 만들 수 있다');
   btn.click();
+  await tick();
+  pickDayOption(w, 1);
   await tick(); await tick(); await tick();
 
   const spots = w.eval(`JSON.stringify(store.trips[0].days[0].spots)`);
@@ -6053,7 +6086,7 @@ test('통합: 여행 중 다른 날을 보면 "오늘"이라 하지 않고, 오�
   assert.ok(!/경복궁|북촌/.test(sugText), `오늘 남은 장소를 다른 날로 옮기자고 하지 않는다: ${sugText}`);
   const move = cardsIn(w).find((c) => /인사동/.test(c.textContent));
   assert.ok(move, '다른 날의 장소는 옮겨올 수 있다');
-  assert.equal(move.querySelector('[data-action="ACCEPT"]').textContent, 'Day 2 → Day 3로 옮기기', '바뀌는 두 날을 함께 말한다');
+  assert.equal(move.querySelector('[data-action="ACCEPT"]').textContent, 'Day 2 → Day 3으로 옮기기', '바뀌는 두 날을 함께 말한다 · Day 3은 받침이 있어 "으로"(AC-17)');
   w.eval('buildDayFlow(2)');
   assert.ok(w.eval(`_dayFlow.picks.every(p=>p.fromDay!==0)`), '하루 채우기도 오늘의 장소를 가져오지 않는다');
   move.querySelector('[data-action="ACCEPT"]').click();
@@ -8606,6 +8639,478 @@ test('모바일 하단 비용: 버튼이 지금 상태를 말하고, 시트는 �
     assert.match(el('mobileCostBody').textContent, /여행이 시작되면|날을 고르면/);
     await new Promise(r=>setTimeout(r,0));
   }finally{ w.close(); }
+});
+
+// ═══ feat/ux-structure-audit (2026-10-16) — AC-1~AC-19 중 웹 배선 ═══
+// 기준은 `.claude/agent-work/spec.md`의 AC와 "## 결정"이다.
+
+// ── F-1 (AC-1·AC-2·AC-13) 수동 가격 ──
+function carWithManualPrice(cur) {
+  const w = boot();
+  const day = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+  withTrip(w, `[{mode:'car',startAt:'09:00',spots:[]}]`);
+  w.eval(`trip().bookings=[{id:'car1',type:'car',title:'RecordGo Compact',price:320,cur:'${cur}',
+    start:'${day(30)}',end:'${day(34)}',carPickupCode:'PMI',carClass:'compact',transmission:'automatic',
+    url:'https://www.recordrentacar.com/en/',track:true,refundable:true}];`);
+  w.eval(`openBookingModal('car1')`);
+  return w;
+}
+const recordManual = (w, text) => {
+  w.document.getElementById('bkManualPrice').value = text;
+  w.document.getElementById('bkManualSave').click();
+  return w.eval(`JSON.parse(JSON.stringify(recOf('car1')))`);
+};
+
+test('통합(AC-1·AC-2): 수동 가격 "189.50"은 189.5 EUR로, "1.234,56"은 1234.56으로, "250"은 250으로 기록된다', { skip: noJsdom }, () => {
+  for (const [text, expected] of [['189.50', 189.5], ['1.234,56', 1234.56], ['250', 250], ['1,234.56', 1234.56], ['12,50', 12.5]]) {
+    const w = carWithManualPrice('EUR');
+    try {
+      const rec = recordManual(w, text);
+      assert.equal(rec.obs.length, 1, `${text}: 관측 한 건`);
+      assert.equal(rec.obs[0].price, expected, `${text} → ${expected} (예전에는 18950처럼 소수점이 사라졌다)`);
+      assert.equal(rec.obs[0].cur, 'EUR', '예약 통화 그대로');
+      const offer = rec.offers.find((o) => o.manual);
+      assert.equal(offer.price, expected, '오퍼에도 같은 값');
+      assert.equal(offer.cur, 'EUR');
+      assert.equal(w.document.getElementById('bkManualPriceErr'), null, '오류 문장이 없다');
+    } finally { w.close(); }
+  }
+});
+
+test('통합(AC-2 실패·AC-13): 수동 가격이 비었거나 읽을 수 없으면 칸 옆에 이유가 남고, 기록하지 않고, 칸을 고치면 지워진다', { skip: noJsdom }, () => {
+  for (const bad of ['', 'abc', '0', '-5', '189.555']) {
+    const w = carWithManualPrice('EUR');
+    try {
+      const input = w.document.getElementById('bkManualPrice');
+      const rec = recordManual(w, bad);
+      assert.ok(!rec.obs || rec.obs.length === 0, `${JSON.stringify(bad)}는 기록되지 않는다`);
+      const err = w.document.getElementById('bkManualPriceErr');
+      assert.ok(err, `${JSON.stringify(bad)}: 칸 옆 오류가 있다`);
+      assert.equal(err.getAttribute('role'), 'alert');
+      assert.match(err.textContent, /확인한 가격/);
+      assert.equal(input.getAttribute('aria-invalid'), 'true');
+      assert.ok((input.getAttribute('aria-describedby') || '').includes('bkManualPriceErr'));
+      assert.equal(w.document.activeElement, input, '그 칸에 포커스가 간다');
+      // 칸을 고치면 이유가 지워진다
+      input.value = '189.50';
+      input.dispatchEvent(new w.Event('input', { bubbles: true }));
+      assert.equal(w.document.getElementById('bkManualPriceErr'), null, '고치면 지워진다');
+      assert.equal(input.getAttribute('aria-invalid'), null);
+    } finally { w.close(); }
+  }
+});
+
+test('통합(AC-1): 원화 예약에 소수 가격은 받지 않는다 — 189.50원이 18950원이 되지 않는다', { skip: noJsdom }, () => {
+  const w = carWithManualPrice('KRW');
+  try {
+    const rec = recordManual(w, '189.50');
+    assert.ok(!rec.obs || rec.obs.length === 0);
+    assert.ok(w.document.getElementById('bkManualPriceErr'));
+  } finally { w.close(); }
+});
+
+// ── F-2 (AC-3·AC-4) 후보를 일정에 넣었는데 표시 저장이 실패하면 ──
+function candidateScene(handler) {
+  const w = boot();
+  const calls = [];
+  w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',start:'2026-10-25',days:[{title:'',spots:[{name:'기존'}]},{title:'',spots:[]}]}];
+    store.activeId='t1'; activeDay=1; syncMeta={t1:{revision:3,status:'clean'}};
+    tripRoles={t1:{role:'EDITOR',count:2,owner:false}}; candTripId='t1'; candRows=[];`);
+  w.sb = { rpc: async (name, args) => {
+    calls.push([name, args]);
+    if (name === 'manage_trip_candidate') return handler(args, calls.filter((c) => c[0] === 'manage_trip_candidate').length);
+    return { data: name === 'list_trip_candidates' ? [] : true, error: null };
+  } };
+  w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc`);
+  const U1 = '11111111-1111-4111-8111-111111111111', U2 = '22222222-2222-4222-8222-222222222222';
+  w.eval(`tripMembers=[{user_id:'${U1}',display_name:'민수',me:true,status:'ACTIVE'},{user_id:'${U2}',display_name:'지민',me:false,status:'ACTIVE'}];`);
+  return { w, calls, U1, U2 };
+}
+const uxToastText = (w) => w.document.getElementById('toast').firstChild.textContent;
+const uxToastButtons = (w) => [...w.document.querySelectorAll('#toast button')].map((b) => b.textContent);
+const uxSpotNames = (w, d) => JSON.parse(w.eval(`JSON.stringify(store.trips[0].days[${d}].spots.map(s=>s.name))`));
+
+test('통합(AC-3): 표시 저장이 실패해도 장소는 일정에 남고, "넣었어요"와 "표시만 못 했어요"를 함께 말한다 — 다시 눌러도 두 번 들어가지 않는다', { skip: noJsdom }, async () => {
+  let fail = true;
+  const { w, calls } = candidateScene(() => fail ? { data: null, error: { message: 'Failed to fetch' } } : { data: true, error: null });
+  try {
+    await w.eval(`scheduleCandidate({id:7,title:'카사 바트요',note:'가우디',lat:41.39,lng:2.16})`);
+    pickDayOption(w, 2); await tickAsync();
+    assert.deepEqual(uxSpotNames(w, 1), ['카사 바트요'], '장소는 일정에 들어간다');
+    const msg = uxToastText(w);
+    assert.match(msg, /Day 2에 넣었어요/, '넣었다는 말');
+    assert.match(msg, /후보 표시만/, '실패한 것은 표시뿐이라는 말');
+    assert.notEqual(msg, '변경을 저장하지 못했어요', '그 한 줄만 나오지 않는다');
+    assert.deepEqual(uxToastButtons(w), ['표시 다시 시도'], '다시 시도할 길');
+
+    // 다시 '일정에 넣기'를 눌러도 장소를 또 넣지 않는다 — 날짜 목록도 열지 않고 표시만 다시 한다
+    w.document.getElementById('modePicker').open = false;
+    const before = calls.filter((c) => c[0] === 'manage_trip_candidate').length;
+    await w.eval(`scheduleCandidate({id:7,title:'카사 바트요',note:'가우디',lat:41.39,lng:2.16})`);
+    await tickAsync();
+    assert.equal(w.document.getElementById('modePicker').open, false, '이미 들어간 장소라 날짜를 다시 묻지 않는다');
+    assert.deepEqual(uxSpotNames(w, 1), ['카사 바트요'], '두 번 들어가지 않는다');
+    assert.equal(calls.filter((c) => c[0] === 'manage_trip_candidate').length, before + 1, '표시만 다시 시도한다');
+
+    // 연결이 돌아와 토스트의 '표시 다시 시도'를 누르면 표시가 저장되고 성공을 말한다
+    fail = false;
+    [...w.document.querySelectorAll('#toast button')].find((b) => b.textContent === '표시 다시 시도').click();
+    await tickAsync();
+    assert.deepEqual(uxSpotNames(w, 1), ['카사 바트요'], '재시도 뒤에도 한 번만');
+    assert.doesNotMatch(uxToastText(w), /표시만 저장하지 못했어요/);
+    const last = calls.filter((c) => c[0] === 'manage_trip_candidate').pop();
+    assert.deepEqual(last[1], { p_candidate_id: 7, p_action: 'SCHEDULE', p_value: '2' });
+    assert.equal(w.eval(`store.trips[0].days[1].spots[0].candidateId`), 7, '재시도 키가 문서에 남는다');
+  } finally { w.close(); }
+});
+
+test('통합(AC-3 실패): 서버가 200 {ok:false}(이미 지워진 후보)를 줘도 장소는 남고 사실대로 말하며, 다시 눌러도 두 번 들어가지 않는다', { skip: noJsdom }, async () => {
+  const { w, calls } = candidateScene(() => ({ data: false, error: null }));
+  try {
+    await w.eval(`scheduleCandidate({id:7,title:'카사 바트요'})`);
+    pickDayOption(w, 2); await tickAsync();
+    assert.deepEqual(uxSpotNames(w, 1), ['카사 바트요'], '장소는 일정에 남는다');
+    assert.match(uxToastText(w), /Day 2에 넣었어요/);
+    assert.match(uxToastText(w), /이미 지워져서/, '후보가 이미 없다고 사실대로 말한다');
+    assert.doesNotMatch(uxToastText(w), /^일정에 넣었어요$/, '성공이라고 말하지 않는다');
+    assert.ok(calls.some((c) => c[0] === 'list_trip_candidates'), '목록을 새로 불러온다');
+
+    for (let i = 0; i < 2; i++) {
+      await w.eval(`scheduleCandidate({id:7,title:'카사 바트요'})`);
+      await tickAsync();
+    }
+    assert.deepEqual(uxSpotNames(w, 1), ['카사 바트요'], '몇 번을 다시 눌러도 장소는 한 번이다');
+  } finally { w.close(); }
+});
+
+test('통합(AC-3 실패): 보기 권한으로 표시가 거절되면 서버가 말한 이유를 함께 전한다', { skip: noJsdom }, async () => {
+  const { w } = candidateScene(() => ({ data: null, error: { code: '42501', apiCode: 'FORBIDDEN', status: 403, message: '보기 권한으로는 후보 상태를 바꿀 수 없어요.' } }));
+  try {
+    await w.eval(`scheduleCandidate({id:7,title:'카사 바트요'})`);
+    pickDayOption(w, 2); await tickAsync();
+    assert.deepEqual(uxSpotNames(w, 1), ['카사 바트요']);
+    assert.match(uxToastText(w), /Day 2에 넣었어요/);
+    assert.match(uxToastText(w), /보기 권한으로는 후보 상태를 바꿀 수 없어요/, '서버 문장이 그대로');
+  } finally { w.close(); }
+});
+
+test('통합(AC-4): 자유시간 분리에서 표시 저장이 실패하면 실패 안내가 남고 성공 토스트가 덮지 않는다 — 다시 눌러도 세 줄이 두 번 들어가지 않는다', { skip: noJsdom }, async () => {
+  let fail = true;
+  const { w, calls, U1, U2 } = candidateScene(() => fail ? { data: null, error: { message: 'Failed to fetch' } } : { data: true, error: null });
+  try {
+    const cand = `{id:9,title:'캄프 누',must_count:1,ok_count:0,pass_count:1,reactions:[
+      {user_id:'${U1}',name:'나',reaction:'MUST',me:true},{user_id:'${U2}',name:'지민',reaction:'PASS',me:false}]}`;
+    await w.eval(`splitCandidate(${cand})`);
+    pickDayOption(w, 2); await tickAsync();
+    assert.deepEqual(uxSpotNames(w, 1), ['캄프 누', '자유시간', '다시 만나기'], '분리 세 줄은 일정에 들어간다');
+    const msg = uxToastText(w);
+    assert.doesNotMatch(msg, /같은 시간에 나란히 넣었어요/, '성공 토스트가 실패 안내를 덮지 않는다');
+    assert.match(msg, /후보 표시만/);
+    assert.match(msg, /Day 2에 넣었어요/);
+
+    const before = calls.filter((c) => c[0] === 'manage_trip_candidate').length;
+    w.document.getElementById('modePicker').open = false;
+    await w.eval(`splitCandidate(${cand})`);
+    await tickAsync();
+    assert.equal(w.document.getElementById('modePicker').open, false, '날짜를 다시 묻지 않는다');
+    assert.equal(uxSpotNames(w, 1).length, 3, '다시 눌러도 세 줄이 여섯 줄이 되지 않는다');
+    assert.equal(calls.filter((c) => c[0] === 'manage_trip_candidate').length, before + 1);
+
+    fail = false;
+    [...w.document.querySelectorAll('#toast button')].find((b) => b.textContent === '표시 다시 시도').click();
+    await tickAsync();
+    assert.equal(uxSpotNames(w, 1).length, 3);
+    assert.match(uxToastText(w), /같은 시간에 나란히 넣었어요/, '표시까지 끝났을 때만 성공을 말한다');
+  } finally { w.close(); }
+});
+
+test('통합(AC-4 실패): 분리에서 200 {ok:false}여도 성공 토스트로 덮이지 않는다', { skip: noJsdom }, async () => {
+  const { w, U1, U2 } = candidateScene(() => ({ data: false, error: null }));
+  try {
+    await w.eval(`splitCandidate({id:9,title:'캄프 누',must_count:1,ok_count:0,pass_count:1,reactions:[
+      {user_id:'${U1}',name:'나',reaction:'MUST',me:true},{user_id:'${U2}',name:'지민',reaction:'PASS',me:false}]})`);
+    pickDayOption(w, 2); await tickAsync();
+    assert.equal(uxSpotNames(w, 1).length, 3);
+    assert.doesNotMatch(uxToastText(w), /같은 시간에 나란히 넣었어요/);
+    assert.match(uxToastText(w), /이미 지워져서/);
+  } finally { w.close(); }
+});
+
+test('통합(AC-3): 성공하면 예전처럼 한 줄로 말하고 SCHEDULE이 한 번 나간다', { skip: noJsdom }, async () => {
+  const { w, calls } = candidateScene(() => ({ data: true, error: null }));
+  try {
+    await w.eval(`scheduleCandidate({id:7,title:'카사 바트요'})`);
+    pickDayOption(w, 2); await tickAsync();
+    assert.equal(uxToastText(w), '일정에 넣었어요');
+    assert.equal(calls.filter((c) => c[0] === 'manage_trip_candidate').length, 1);
+  } finally { w.close(); }
+});
+
+// ── F-7 (AC-10·AC-11) 날짜 목록 ──
+test('통합(AC-10): 후보를 넣을 날은 prompt()가 아니라 날짜 목록이고, 보던 날이 먼저 고른 상태다', { skip: noJsdom }, async () => {
+  const { w } = candidateScene(() => ({ data: true, error: null }));
+  try {
+    let prompted = 0; w.prompt = () => { prompted++; return '1'; };
+    w.eval(`activeDay=2`);   // 2일차를 보는 중
+    await w.eval(`scheduleCandidate({id:7,title:'카사 바트요'})`);
+    assert.equal(prompted, 0);
+    const dlg = w.document.getElementById('modePicker');
+    assert.equal(dlg.open, true);
+    const opts = [...w.document.querySelectorAll('#modePickerList .modeOpt')];
+    assert.equal(opts.length, 2);
+    assert.match(opts[0].textContent, /^Day 1 · 10\/25/, 'Day N · 날짜');
+    assert.equal(opts[1].getAttribute('aria-checked'), 'true', '보던 날(Day 2)이 먼저 고른 상태');
+    assert.equal(opts.filter((o) => o.getAttribute('role') !== 'radio').length, 0);
+  } finally { w.close(); }
+});
+
+test('통합(AC-11): 날짜 목록은 화살표·Home·End로 고르고 Enter(누르기)로 적용하며, Esc·취소는 아무것도 바꾸지 않는다', { skip: noJsdom }, async () => {
+  const { w } = candidateScene(() => ({ data: true, error: null }));
+  try {
+    await w.eval(`scheduleCandidate({id:7,title:'카사 바트요'})`);
+    const radios = [...w.document.querySelectorAll('#modePickerList .modeOpt')];
+    const key = (el, k) => el.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    key(radios[1], 'ArrowUp');
+    assert.equal(radios[0].getAttribute('aria-checked'), 'true', '화살표는 고르기만 한다');
+    assert.equal(w.eval(`store.trips[0].days[0].spots.length`), 1, '고르기만으로는 넣지 않는다');
+    key(radios[0], 'End');
+    assert.equal(radios[1].getAttribute('aria-checked'), 'true');
+    key(radios[1], 'Home');
+    assert.equal(radios[0].getAttribute('aria-checked'), 'true');
+    assert.equal(radios[0].tabIndex, 0, 'Tab 정지는 하나');
+    assert.equal(radios[1].tabIndex, -1);
+    // 네이티브 Esc는 dialog가 닫는다 — 닫으면 아무것도 들어가지 않는다
+    w.document.getElementById('modePicker').close();
+    await tickAsync();
+    assert.equal(w.eval(`store.trips[0].days.reduce((n,d)=>n+d.spots.length,0)`), 1);
+    // 누르면(=Enter) 그 날 맨 뒤에 들어간다
+    await w.eval(`scheduleCandidate({id:8,title:'몬주익'})`);
+    pickDayOption(w, 1); await tickAsync();
+    assert.deepEqual(uxSpotNames(w, 0), ['기존', '몬주익'], '고른 날 맨 뒤');
+  } finally { w.close(); }
+});
+
+test('통합(AC-10 실패): 보기 권한은 날짜 목록조차 열지 못한다', { skip: noJsdom }, async () => {
+  const { w } = candidateScene(() => ({ data: true, error: null }));
+  try {
+    w.eval(`tripRoles={t1:{role:'VIEWER',count:2,owner:false}}`);
+    await w.eval(`scheduleCandidate({id:7,title:'카사 바트요'})`);
+    assert.equal(w.document.getElementById('modePicker').open, false);
+    assert.equal(w.eval(`store.trips[0].days.reduce((n,d)=>n+d.spots.length,0)`), 1);
+  } finally { w.close(); }
+});
+
+// ── F-3·F-4 (AC-5·AC-6) 비용 시트 ──
+test('통합(AC-5): 결제 상태를 고르지 않은 비용이 있어도 비용 시트에 "미구분"이 없다 — 줄은 "고르지 않음"으로 남는다 (결정 2)', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    withTrip(w, `[{title:'D1',spots:[{name:'미술관',lat:40.41,lng:-3.69,cost:18000}]}]`);   // payState 없음 = 고르지 않음
+    w.eval('openCostDialog()');
+    const text = w.document.getElementById('mobileCostDialog').textContent;
+    assert.doesNotMatch(text, /미구분/);
+    assert.match(text, /고르지 않음\s*₩18,000/, '금액은 숨기지 않는다 — 결제 완료 + 예정 + 고르지 않음이 전체와 맞는다');
+    assert.equal(w.eval(`PAY_STATE_LABEL.NONE`), '고르지 않음');
+  } finally { w.close(); }
+});
+
+test('통합(AC-6): 비용 내역 줄의 분류 이름이 아홉 가지 모두 편집기 이름(COST_KIND)·iOS 공유 픽스처와 글자까지 같다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    const fixture = JSON.parse(fs.readFileSync(path.join(root, 'ios/TripCanvasTests/Fixtures/cost-labels.json'), 'utf8'));
+    assert.equal(fixture.categories.length, 9);
+    for (const kind of fixture.categories) {
+      const html = w.eval(`costOverviewRow({id:'r-${kind}',date:null,end:null,reservation:'NONE',
+        line:{kind:'${kind}',title:'항목',state:'KNOWN',amount:1000,currency:'KRW',payState:'NONE'}})`);
+      const holder = w.document.createElement('div'); holder.innerHTML = html;
+      const sub = holder.querySelector('.costItemIdentity small').textContent;
+      assert.equal(sub, fixture.categoryNames[kind], `${kind}: 비용 내역 줄의 이름`);
+      assert.equal(w.eval(`COST_KIND['${kind}'].name`), fixture.categoryNames[kind], `${kind}: 편집기(COST_KIND)와 같다`);
+    }
+    // 예전 로컬 표의 이름은 어디에도 남지 않는다
+    for (const old of ['렌터카', '교통', '입장권']) {
+      const names = fixture.categories.map((k) => fixture.categoryNames[k]);
+      assert.ok(!names.includes(old) || old === '입장권·관람권', old);
+    }
+  } finally { w.close(); }
+});
+
+// ── F-8 (AC-12·AC-13) 폼 오류는 칸 옆에서 ──
+test('통합(AC-12): 로그인 창에서 이메일 형식이 틀리면 이메일 칸 아래에, 비밀번호가 8자 미만이면 그 칸 아래에 이유가 남고 포커스가 가며, 고치면 지워진다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    w.eval(`openAuthModal()`);
+    const email = w.document.getElementById('authEmail'), pass = w.document.getElementById('authPass');
+    email.value = 'not-an-email'; pass.value = '12345678';
+    w.document.getElementById('authLogin').click();
+    await tickAsync();
+    const e1 = w.document.getElementById('authEmailErr');
+    assert.ok(e1, '이메일 칸 옆 이유');
+    assert.equal(e1.getAttribute('role'), 'alert');
+    assert.match(e1.textContent, /이메일/);
+    assert.equal(w.document.activeElement, email);
+    assert.equal(email.getAttribute('aria-invalid'), 'true');
+    email.value = 'a@b.co'; email.dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.equal(w.document.getElementById('authEmailErr'), null, '칸을 고치면 이유가 지워진다');
+
+    pass.value = '1234567';
+    w.document.getElementById('authSignup').click();
+    await tickAsync();
+    const e2 = w.document.getElementById('authPassErr');
+    assert.ok(e2, '비밀번호 칸 옆 이유');
+    assert.match(e2.textContent, /8자 이상/);
+    assert.equal(w.document.activeElement, pass);
+    pass.value = '12345678'; pass.dispatchEvent(new w.Event('input', { bubbles: true }));
+    assert.equal(w.document.getElementById('authPassErr'), null);
+    // 서버(=네트워크)는 한 번도 부르지 않았다 — 검증이 먼저 막았다
+  } finally { w.close(); }
+});
+
+test('통합(AC-13): 재설정 메일 요청에 이메일이 없으면 칸 옆에서 말하고 서버에 보내지 않는다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    w.eval(`openAuthModal()`);
+    w.document.getElementById('authEmail').value = '';
+    w.document.getElementById('authReset').click();
+    await tickAsync();
+    assert.match(w.document.getElementById('authEmailErr').textContent, /이메일/);
+    assert.equal(w.document.activeElement, w.document.getElementById('authEmail'));
+  } finally { w.close(); }
+});
+
+test('통합(AC-13): 새 비밀번호가 8자 미만이면 #resetPassErr, 새 여행 시작일이 비면 #ntStartErr, 빈 준비 메모는 #noteTitleInputErr, 빈 후보 이름은 #candTitleInputErr', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    // 새 비밀번호
+    w.eval(`pendingResetToken='tok'; openResetModal()`);
+    w.document.getElementById('resetPass').value = '1234567';
+    w.document.getElementById('resetSubmit').click();
+    await tickAsync();
+    assert.match(w.document.getElementById('resetPassErr').textContent, /8자 이상/);
+    assert.equal(w.document.activeElement, w.document.getElementById('resetPass'));
+    w.document.getElementById('resetCancel').click();
+
+    // 새 여행 시작일
+    w.eval(`openNewTrip()`);
+    w.document.getElementById('ntStart').value = '';
+    w.document.getElementById('ntRun').click();
+    assert.match(w.document.getElementById('ntStartErr').textContent, /시작일/);
+    assert.equal(w.document.activeElement, w.document.getElementById('ntStart'));
+    assert.ok(w.document.getElementById('newTripBg').classList.contains('show'), '창은 닫히지 않는다');
+    w.document.getElementById('ntCancel').click();
+
+    // 준비 메모
+    w.eval(`openNotes()`);
+    w.document.getElementById('noteTitleInput').value = '  ';
+    w.document.getElementById('noteBodyInput').value = '';
+    w.document.getElementById('noteAdd').click();
+    assert.match(w.document.getElementById('noteTitleInputErr').textContent, /메모 제목이나 내용/);
+    assert.equal(w.document.activeElement, w.document.getElementById('noteTitleInput'));
+    assert.equal(w.eval(`(trip().notes||[]).length`), 0, '저장되지 않는다');
+
+    // 가고 싶은 곳 이름
+    w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'스페인',days:[{spots:[]}]}]; store.activeId='t1';
+      syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'EDITOR',count:2,owner:false}}; candTripId='t1';`);
+    w.document.getElementById('candTitleInput').value = '';
+    await w.eval(`addCandidate()`);
+    assert.match(w.document.getElementById('candTitleInputErr').textContent, /이름/);
+    assert.equal(w.document.activeElement, w.document.getElementById('candTitleInput'));
+  } finally { w.close(); }
+});
+
+test('통합(AC-13): 저장을 막는 검증 중 토스트만 쓰는 곳이 남지 않는다 — 입력 검증 실패 뒤 곧바로 return하는 toast(…,"#b4342a") 패턴 점검', { skip: noJsdom }, () => {
+  const src = fs.readFileSync(path.join(root, 'app.js'), 'utf8').split('\n');
+  // 사용자가 쓴 칸을 막는 검증 문장(…해 주세요/…확인해 주세요)을 토스트로만 말하고 바로 return하는 줄
+  const offenders = src.map((l, i) => [i + 1, l]).filter(([, l]) =>
+    /if\s*\(.*(!title|!name|!email|length<8|!\/\^\\d\{4\}|!target\.includes|!v>0|\(v>0\)).*\)\s*\{?\s*toast\(/.test(l));
+  assert.deepEqual(offenders.map(([n, l]) => `${n}: ${l.trim().slice(0, 100)}`), []);
+});
+
+// ── F-12 (AC-17) 조사 ──
+test('통합(AC-17): 후보 빼기 확인창이 받침에 맞는 조사를 쓴다 — 경복궁을 / 남산타워를, "을(를)"은 없다', { skip: noJsdom }, async () => {
+  const w = boot();
+  try {
+    const asked = [];
+    w.confirm = (m) => { asked.push(m); return false; };
+    w.eval(`user={id:'u1'}; store.trips=[{id:'t1',name:'서울',days:[{spots:[]}]}]; store.activeId='t1';
+      syncMeta={t1:{revision:3,status:'clean'}}; tripRoles={t1:{role:'OWNER',count:2,owner:true}}; candTripId='t1';
+      candRows=[]`);
+    w.sb = { rpc: async (n) => ({ data: n === 'list_trip_candidates' ? [] : true, error: null }) };
+    w.eval(`sb=window.sb; TC_API.rpc=window.sb.rpc`);
+    for (const title of ['경복궁', '남산타워']) {
+      w.eval(`candRows=[{id:1,title:'${title}',status:'PROPOSED',must_count:0,ok_count:0,pass_count:0,my_reaction:null,
+        proposed_by_label:'나',mine:true,created_at:'2026-01-01',reactions:[]}]; drawCandidates();`);
+      const removeBtn = [...w.document.querySelectorAll('#candList button')].find((b) => /후보에서 빼기|빼기/.test(b.textContent));
+      assert.ok(removeBtn, `${title}: 빼기 버튼`);
+      removeBtn.click();
+    }
+    assert.equal(asked.length, 2);
+    assert.match(asked[0], /"경복궁"을 후보에서 뺄까요/);
+    assert.match(asked[1], /"남산타워"를 후보에서 뺄까요/);
+    for (const m of asked) assert.doesNotMatch(m, /\(를\)|\(을\)/);
+  } finally { w.close(); }
+});
+
+test('통합(AC-17): 웹 화면 문장에 "을(를)"·"은(는)"·"(으)로"가 남지 않는다 (소스 점검 — 부정 단정 문장은 제외)', () => {
+  const lines = fs.readFileSync(path.join(root, 'app.js'), 'utf8').split('\n');
+  const hits = lines.map((l, i) => [i + 1, l]).filter(([, l]) =>
+    /을\(를\)|은\(는\)|\(으\)로|이\(가\)/.test(l) && !/^\s*(\/\/|\*|\/\*)/.test(l) && !/\/\/.*(을\(를\)|은\(는\))/.test(l));
+  assert.deepEqual(hits.map(([n, l]) => `${n}: ${l.trim().slice(0, 100)}`), []);
+});
+
+test('통합(AC-17): 건너뛰기·장소 추가 토스트의 조사 — 받침 있음/없음', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    for (const [name, expected] of [['경복궁', '경복궁을'], ['남산타워', '남산타워를']]) {
+      assert.equal(w.eval(`'${name}'+TC_ADAPT.josa('${name}','을','를')`), expected);
+    }
+    for (const [n, expected] of [[1, 'Day 1로'], [2, 'Day 2로'], [3, 'Day 3으로'], [6, 'Day 6으로'], [10, 'Day 10으로']]) {
+      assert.equal(w.eval(`'Day ${n}'+TC_ADAPT.josa('Day ${n}','으로','로')`), expected, '숫자 끝은 읽는 소리의 받침을 따른다');
+    }
+    assert.equal(w.eval(`TC_COLLAB.josa('서울','으로','로')`), '로');
+  } finally { w.close(); }
+});
+
+// ── F-11 (AC-16)·F-13 (AC-19) ──
+test('통합(AC-16): 렌더된 화면에도 인라인 패딩·글자 크기를 가진 .btn이 없다 (index.html + 예약 편집기 + 가격 상태)', { skip: noJsdom }, () => {
+  const w = carWithManualPrice('EUR');
+  try {
+    const bad = [...w.document.querySelectorAll('.btn[style]')].filter((el) => /padding|font-size/.test(el.getAttribute('style')));
+    assert.deepEqual(bad.map((el) => el.id || el.textContent), []);
+    for (const id of ['membersRefresh', 'candRefresh', 'fmtCopy']) {
+      const el = w.document.getElementById(id);
+      assert.ok(el.classList.contains('sm'), `${id}는 .btn.sm`);
+    }
+  } finally { w.close(); }
+});
+
+test('통합(AC-19): 카카오 말풍선을 열면 닫기 버튼이 "닫기"라는 이름의 type=button이고, 누르면 말풍선이 닫힌다', { skip: noJsdom }, () => {
+  const w = boot();
+  try {
+    let closed = 0, content = null;
+    w.kakao = { maps: {
+      LatLng: class { constructor(a, b) { this.a = a; this.b = b; } },
+      CustomOverlay: class { constructor(o) { content = o.content; } setMap(m) { if (m === null) closed++; } }
+    } };
+    w.eval(`openKPopup('<b>경복궁</b>', 37.57, 126.98)`);
+    assert.ok(content, '말풍선이 만들어진다');
+    const btn = content.querySelector('.kclose');
+    assert.ok(btn);
+    assert.equal(btn.tagName, 'BUTTON');
+    assert.equal(btn.getAttribute('type'), 'button');
+    assert.equal(btn.getAttribute('aria-label'), '닫기', '스크린리더는 곱하기가 아니라 닫기로 읽는다');
+    const before = closed;
+    btn.click();
+    assert.equal(closed, before + 1, '누르면 닫힌다');
+  } finally { w.close(); }
+});
+
+test('통합(AC-3 연장): 그룹 제안을 받아들일 때 일부 표시가 실패하면(200 {ok:false} 포함) 장소는 전부 남고 사실대로 말한다', { skip: noJsdom }, async () => {
+  const { w } = candidateScene((args) => args.p_candidate_id === 8 ? { data: false, error: null } : args.p_candidate_id === 9 ? { data: null, error: { message: 'boom' } } : { data: true, error: null });
+  try {
+    await w.eval(`acceptProposal({picks:[{di:1,candidate:{id:7,title:'가'}},{di:1,candidate:{id:8,title:'나'}},{di:1,candidate:{id:9,title:'다'}}]})`);
+    assert.deepEqual(uxSpotNames(w, 1), ['가', '나', '다'], '일정에는 전부 들어갔다');
+    assert.match(uxToastText(w), /1\/3곳만 표시했어요 — 일정에는 전부 들어갔어요/);
+  } finally { w.close(); }
 });
 
 // With J 이야기 — 카탈로그가 붙는 장소에만 버튼이 서고, 이름만 같은 다른 도시의 장소에는 서지 않는다(docs/with-j-stories.md)

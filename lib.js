@@ -1042,6 +1042,17 @@
     if(!['USD','EUR','CNY'].includes(cur||'KRW')&&!Number.isInteger(amount)) return null;
     return amount;
   }
+  /**
+   * 사람이 직접 확인해 적는 가격 한 칸. 금액 칸(`parseCostAmount`)과 같은 규칙이고, 소수 쉼표 표기('1.234,56'·'12,50')도 받는다 —
+   * 숫자 아닌 글자를 지우고 정수로 읽던 때는 '189.50'이 18950이었다. 0 이하·읽을 수 없는 값은 null이다.
+   * @param {string} text @param {string=} cur @returns {number|null}
+   */
+  function parseManualPrice(text,cur){
+    const raw=String(text==null?'':text).trim();
+    const value=/^(?:\d{1,3}(?:\.\d{3})+|\d+),\d{1,2}$/.test(raw)? raw.replace(/\./g,'').replace(',','.') : raw;
+    const amount=parseCostAmount(value,cur);
+    return amount!==null&&amount>0? amount : null;
+  }
   /** 명시적으로 1인 금액을 선택했을 때만 인원수를 곱한다. 기존 값의 기준은 추정하지 않는다.
    * @param {any} item @param {string=} field @returns {number|null} */
   function costAmountOf(item,field='cost'){
@@ -2645,7 +2656,7 @@
   }
 
 
-  const TC={spotChoiceError,spotChoiceSummary,deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,shortWalkOption,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,taxiFareCounts,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,transportFareKind,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,SAMPLE_TRIP_VERSION,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
+  const TC={spotChoiceError,spotChoiceSummary,deleteSpotCost,clearSpotCost,deleteBookingCost,dayLodgings,sortTripsByCountdown,additionalReservations,tripSummaryCities,returnModeOf,SPOT_PRIORITIES,spotPriorityOf,applySpotPriority,spotPriorityLabel,SPOT_CATS,spotCat,spotCatOf,catFromKakao,catFromGoogle,catFromName,cityFromKakaoAddress,cityFromKoreanAddr,placeName,cityFromGoogle,normHours,classifySearchErr,isKoreanSearch,toISO,haversine,stayNights,legId,legKey,ringPts,parseHM,hm,normHM,sortDayByTime,inKorea,shortWalkOption,simplifyName,parseDirect,parseMoney,normalizeDraftDays,extractJson,extMapLink,encodePolyline,decodePolyline,optimizeRoute,planRouteOptimization,routeLength,isOpenAt,validTimeZone,zonedClock,zonedMinutesToISOString,dayAnchor,stayMinutesOf,activityStartMinute,dayEndMinutes,departMinuteAfter,computeTimeline,computeDayJourney,whoKey,splitSegments,dayStartAnchor,dayReturnStay,carEventsOn,carReturnPoint,carSpotLinks,bookingShareOn,budgetBookings,moneyAmount,parseCostAmount,parseManualPrice,costAmountOf,dayEnteredCost,splitAcrossNights,stayCostShares,stayCostOverflow,dayEnteredCostOn,hasManualTransportCost,taxiFareCounts,dayCostSummary,ADMISSION_REQUIREMENTS,admissionLabel,admissionOf,needsAdmissionBooking,normalizeAdmission,admissionError,COST_CATEGORIES,COST_CURRENCIES:_CURS,costCategoryOf,transportFareKind,COST_PAY_STATES,costPayStateOf,payStateTotals,TRIP_NOTE_CATEGORIES,normalizeTripNote,tripCostSummary,localMode,mdLabel,tripPeriodOf,startShiftPreview,SAMPLE_TRIP_ID,SAMPLE_TRIP_VERSION,isSampleTrip,sampleTrip,normalizeTrip,normalizeBooking,migrateTrip,validateTripPayload,parseTripPayload,parseStorePayload,TC_LIMITS,TC_SCHEMA};
   // 장소 검색·장소 정체성(2026-10-03) — 위 목록과 따로 둬 다른 변경과 한 줄에서 부딪히지 않게 한다
   Object.assign(TC,{placeNameMatch,searchAnchorSpot,planDistanceKm,tripCitySpelling,tripDefaultCurrency,hoursIssue,hoursLines});
   Object.assign(TC,{resolveTimeZone,inferTimeZones,effectiveTimeZone,refundableOf});   // 따로 붙인다 — 위 한 줄은 여러 작업이 함께 고치는 자리다

@@ -404,13 +404,30 @@
   /** @param {unknown} role @param {{mine?:boolean}|null} comment @returns {boolean} */
   function canDeleteComment(role, comment){ return !!(comment && comment.mine) || normRole(role)==='OWNER'; }
 
-  /** 을/를 — 받침이 있으면 '을'. 한글이 아니면 '를'(외국어 상호가 많다) */
+  /** 을/를 — 받침이 있으면 '을'. 판정은 아래 `josa`와 같다(숫자 끝말은 읽는 소리의 받침, 그 밖의 한글 아닌 끝말은 '를' — 외국어 상호가 많다) */
   /** @param {unknown} word @returns {string} */
-  function objParticle(word){
-    const s=String(word==null?'':word); if(!s) return '를';
-    const code=s.charCodeAt(s.length-1)-0xAC00;
-    if(code<0||code>11171) return '를';
-    return (code%28)===0? '를':'을';
+  function objParticle(word){ return josa(word,'을','를'); }
+
+  /**
+   * 받침에 맞는 조사 — 규칙은 `adaptive.js`의 `josa`와 같다(이 파일은 의존성이 없는 UMD라 복사본이고, iOS `CollabModel.josa`도 같은 규칙).
+   * 마지막 글자가 한글 음절이 아니면(영문·숫자·괄호) 받침 없는 쪽이고, '으로'는 ㄹ 받침이면 '로'다.
+   * 여러 이름을 이은 문장은 **마지막 이름**으로 고른다(호출부가 이어 붙인 문자열을 그대로 넘긴다).
+   * @param {unknown} word @param {string} withFinal 받침이 있을 때 @param {string} withoutFinal 받침이 없을 때 @returns {string}
+   */
+  function josa(word, withFinal, withoutFinal){
+    const s=String(word==null?'':word).trim();
+    const last=s? s.charCodeAt(s.length-1) : -1;
+    // 숫자는 읽는 소리의 받침을 따른다 — 영·일·삼·육·칠·팔은 받침 있음(일·칠·팔은 ㄹ 받침), 이·사·오·구는 없음. 'Day 3으로'
+    if(last>=0x30 && last<=0x39){
+      const d=last-0x30;
+      if(withFinal==='으로' && (d===1||d===7||d===8)) return withoutFinal;
+      return (d===0||d===1||d===3||d===6||d===7||d===8)? withFinal : withoutFinal;
+    }
+    const code=last-0xAC00;
+    if(code<0||code>11171) return withoutFinal;
+    const fin=code%28;
+    if(withFinal==='으로' && fin===8) return withoutFinal;
+    return fin? withFinal : withoutFinal;
   }
 
   /**
@@ -646,7 +663,8 @@
     if(ctx.morningNo.length) out.push(`아침 일찍은 어려워요 (${ctx.morningNo.join(', ')})`);
     if(ctx.nightNo.length) out.push(`늦은 밤은 싫어요 (${ctx.nightNo.join(', ')})`);
     if(ctx.sharedInterests.length) out.push('함께 관심: '+ctx.sharedInterests.join(', '));
-    for(const c of ctx.conflicts) out.push(`${c.topic}: ${c.likes.join(', ')}은(는) 좋고 ${c.dislikes.join(', ')}은(는) 별로예요`);
+    for(const c of ctx.conflicts) { const likes=c.likes.join(', '), dislikes=c.dislikes.join(', ');
+      out.push(`${c.topic}: ${likes}${josa(likes,'은','는')} 좋고 ${dislikes}${josa(dislikes,'은','는')} 별로예요`); }
     return out;
   }
 
@@ -736,13 +754,14 @@
     const who=(/** @type {string[]} */a)=>a.length? a.join(', ') : '';
     const must=who(conflict.must), pass=who(conflict.pass);
     const splittable=!!(conflict.goers && conflict.goers.length && conflict.others && conflict.others.length);
-    const sides=`${must||'원하는 분'}은(는) ${conflict.title}`;
+    const goer=must||'원하는 분', rest=pass||'다른 분';
+    const sides=`${goer}${josa(goer,'은','는')} ${conflict.title}`;
     return [
       {key:'TOGETHER', title:'다 같이 방문', text: pass? `${pass}도 함께 — 짧게 들르는 걸로` : '다 같이 들러요', action:'SCHEDULE'},
       {key:'SPLIT', title:'자유시간으로 분리',
        text: splittable
-         ? `${sides} · ${pass||'다른 분'}은(는) 자유시간 — 끝나면 다시 만나요`
-         : `${sides} · ${pass||'다른 분'}은(는) 다른 곳 — 의견을 다시 불러오면 나눌 수 있어요`,
+         ? `${sides} · ${rest}${josa(rest,'은','는')} 자유시간 — 끝나면 다시 만나요`
+         : `${sides} · ${rest}${josa(rest,'은','는')} 다른 곳 — 의견을 다시 불러오면 나눌 수 있어요`,
        action: splittable? 'SPLIT' : null},
       {key:'SKIP', title:'이번 일정에서는 제외', text:'후보에는 남겨 두고 이번엔 빼요 — 언제든 되돌릴 수 있어요', action:'REJECT'}
     ];
@@ -791,7 +810,7 @@
       /** @type {string[]} */ const reasons=[];
       reasons.push(k.voted>=k.members ? `${k.members}명 모두 관심 있어요 · 반대 없음` : `${k.strongSupportCount}명이 꼭 가고 싶어 해요 · 반대 없음`);
       if(best.km!=null) reasons.push(`Day ${best.di+1} 마지막 장소(${String(best.last.name||'장소')})에서 약 ${best.km<10? best.km.toFixed(1) : String(Math.round(best.km))} km`);
-      else reasons.push(`Day ${best.di+1}이 가장 여유로워요 (장소 ${best.count}개)`);
+      else reasons.push(`Day ${best.di+1}${josa('Day '+(best.di+1),'이','가')} 가장 여유로워요 (장소 ${best.count}개)`);
       if(ctx&&ctx.walking==='LOW'&&best.km!=null&&best.km<=2) reasons.push('걷기 부담이 적은 거리예요');
       picks.push({candidate:c, di:best.di, km:best.km, reasons});
     }
@@ -931,7 +950,7 @@
     // 후보 표시만 실패했을 때 같은 분리를 다시 찾을 수 있어야 한다.
     if(Number.isSafeInteger(cand.id) && cand.id>0) spots[0].candidateId=cand.id;
     const a=whoLabels(goers, members).join(', '), b=whoLabels(others, members).join(', ');
-    return {goers, others, spots, text:`${a}은(는) ${title}, ${b}은(는) 자유시간 — 끝나면 다시 만나요`};
+    return {goers, others, spots, text:`${a}${josa(a,'은','는')} ${title}, ${b}${josa(b,'은','는')} 자유시간 — 끝나면 다시 만나요`};
   }
 
   /**
@@ -954,7 +973,7 @@
     isForbiddenError, forbiddenText, isHumanMessage,
     normReaction, reactionLabel, reactionIcon, canPropose, canReact, canScheduleCandidate, canRemoveCandidate,
     tallyReactions, candidateMood, moodText, groupCandidates, reactionSummary, candidateAttribution, sortCandidates,
-    canComment, canDeleteComment, objParticle, activityText, condenseActivity, relativeTime, liveEffects, liveCommentTargets,
+    canComment, canDeleteComment, objParticle, josa, activityText, condenseActivity, relativeTime, liveEffects, liveCommentTargets,
     normPrefs, prefsText, groupContext, groupContextText, consensusOf, consensusText, candidateVerdict,
     candidateConflict, conflictOptions, distanceKm, buildGroupProposal,
     canAssignWho, pickWho, memberLabelMap, whoLabels, whoText, includesMe, reactorIds, buildSplitPlan, reunionText,

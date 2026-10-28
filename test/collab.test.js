@@ -297,6 +297,15 @@ test('objParticle: 받침에 따라 을/를, 한글이 아니면 를', () => {
   assert.equal(C.objParticle('구엘 공원'), '을');
   assert.equal(C.objParticle('Camp Nou'), '를');
   assert.equal(C.objParticle(''), '를');
+  // 숫자 끝말은 읽는 소리의 받침을 따른다 — josa와 같은 규칙(AC-17·18)
+  assert.equal(C.objParticle('Hotel 3'), '을', '삼 — 받침 있음');
+  assert.equal(C.objParticle('Hotel 2'), '를', '이 — 받침 없음');
+  assert.equal(C.objParticle('Hotel 1'), '을', '일 — ㄹ 받침');
+  for (const w of ['Hotel 0','Hotel 1','Hotel 2','Hotel 3','Hotel 4','Hotel 5','Hotel 6','Hotel 7','Hotel 8','Hotel 9','Hotel 10','경복궁','Camp Nou','']) {
+    assert.equal(C.objParticle(w), C.josa(w,'을','를'), `${w}: objParticle == josa`);
+  }
+  assert.equal(C.activityText({ kind:'CANDIDATE_PROPOSED', actor_label:'영희', subject:{ title:'Hotel 3' } }), '영희님이 Hotel 3을 후보로 담았어요');
+  assert.equal(C.activityText({ kind:'CANDIDATE_REJECTED', actor_label:'영희', subject:{ title:'Hotel 2' } }), '영희님이 Hotel 2를 이번 일정에서 뺐어요');
 });
 
 test('activityText: 종류마다 사람 말 한 줄(§37) — 내 것은 "내가", 모르는 종류는 빈 문자열', () => {
@@ -451,7 +460,7 @@ test('groupContextText: 정리만 하고 결정하지 않는다(§62)', () => {
     '많이 걷기 싫어요 (나) — 동선은 이 기준으로',
     '아침 일찍은 어려워요 (영희)',
     '함께 관심: 미술관',
-    '쇼핑: 철수은(는) 좋고 영희은(는) 별로예요'
+    '쇼핑: 철수는 좋고 영희는 별로예요'
   ]);
   assert.ok(!lines.join(' ').includes('제외'), '자동으로 빼자고 하지 않는다');
   assert.match(C.groupContextText(null)[0], /아직 아무도/);
@@ -521,7 +530,7 @@ test('conflictOptions(§24): 함께 / 분리 / 제외 — 셋 다 실제 동작�
     goers: [M1, M3], others: [M2] });
   assert.deepEqual(opts.map(o => [o.key, o.action]), [['TOGETHER', 'SCHEDULE'], ['SPLIT', 'SPLIT'], ['SKIP', 'REJECT']]);
   assert.equal(opts[0].text, '영희도 함께 — 짧게 들르는 걸로');
-  assert.match(opts[1].text, /민수, 철수은\(는\) Camp Nou · 영희은\(는\) 자유시간/);
+  assert.match(opts[1].text, /민수, 철수는 Camp Nou · 영희는 자유시간/);
   assert.doesNotMatch(opts[1].text, /다음 단계/, '분리는 이제 안내가 아니라 실제 일정이다');
   assert.match(opts[2].text, /되돌릴 수 있어요/);
   assert.deepEqual(C.conflictOptions(null), []);
@@ -576,6 +585,16 @@ test('buildGroupProposal(§28·§29): 반대 없고 두 명 이상 말한 후보
   assert.equal(C.buildGroupProposal([cands[3], cands[4]], days, 4), null);
   assert.equal(C.buildGroupProposal(cands, [], 4), null, '일자가 없으면 제안도 없다');
   for (const pick of p.picks) for (const r of pick.reasons) assert.doesNotMatch(r, /점수|score/);
+});
+
+test('buildGroupProposal: "가장 여유로워요"의 조사는 Day 번호의 받침을 따른다 — Day 2(가) · Day 3(이)', () => {
+  const day = (n) => ({ spots: Array.from({ length: n }, (_, i) => ({ name: 'S' + i })) });
+  const cand = { id: 1, title: '좌표 없는 곳', status: 'PROPOSED', must_count: 2, ok_count: 0, pass_count: 0, created_at: '2026-01-01' };
+  const p2 = C.buildGroupProposal([cand], [day(2), day(0), day(2)], 4);
+  assert.match(p2.picks[0].reasons.join('|'), /Day 2가 가장 여유로워요/);
+  assert.doesNotMatch(p2.picks[0].reasons.join('|'), /Day 2이/);
+  const p3 = C.buildGroupProposal([cand], [day(2), day(2), day(0)], 4);
+  assert.match(p3.picks[0].reasons.join('|'), /Day 3이 가장 여유로워요/);
 });
 
 test('buildGroupProposal: 일정 저장 뒤 상태 표시만 실패한 후보는 다시 배치 제안하지 않는다', () => {
@@ -743,4 +762,78 @@ test('분류는 후보의 순위·묶음을 바꾸지 않는다 (표시일 뿐�
   assert.deepEqual(C.consensusOf(withCat, 2), C.consensusOf(base, 2));
   const groups = (rows) => Object.fromEntries(Object.entries(C.groupCandidates(rows, 2)).map(([k, v]) => [k, v.map(x => x.id)]));
   assert.deepEqual(groups([withCat]), groups([base]));
+});
+
+// ── F-12(AC-17·AC-18, 결정 6): 화면 문장의 조사는 받침에 맞는다 — '을(를)'·'은(는)'을 쓰지 않는다 ──
+
+test('josa: 받침 있음/없음(경복궁을·남산타워를) — 괄호 꼴이 나오지 않는다', () => {
+  assert.equal('경복궁' + C.josa('경복궁', '을', '를'), '경복궁을');
+  assert.equal('남산타워' + C.josa('남산타워', '을', '를'), '남산타워를');
+  assert.equal('철수' + C.josa('철수', '은', '는'), '철수는');
+  assert.equal('민수' + C.josa('민수', '은', '는'), '민수는', '마지막 글자 수는 받침이 없다');
+  assert.equal('영진' + C.josa('영진', '은', '는'), '영진은');
+});
+
+test('josa: 으로/로 — ㄹ 받침은 로, 그 밖의 받침은 으로', () => {
+  assert.equal(C.josa('서울', '으로', '로'), '로');
+  assert.equal(C.josa('부산', '으로', '로'), '으로');
+  assert.equal(C.josa('제주', '으로', '로'), '로');
+});
+
+test('josa: 이어 붙인 이름은 마지막 이름으로, 한글이 아니면 받침 없는 쪽, 빈 값도 깨지지 않는다', () => {
+  assert.equal(C.josa('민수, 철수', '은', '는'), '는');
+  assert.equal(C.josa('철수, 민수', '은', '는'), '는');
+  assert.equal(C.josa('철수, 영진', '은', '는'), '은');
+  assert.equal(C.josa('Camp Nou', '을', '를'), '를', '영문은 받침 없는 쪽');
+  assert.equal(C.josa('Day 3', '으로', '로'), '으로', '삼은 받침이 있다 — Day 3으로');
+  assert.equal(C.josa('Day 6', '으로', '로'), '으로', '육은 받침이 있다 — Day 6으로');
+  assert.equal(C.josa('Day 10', '으로', '로'), '으로', '끝 숫자 0(영)은 받침이 있다 — Day 10으로');
+  assert.equal(C.josa('Day 1', '으로', '로'), '로', '일은 ㄹ 받침이라 로');
+  assert.equal(C.josa('Day 2', '으로', '로'), '로', '이는 받침이 없다');
+  assert.equal(C.josa('Day 7', '으로', '로'), '로', '칠은 ㄹ 받침');
+  assert.equal(C.josa('Day 8', '으로', '로'), '로', '팔은 ㄹ 받침');
+  assert.equal(C.josa('Day 4', '으로', '로'), '로');
+  assert.equal(C.josa('Day 5', '으로', '로'), '로');
+  assert.equal(C.josa('Day 9', '으로', '로'), '로');
+  assert.equal(C.josa('Hotel 3', '을', '를'), '을', '삼 — 을');
+  assert.equal(C.josa('Hotel 2', '을', '를'), '를', '이 — 를');
+  assert.equal(C.josa('', '은', '는'), '는');
+  assert.equal(C.josa(null, '은', '는'), '는');
+  assert.equal(C.josa(undefined, '은', '는'), '는');
+  assert.equal(C.josa('  경복궁  ', '을', '를'), '을', '앞뒤 공백은 무시');
+  assert.equal(C.josa(12345, '은', '는'), '는', '숫자도 문자열로 읽는다');
+});
+
+test('F-12: collab.js가 만드는 문장에 괄호 조사가 남지 않는다 (그룹 정리·선택지·분리 미리보기)', () => {
+  const lines = C.groupContextText(C.groupContext([
+    { label: '민수', mine: true, prefs: { interests: ['쇼핑'] } },
+    { label: '영진', prefs: { dislikes: ['쇼핑'] } },
+    { label: '철수', prefs: { interests: ['쇼핑'] } }
+  ], 3));
+  assert.ok(lines.some((l) => l === '쇼핑: 나, 철수는 좋고 영진은 별로예요'), lines.join(' | '));
+  const opts = C.conflictOptions({ title: '경복궁', must: ['영진'], ok: [], pass: ['민수'], goers: [M1], others: [M2] });
+  assert.match(opts[1].text, /^영진은 경복궁 · 민수는 자유시간/);
+  const none = C.conflictOptions({ title: 'X', must: [], ok: [], pass: [], goers: [], others: [] });
+  assert.doesNotMatch(none[1].text, /\(는\)|\(를\)|\(을\)|\(은\)/);
+  const all = JSON.stringify([lines, opts, none]);
+  assert.doesNotMatch(all, /은\(는\)|을\(를\)|으\)로|이\(가\)/);
+});
+
+test('F-12: 분리 미리보기 문장도 받침에 맞는다', () => {
+  const plan = C.buildSplitPlan({ id: 1, title: '경복궁', reactions: [
+    { user_id: M1, name: '민수', reaction: 'MUST', me: false }, { user_id: M2, name: '영진', reaction: 'PASS', me: false }] },
+  [{ user_id: M1, display_name: '민수', me: false }, { user_id: M2, display_name: '영진', me: false }], { splitId: 'sp' });
+  assert.ok(plan, '갈린 후보는 계획이 나온다');
+  assert.doesNotMatch(plan.text, /\(는\)|\(은\)/);
+  assert.match(plan.text, /^민수는 경복궁, 영진은 자유시간/);
+});
+
+test('F-12(AC-18): collab.js의 josa는 원본(adaptive.js josa)과 같은 답을 낸다 — 복사본이 갈리지 않는다', () => {
+  const A = require('../adaptive.js');
+  const words = ['경복궁', '남산타워', '철수', '서울', '부산', '제주', 'Camp Nou', 'Day 3', 'Day 1', '라멘🍜', '  경복궁  ', '', null, undefined, '민수, 철수', '힣', '가', '﻿경복궁﻿', '(주)롯데', '2'];
+  for (const w of words) {
+    for (const [a, b] of [['을', '를'], ['은', '는'], ['으로', '로'], ['이', '가'], ['과', '와']]) {
+      assert.equal(C.josa(w, a, b), A.josa(w, a, b), `${JSON.stringify(w)} ${a}/${b}`);
+    }
+  }
 });
