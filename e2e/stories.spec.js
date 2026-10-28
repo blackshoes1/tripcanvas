@@ -73,3 +73,34 @@ test('받다 끊긴 음성(지문이 다름)은 담지 않고 다시 누르라�
   await expect(page.locator('#storyStatus')).toContainText('끝까지 받지 못했어요');
   expect(await page.evaluate(async()=>!!(await (await caches.open(STORY_CACHE)).match('stories/seville/plaza-espana-core.mp3')))).toBe(false);
 });
+
+test('같은 주소에 다시 만든 음성이 올라오면 옛 사본 대신 새 음성을 받는다 — 못 받으면 옛 사본이라도 들려준다',async({context,page})=>{
+  const hits=await start(context,page);
+  // 지문 머리글이 없던 때 담긴 옛 음성(카탈로그의 지문과 다르다)
+  const old=[...MP3,0,0,0,0];
+  const putOld=()=>page.evaluate(async bytes=>{
+    const c=await caches.open(STORY_CACHE);
+    await c.put('stories/seville/plaza-espana-core.mp3',new Response(new Blob([new Uint8Array(bytes)]),{headers:{'Content-Type':'audio/mpeg'}}));
+  },old);
+  const cachedTag=()=>page.evaluate(async()=>{const r=await (await caches.open(STORY_CACHE)).match('stories/seville/plaza-espana-core.mp3');return r&&r.headers.get('X-Story-Sha256');});
+
+  await putOld();
+  await page.locator('.spotMetaItem.story').click();
+  await expect(page.locator('#storySave')).not.toContainText('오프라인에서도 들을 수 있어요');   // 옛 사본은 받아 둔 것으로 세지 않는다
+  await page.getByRole('button',{name:/광장, 핵심만/}).click();
+  await expect(page.locator('#storyStatus')).toContainText('지금 듣는 이야기');
+  expect(hits()).toBe(1);
+  expect(await cachedTag()).toBe(CATALOG.places[0].tracks[0].sha256);
+  await expect(page.locator('#storySave')).toContainText('오프라인에서도 들을 수 있어요');
+  await page.locator('#storyClose').click();
+  await page.locator('#storyBar').getByRole('button',{name:'듣기 끝내기'}).click();
+
+  // 새 음성을 못 받으면(비행기 모드) 옛 사본만 있어도 그것을 튼다 — 나중에 붙인 경로가 먼저라 이 요청은 끊긴다
+  await putOld();
+  await context.route('**/stories/seville/plaza-espana-core.mp3',route=>route.abort('internetdisconnected'));
+  await page.locator('.spotMetaItem.story').click();
+  await page.getByRole('button',{name:/광장, 핵심만/}).click();
+  await expect(page.locator('#storyStatus')).toContainText('지금 듣는 이야기');
+  await page.waitForFunction(()=>{const a=document.getElementById('storyAudio');return !a.paused||a.ended||a.currentTime>0;});
+  expect(hits()).toBe(1);
+});
