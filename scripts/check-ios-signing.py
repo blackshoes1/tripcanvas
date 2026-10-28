@@ -33,6 +33,21 @@ def run(args):
         result = subprocess.run([str(arg) for arg in args], check=True, capture_output=True)
         return result.stdout
     except subprocess.CalledProcessError as error:
+        if Path(args[0]).name == "codesign":
+            operation = next((name for flag, name in [("--sign", "sign"), ("--verify", "verify"),
+                ("--extract-certificates", "extract-certificates"), ("--entitlements", "entitlements")]
+                if any(str(arg).split("=", 1)[0] == flag for arg in args)), "unknown")
+            target = Path(args[-1])
+            bundle_id = {"TripCanvas.app": "com.fromj.trip", "TripCanvasWidgets.appex": "com.fromj.trip.widgets",
+                "TripCanvasShare.appex": "com.fromj.trip.share", "TripCanvasWatch.app": "com.fromj.trip.watchkitapp"}.get(target.name)
+            public_target = target.name if bundle_id else "[redacted-target]"
+            # stdout는 entitlement XML일 수 있다. stderr의 정확한 대상 경로만 공개 이름으로 먼저 바꾼다.
+            stderr = (error.stderr or b"").decode("utf-8", errors="replace")
+            for path in sorted({str(target), str(target.resolve())}, key=len, reverse=True):
+                stderr = stderr.replace(path, public_target)
+            details = safe_error_lines(stderr, limit=6)
+            context = f"TOOL_FAILED:codesign:exit={error.returncode}:operation={operation}:target={bundle_id or 'unknown'}"
+            raise SigningError(context + ("\n" + "\n".join(details) if details else "")) from None
         # 원문에는 서명·프로파일 값이 섞일 수 있다. 알려진 코드와 종료 상태만 남긴다.
         output = (error.stdout or b"") + (error.stderr or b"")
         codes = sorted(set(re.findall(rb"\bITMS-\d{4,6}\b", output)))
@@ -102,7 +117,7 @@ def verify_app(app, distribution):
         verify = ["/usr/bin/codesign", "--verify", "--strict"]
         if distribution:
             # 임시 ad-hoc 서명이 배포 IPA의 최종 서명으로 통과하지 않게 한다.
-            verify += ["-R", "anchor apple generic"]
+            verify += ["-R", "=anchor apple generic"]
         run([*verify, bundle])
         signature = plist(run(["/usr/bin/codesign", "--display", "--entitlements", "-", "--xml", bundle]))
         require_entitlements(signature, bundle_id == "com.fromj.trip")
@@ -159,10 +174,10 @@ def upload(ipa):
     run(["xcrun", "altool", "--upload-app", "-f", ipa, "-t", "ios", "--apiKey", key, "--apiIssuer", issuer])
 
 
-def export_error_summary(path):
-    """export 실패 원인만 제한적으로 남기고 서명 자산·계정 원문은 가린다."""
-    text = path.read_text(errors="replace")
+def safe_error_lines(text, limit, export_only=False):
+    """서명 오류의 자산·계정 원문을 가리고 출력 개수와 길이를 제한한다."""
     text = re.sub(r"-----BEGIN [^-\n]+-----.*?(?:-----END [^-\n]+-----|$)", "[redacted-key]", text, flags=re.S)
+    text = re.sub(r"<plist\b[^>]*>.*?(?:</plist>|$)", "[redacted-plist]", text, flags=re.S | re.I)
     # UserInfo 원문은 개행·중첩 딕셔너리·인용문 속 괄호까지 건너뛴다. 불완전하면 나머지도 버린다.
     while True:
         info = re.search(r"\bUserInfo\s*=\s*", text, re.I)
@@ -193,10 +208,11 @@ def export_error_summary(path):
                re.search(r"SECRET|TOKEN|PASSWORD|PRIVATE_KEY|KEY_ID|TEAM_ID|ISSUER_ID", key, re.I)]
     result = []
     for line in text.splitlines():
-        error = re.search(r"error:\s*exportArchive\b|\bError Domain=[\w.-]+\s+Code=-?\d+", line, re.I)
-        if not error:
-            continue
-        line = line[error.start():]
+        if export_only:
+            error = re.search(r"error:\s*exportArchive\b|\bError Domain=[\w.-]+\s+Code=-?\d+", line, re.I)
+            if not error:
+                continue
+            line = line[error.start():]
         for value in sorted(secrets, key=len, reverse=True):
             line = line.replace(value, "[redacted]")
         line = re.sub(r"\bBearer\s+[^\s,;\"'}]+", "Bearer [redacted]", line, flags=re.I)
@@ -210,13 +226,18 @@ def export_error_summary(path):
                       lambda match: match.group(0) if match.group(3) in TARGETS else match.group(1) + " [redacted]",
                       line, flags=re.I)
         line = re.sub(r'''\b((?:Apple|iPhone|iOS) (?:Distribution|Development)):[^"'\n]+''', r"\1: [redacted]", line)
+        line = re.sub(r"\bAuthority=.*", "Authority=[redacted]", line)
         line = re.sub(r"(?i:\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b)|\b[A-Z0-9]{10}\b", "[redacted-id]", line)
         line = re.sub(r"[\x00-\x1f\x7f]", " ", line).strip()[:500]
-        if line not in result:
+        if line and line not in result:
             result.append(line)
-        if len(result) == 20:
+        if len(result) == limit:
             break
-    return result or ["EXPORT_ERROR_DETAILS_UNAVAILABLE"]
+    return result
+
+
+def export_error_summary(path):
+    return safe_error_lines(path.read_text(errors="replace"), limit=20, export_only=True) or ["EXPORT_ERROR_DETAILS_UNAVAILABLE"]
 
 
 def main():

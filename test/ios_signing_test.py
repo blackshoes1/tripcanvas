@@ -75,6 +75,8 @@ class SigningTests(unittest.TestCase):
                     bundle_id = plistlib.loads((bundle / "Info.plist").read_bytes())["CFBundleIdentifier"]
                     self.entitlements[bundle_id] = plistlib.loads(Path(args[args.index("--entitlements") + 1]).read_bytes())
                 return b""
+            if "--verify" in args and "-R" in args and args[args.index("-R") + 1] != "=anchor apple generic":
+                raise signing.SigningError("INVALID_REQUIREMENT_LITERAL")
             if self.fail_signature:
                 raise signing.SigningError("SIGNATURE_INVALID")
             if "--display" in args:
@@ -128,6 +130,13 @@ class SigningTests(unittest.TestCase):
         signing.verify_app(self.app, distribution=True)
         self.assertEqual(sum("--verify" in call for call in self.calls), 4)
         self.assertEqual(sum(call[0] == "/usr/bin/security" for call in self.calls), 4)
+
+    def test_distribution_verification_uses_literal_apple_anchor_requirement(self):
+        signing.verify_app(self.app, distribution=True)
+        verifications = [call for call in self.calls if "--verify" in call]
+        self.assertEqual(len(verifications), 4)
+        for call in verifications:
+            self.assertEqual(call[call.index("-R") + 1], "=anchor apple generic")
 
     def test_missing_or_development_or_unexpanded_aps_fails(self):
         for value in [None, "development", "$(APS_ENVIRONMENT)"]:
@@ -225,6 +234,63 @@ class SigningTests(unittest.TestCase):
             with self.assertRaises(signing.SigningError) as caught:
                 NATIVE_RUN(["/usr/bin/codesign"])
         self.assertEqual(str(caught.exception), "TOOL_UNAVAILABLE:codesign:errno=2")
+
+    def test_codesign_failure_keeps_operation_target_and_safe_stderr_only(self):
+        target = self.paths["com.fromj.trip.widgets"]
+        stderr = (str(target) + ': a sealed resource is missing or invalid\n'
+                  'Bearer PRIVATE-BEARER API_TOKEN=PRIVATE-TOKEN PRIVATE-ENV-VALUE\n'
+                  'profile "Private Profile" team "Private Team" private@example.test\n'
+                  '-----BEGIN CERTIFICATE-----\nPRIVATE-CERTIFICATE\n-----END CERTIFICATE-----\n'
+                  '<plist><dict><key>Certificate</key><data>PRIVATE-PROFILE</data></dict></plist>\n'
+                  'Authority=Apple Distribution: Private Certificate Owner\n'
+                  'Error Domain=Public Code=1 "reason" UserInfo={private="PRIVATE-USERINFO";}\n').encode()
+        error = subprocess.CalledProcessError(1, ["codesign"],
+            output=b"<plist><string>PRIVATE-STDOUT-ENTITLEMENTS</string></plist>", stderr=stderr)
+        with patch.dict(os.environ, {"TC_SIGNING_SECRET": "PRIVATE-ENV-VALUE"}):
+            with patch.object(signing.subprocess, "run", side_effect=error):
+                with self.assertRaises(signing.SigningError) as caught:
+                    NATIVE_RUN(["/usr/bin/codesign", "--verify", "--strict", target])
+        message = str(caught.exception)
+        self.assertIn("operation=verify", message)
+        self.assertIn("target=com.fromj.trip.widgets", message)
+        self.assertIn("TripCanvasWidgets.appex: a sealed resource is missing or invalid", message)
+        for private in ["PRIVATE-", "Private Profile", "Private Team", "Private Certificate", "private@example.test", str(self.root)]:
+            self.assertNotIn(private, message)
+
+    def test_codesign_failure_identifies_entitlement_and_certificate_operations(self):
+        target = self.app
+        for flags, operation in [(["--display", "--entitlements", "-", "--xml"], "entitlements"),
+                                 (["--display", "--extract-certificates", "unused-prefix"], "extract-certificates"),
+                                 (["--display", "--extract-certificates=unused-prefix"], "extract-certificates")]:
+            with self.subTest(operation=operation):
+                error = subprocess.CalledProcessError(1, ["codesign"], stderr=b"code object is not signed at all")
+                with patch.object(signing.subprocess, "run", side_effect=error):
+                    with self.assertRaises(signing.SigningError) as caught:
+                        NATIVE_RUN(["/usr/bin/codesign", *flags, target])
+                self.assertIn("operation=" + operation, str(caught.exception))
+                self.assertIn("target=com.fromj.trip", str(caught.exception))
+
+    def test_codesign_failure_replaces_resolved_target_path_before_redacting(self):
+        target = self.root / "alias/TripCanvas.app"
+        target.parent.mkdir()
+        target.symlink_to(self.app, target_is_directory=True)
+        error = subprocess.CalledProcessError(1, ["codesign"],
+            stderr=(str(target.resolve()) + ": invalid signature (code or signature have been modified)").encode())
+        with patch.object(signing.subprocess, "run", side_effect=error):
+            with self.assertRaises(signing.SigningError) as caught:
+                NATIVE_RUN(["/usr/bin/codesign", "--verify", target])
+        self.assertIn("TripCanvas.app: invalid signature (code or signature have been modified)", str(caught.exception))
+        self.assertNotIn(str(self.root), str(caught.exception))
+
+    def test_codesign_failure_limits_stderr_to_six_lines_of_five_hundred_characters(self):
+        stderr = "\n".join("failure-" + str(index) + " " + "x" * 600 for index in range(10)).encode()
+        error = subprocess.CalledProcessError(1, ["codesign"], stderr=stderr)
+        with patch.object(signing.subprocess, "run", side_effect=error):
+            with self.assertRaises(signing.SigningError) as caught:
+                NATIVE_RUN(["/usr/bin/codesign", "--verify", self.app])
+        details = str(caught.exception).splitlines()[1:]
+        self.assertEqual(len(details), 6)
+        self.assertTrue(all(len(line) <= 500 for line in details))
 
     def test_export_error_summary_preserves_causes_without_unrelated_log_lines(self):
         log = self.root / "export.log"
