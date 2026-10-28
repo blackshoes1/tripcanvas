@@ -103,6 +103,18 @@ import XCTest
         XCTAssertNil(old.shouldEnd)
     }
 
+    func testExistingLiveActivityGetsItsNewTargetEvenWhenTheServerVersionIsUnchanged() throws {
+        let raw = Data(#"{"nextTitle":"이전 일정","status":"UPCOMING","pulseText":"안내","stateVersion":"same"}"#.utf8)
+        let previous = try JSONDecoder().decode(TripCanvasActivityAttributes.ContentState.self, from: raw)
+        var latest = previous
+        latest.target = target
+        XCTAssertEqual(previous.stateVersion, latest.stateVersion)
+        XCTAssertTrue(LiveActivityRecovery.shouldRefresh(current: previous, latest: latest, changed: false),
+                      "구버전 앱이 이미 같은 서버 지문을 저장했어도 새 일정 링크를 반영한다")
+        XCTAssertFalse(LiveActivityRecovery.shouldRefresh(current: latest, latest: latest, changed: false),
+                       "한 번 반영한 뒤에는 같은 내용으로 반복 갱신하지 않는다")
+    }
+
     private func service() -> FakeDocumentService {
         FakeDocumentService(snapshot: .init(document: .init(raw: ["days": .array([
             .object(["spots": .array([.object(TripSpot(name: "첫날").raw)])]),

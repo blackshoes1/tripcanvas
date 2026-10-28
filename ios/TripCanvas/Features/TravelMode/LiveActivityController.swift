@@ -24,6 +24,13 @@ enum LiveActivityRecovery {
         let reuse = existing.first { $0.tripId == tripId && $0.tripName == tripName && $0.dayLabel == dayLabel }?.id
         return Decision(reuseID: reuse, endIDs: existing.filter { $0.id != reuse }.map(\.id))
     }
+
+    #if canImport(ActivityKit)
+    static func shouldRefresh(current: TripCanvasActivityAttributes.ContentState,
+                              latest: TripCanvasActivityAttributes.ContentState, changed: Bool) -> Bool {
+        changed || current != latest
+    }
+    #endif
 }
 
 /// 시스템의 '실시간 현황' 허용. 사용자는 앱 밖(설정 앱의 With J 페이지)에서 켜고 끈다 — 테스트에서 갈아끼운다.
@@ -220,8 +227,8 @@ final class LiveActivityController: LiveActivityControlling {
         if let current = activity {
             isRunning = true; lastError = nil
             observeRemoteUpdates(current, tripId: trip.id)
-            // 지문이 같으면 갱신하지 않는다. 이것이 여기서 가장 중요한 한 줄이다.
-            guard changed || current.content.state.stateVersion != state.stateVersion else { return }
+            // 이전 앱이 같은 지문으로 보관한 상태에도 새 링크 필드를 한 번 반영한다.
+            guard LiveActivityRecovery.shouldRefresh(current: current.content.state, latest: state, changed: changed) else { return }
             await current.update(ActivityContent(state: state, staleDate: staleDate(for: response)))
             return
         }
