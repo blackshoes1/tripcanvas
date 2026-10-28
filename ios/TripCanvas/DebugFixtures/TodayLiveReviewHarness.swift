@@ -1,12 +1,18 @@
 #if DEBUG
 import SwiftUI
+import Observation
 
 /// 오늘이 여행 중인 합성 여행으로 **실제 `지금` 화면**(`TodayView`)을 띄운다 — 계정에 로그인하지 않고
 /// '여행 중 안내' 띠가 어디에 어떻게 나오는지 본다. 내용은 테스트 픽스처 `today.json`과 같다(`todayIndex` 0 = 여행 중).
 @MainActor struct TodayLiveReviewHarness: View {
     @State private var model: TodayViewModel?
+    @State private var source: TodayLiveReviewSource?
     @State private var movedActivity: String?
-    private let response = Self.makeResponse()
+    private let response: TodayResponse?
+
+    init(response: TodayResponse? = nil) {
+        self.response = response ?? Self.makeResponse()
+    }
 
     var body: some View {
         NavigationStack {
@@ -18,6 +24,9 @@ import SwiftUI
                     .navigationBarTitleDisplayMode(.inline)
                     .safeAreaInset(edge: .bottom) {
                         if let movedActivity { Text(movedActivity).accessibilityIdentifier("todayMoveRequested") }
+                        if ProcessInfo.processInfo.arguments.contains("--review-today-scroll"), let source {
+                            Text("오늘 조회 \(source.loads)회").accessibilityIdentifier("todayReviewLoads")
+                        }
                     }
             } else if response == nil {
                 Text("합성 오늘 화면을 읽지 못했어요")
@@ -25,7 +34,9 @@ import SwiftUI
         }
         .task {
             guard let response, model == nil else { return }
-            model = TodayViewModel(trip: response.trip, service: TodayLiveReviewSource(response: response))
+            let source = TodayLiveReviewSource(response: response)
+            self.source = source
+            model = TodayViewModel(trip: response.trip, service: source)
         }
     }
 
@@ -50,6 +61,16 @@ import SwiftUI
             activityState["status"] = "COMPLETED"
             raw["activityState"] = activityState
         }
+        if ProcessInfo.processInfo.arguments.contains("--review-today-badges") {
+            for key in ["activities", "remainingActivities"] {
+                var activities = raw[key] as? [[String: Any]] ?? []
+                for index in activities.indices {
+                    activities[index]["mustVisit"] = true
+                    activities[index]["flexibility"] = "FIXED"
+                }
+                raw[key] = activities
+            }
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: raw) else { return nil }
         return try? JSONDecoder().decode(TodayResponse.self, from: data)
     }
@@ -59,11 +80,13 @@ import SwiftUI
 """#
 }
 
-@MainActor private final class TodayLiveReviewSource: TripDataSource {
+@Observable @MainActor private final class TodayLiveReviewSource: TripDataSource {
     let response: TodayResponse
+    var loads = 0
     init(response: TodayResponse) { self.response = response }
     func today(tripId: String, dayIndex: Int?, intent: String?, energy: EnergyLevel?) async throws -> TripService.Fetched<TodayResponse> {
-        .init(value: response, cachedAt: nil)
+        loads += 1
+        return .init(value: response, cachedAt: nil)
     }
     func trips() async throws -> TripService.Fetched<[TripSummary]> { .init(value: [response.trip], cachedAt: nil) }
     func bookings(tripId: String) async throws -> TripService.Fetched<[BookingSummary]> { throw APIError.offline }
