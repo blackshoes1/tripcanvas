@@ -9,9 +9,15 @@ import XCTest
 /// `TravelModeController`를 가짜 안내와 묶어 본다.
 @MainActor
 final class LiveActivitySettingsTests: XCTestCase {
-    private func fixture() throws -> TravelStateResponse {
+    private func fixture(shouldEnd: Bool? = nil) throws -> TravelStateResponse {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "travel-state", withExtension: "json"))
-        return try JSONDecoder().decode(TravelStateResponse.self, from: Data(contentsOf: url))
+        let data = try Data(contentsOf: url)
+        guard let shouldEnd else { return try JSONDecoder().decode(TravelStateResponse.self, from: data) }
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var state = try XCTUnwrap(json["liveActivity"] as? [String: Any])
+        state["shouldEnd"] = shouldEnd
+        json["liveActivity"] = state
+        return try JSONDecoder().decode(TravelStateResponse.self, from: JSONSerialization.data(withJSONObject: json))
     }
 
     private var suites: [String] = []
@@ -236,6 +242,45 @@ final class LiveActivitySettingsTests: XCTestCase {
 
     // MARK: 여행 중 안내 — 다시 켜지면 새로 받아 시작하는가
 
+    func testFinishedScheduleEndsInsteadOfRestartingOnRepeatedRefresh() async throws {
+        SharedStore.clear()
+        defer { SharedStore.clear() }
+        let response = try fixture(shouldEnd: true)
+        let source = SettingsTravelSource(response)
+        let activity = SettingsActivity()
+        let mode = travelMode(source, activity)
+
+        await mode.start(trip: response.today.trip)
+        await mode.refresh(tripId: response.today.trip.id, reason: .manual)
+        XCTAssertEqual(activity.ended, 2)
+        XCTAssertEqual(activity.synced, 0, "같은 종료 상태를 다시 받아도 현황을 되살리지 않는다")
+        XCTAssertTrue(mode.isActive, "다음 날 안내를 받을 여행 중 안내 설정은 유지한다")
+
+        source.response = try fixture(shouldEnd: false)
+        await mode.refresh(tripId: response.today.trip.id, reason: .manual)
+        XCTAssertEqual(activity.synced, 1, "서버가 다음 일정을 보내면 새 안내를 시작할 수 있다")
+    }
+
+    func testCachedFinishedScheduleDoesNotDismissTheLastValidLiveActivity() async throws {
+        SharedStore.clear()
+        defer { SharedStore.clear() }
+        let response = try fixture()
+        let source = SettingsTravelSource(response)
+        let activity = SettingsActivity()
+        let mode = travelMode(source, activity)
+        await mode.start(trip: response.today.trip)
+        source.response = try fixture(shouldEnd: true)
+        source.cachedAt = Date()
+        await mode.refresh(tripId: response.today.trip.id, reason: .manual)
+        XCTAssertEqual(activity.ended, 0, "저장된 과거 응답으로 현재 현황을 지우지 않는다")
+        XCTAssertEqual(activity.synced, 1)
+
+        source.cachedAt = nil
+        await mode.refresh(tripId: response.today.trip.id, reason: .manual)
+        XCTAssertEqual(activity.ended, 1)
+        XCTAssertEqual(activity.synced, 1)
+    }
+
     func testReenableRestartsFromAFreshTravelState() async throws {
         SharedStore.clear()
         defer { SharedStore.clear() }
@@ -328,7 +373,8 @@ final class LiveActivitySettingsTests: XCTestCase {
 }
 
 @MainActor private final class SettingsTravelSource: TravelStateSource {
-    let response: TravelStateResponse
+    var response: TravelStateResponse
+    var cachedAt: Date?
     var fetched = 0
     var delays = false
     var pending: CheckedContinuation<TripService.Fetched<TravelStateResponse>, Error>?
@@ -337,7 +383,7 @@ final class LiveActivitySettingsTests: XCTestCase {
                      suppressUntil: String?, markSent: Bool) async throws -> TripService.Fetched<TravelStateResponse> {
         fetched += 1
         if delays { return try await withCheckedThrowingContinuation { pending = $0 } }
-        return .init(value: response, cachedAt: nil)
+        return .init(value: response, cachedAt: cachedAt)
     }
 }
 
@@ -355,8 +401,9 @@ final class LiveActivitySettingsTests: XCTestCase {
 
 @MainActor private final class SettingsActivity: LiveActivityControlling {
     var synced = 0
+    var ended = 0
     var handler: (@MainActor () -> Void)?
     func sync(_ response: TravelStateResponse, changed: Bool) async { synced += 1 }
-    func end() async {}
+    func end() async { ended += 1 }
     func onReenable(_ handler: @escaping @MainActor () -> Void) { self.handler = handler }
 }

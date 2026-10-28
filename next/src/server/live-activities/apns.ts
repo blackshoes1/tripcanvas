@@ -77,6 +77,7 @@ function contentState(update: LiveActivityUpdate): Record<string, unknown> {
     return value / 1000 - FOUNDATION_EPOCH;
   };
   return {
+    shouldEnd: state.shouldEnd, target: state.target,
     tripName: state.tripName, dayLabel: state.dayLabel,
     nextTitle: state.nextTitle, nextStartAt: date(state.nextStartISO),
     travelMinutes: state.travelMinutes ?? undefined, departureText: state.departureText ?? undefined,

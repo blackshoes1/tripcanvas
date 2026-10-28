@@ -110,9 +110,12 @@ struct TripPlanView: View {
         .onChange(of: model.focusActivity) { _, value in
             if value != nil { Task { await model.loadIfStale(); openFocusedActivity() } }
         }
+        .onChange(of: model.viewingTarget) { _, value in
+            if value != nil { Task { await model.loadIfStale(); openFocusedActivity() } }
+        }
         .onChange(of: hasInputSheet, initial: true) { _, value in
             model.isPresentingEditor = value
-            if !value { Task { await model.reloadIfEditorClosed() } }
+            if !value { Task { await model.reloadIfEditorClosed(); openFocusedActivity() } }
         }
         // 지도를 처음 켠 순간부터 만들어 둔다. 그 뒤로는 숨기기만 한다.
         .onChange(of: showsMap, initial: true) { _, on in if on { mapMounted = true } }
@@ -398,6 +401,11 @@ struct TripPlanView: View {
     }
 
     private func openFocusedActivity() {
+        guard !model.isPresentingEditor else { return }
+        if let target = model.takeLinkedSpot() {
+            viewingSpot = .edit(index: target.index, spot: target.spot)
+            return
+        }
         guard let target = model.takeFocusedSpot() else { return }
         switch target.intent {
         case .edit: editSpot(target.index, spot: target.spot, model: model)

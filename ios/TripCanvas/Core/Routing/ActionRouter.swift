@@ -1,6 +1,11 @@
 import Foundation
 import Observation
 
+struct TripActivityRequest: Equatable {
+    let tripId: String
+    let target: LiveActivityTarget
+}
+
 /// Siri · Push · Widget · Watch · Share Extension이 **각자 다른 화면 이동 코드를 갖지 않게** 하는 한 곳(§41).
 ///
 /// 새 진입점이 생기면 여기에 목적지를 하나 추가한다. 화면 코드는 이 라우터만 본다.
@@ -12,6 +17,7 @@ final class ActionRouter {
 
     enum Destination: Equatable {
         case today(tripId: String?, focusActivityId: String?)
+        case activity(tripId: String, target: LiveActivityTarget)
         case trip(tripId: String)
         case suggestion(tripId: String, suggestionId: String)
         case replan(tripId: String)
@@ -69,6 +75,18 @@ final class ActionRouter {
         let tripId = parts[1]
         guard parts.count >= 3 else { return .trip(tripId: tripId) }
         switch parts[2] {
+        case "activity":
+            let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            func single(_ key: String) -> String? {
+                let matching = items.filter { $0.name == key }
+                return matching.count == 1 ? matching[0].value : nil
+            }
+            guard let rawDay = single("day"), let day = Int(rawDay),
+                  let activity = single("focus"), let rawRevision = single("revision"),
+                  let revision = Int(rawRevision) else { return nil }
+            let target = LiveActivityTarget(dayIndex: day, activityId: activity, revision: revision)
+            guard target.spotIndex != nil else { return nil }
+            return .activity(tripId: tripId, target: target)
         case "today": return .today(tripId: tripId, focusActivityId: focus)
         case "replan": return .replan(tripId: tripId)
         case "bookings": return .bookings(tripId: tripId)
@@ -83,6 +101,7 @@ final class ActionRouter {
     /// 링크를 만드는 쪽도 한 곳에서 — 문자열을 손으로 조립하면 반드시 어긋난다.
     static func link(_ destination: Destination) -> URL? {
         switch destination {
+        case .activity(let tripId, let target): return LiveActivityLink.url(tripId: tripId, target: target)
         case .today(let tripId, let focus):
             let base = tripId.map { "tripcanvas://trip/\($0)/today" } ?? "tripcanvas://today"
             return URL(string: focus.map { "\(base)?focus=\($0)" } ?? base)

@@ -192,11 +192,15 @@ final class TravelModeController {
             let generation = accountGeneration
             let mode = modeGeneration
             // Intent의 perform이 끝나기 전에 잠금화면 시작·복구가 끝나야 한다.
-            await liveActivity.sync(response, changed: changed)
+            if response.liveActivity.shouldEnd == true {
+                await liveActivity.end()
+            } else {
+                await liveActivity.sync(response, changed: changed)
+            }
             await synchronizePersistedState()
             guard generation == accountGeneration, mode == modeGeneration, isActive else { return }
             lastError = liveActivity.lastError
-            await scheduleDeviceNotifications(response)
+            if response.liveActivity.shouldEnd != true { await scheduleDeviceNotifications(response) }
             guard generation == accountGeneration, mode == modeGeneration, isActive else { return }
         }
         WidgetRefresher.reload()

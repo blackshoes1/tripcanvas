@@ -4,6 +4,11 @@
       "timestamp": 1793102400,
       "event": "update",
       "content-state": {
+        "target": {
+          "dayIndex": 1,
+          "activityId": "d1s1",
+          "revision": 7
+        },
         "tripName": "잠금화면 정합성",
         "dayLabel": "Day 2",
         "nextTitle": "점심",
@@ -24,6 +29,7 @@
       "timestamp": 1793109600,
       "event": "update",
       "content-state": {
+        "shouldEnd": true,
         "tripName": "잠금화면 정합성",
         "dayLabel": "Day 2",
         "nextTitle": "예정 시간 지남",

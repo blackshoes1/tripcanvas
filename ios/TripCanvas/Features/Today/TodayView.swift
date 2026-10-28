@@ -23,6 +23,7 @@ struct TodayView: View {
     @State private var intentDraft = ""
     @State private var stayExtension: StayExtensionModel?
     @State private var quickChoice: QuickChoiceModel?
+    @State private var placeChange: TodayPlaceChangeModel?
 
     var body: some View {
         ScrollView(.vertical) {
@@ -92,7 +93,8 @@ struct TodayView: View {
                                            canEdit: model.canAct && activity.choiceState != "PENDING",
                                            onComplete: { Task { await model.complete(activity) } },
                                            onSkip: { Task { await model.skip(activity) } },
-                                           onMove: moveAction(for: activity, day: today.day.index, revision: model.revision))
+                                           onMove: moveAction(for: activity, day: today.day.index, revision: model.revision),
+                                           onChangePlace: placeChangeAction(for: activity, day: today.day.index))
                             if activity.choiceState == "PENDING" {
                                 if model.canAct, !model.isOffline {
                                     Button("두 곳 비교하고 고르기") {
@@ -271,9 +273,22 @@ struct TodayView: View {
         .onChange(of: model.revision) { old, new in
             if old != new { Task { await refreshTravelMode(reason: .userAction) } }
         }
-        .onChange(of: env.service.cacheScope) { _, _ in stayExtension = nil; quickChoice = nil }
+        .onChange(of: env.service.cacheScope) { _, _ in stayExtension = nil; quickChoice = nil; placeChange = nil }
         .sheet(item: $quickChoice) { choice in
             QuickChoiceView(model: choice, onRefresh: { Task { await model.load() } })
+        }
+        .sheet(item: $placeChange) { change in
+            TodayPlaceChangeView(model: change, trip: model.today?.trip ?? trip, source: env.service,
+                onChanged: { await refreshToday(reason: .userAction) },
+                onOpenPlan: {
+                    let name = change.isSaved ? change.replacement?.name : change.activity.name
+                    if model.revision == change.viewingRevision, model.dayIndex == change.day,
+                       let current = model.activity(id: change.activity.id), current.name == name, let onOpenActivity {
+                        onOpenActivity(change.day, current)
+                    } else if let onOpenPlanDay {
+                        onOpenPlanDay(change.day)
+                    } else { onOpenPlan() }
+                })
         }
         .sheet(isPresented: $showsTravelSetup) {
             TravelModeSetupView {
@@ -312,6 +327,17 @@ struct TodayView: View {
     private func moveAction(for activity: ActivitySummary, day: Int, revision: Int) -> (() -> Void)? {
         guard let move = timelineMoveAction(day: day, revision: revision), activity.choiceState != "PENDING" else { return nil }
         return { move(activity) }
+    }
+
+    private func placeChangeAction(for activity: ActivitySummary, day: Int) -> (() -> Void)? {
+        guard model.canAct, !model.isOffline, activity.choiceState != "PENDING" else { return nil }
+        return {
+            placeChange = TodayPlaceChangeModel(tripID: trip.id, day: day, activity: activity,
+                revision: model.revision, source: env.service,
+                isCurrent: { [account = env.auth.session?.userId, scope = env.service.cacheScope] in
+                    env.auth.session?.userId == account && env.service.cacheScope == scope
+                })
+        }
     }
 
     private func timelineMoveAction(day: Int, revision: Int) -> ((ActivitySummary) -> Void)? {
@@ -564,6 +590,7 @@ struct NextActionCard: View {
     let onComplete: () -> Void
     var onSkip: () -> Void = {}
     var onMove: (() -> Void)? = nil
+    var onChangePlace: (() -> Void)? = nil
     private var heading: String { next.status == .inProgress ? "지금 일정" : "다음 일정" }
 
     var body: some View {
@@ -573,9 +600,12 @@ struct NextActionCard: View {
                     Circle().fill(Ink.accent).frame(width: 7, height: 7)
                     Text(heading)
                     Spacer(minLength: 0)
-                    if canEdit, let onMove {
+                    if canEdit, onMove != nil || onChangePlace != nil {
                         Menu {
-                            Button("다른 날로 옮기기", systemImage: "calendar.badge.clock", action: onMove)
+                            if let onChangePlace {
+                                Button("다른 장소로 바꾸기", systemImage: "mappin.and.ellipse", action: onChangePlace)
+                            }
+                            if let onMove { Button("다른 날로 옮기기", systemImage: "calendar.badge.clock", action: onMove) }
                         } label: {
                             Image(systemName: "ellipsis").foregroundStyle(Ink.soft).frame(width: 44, height: 44)
                         }

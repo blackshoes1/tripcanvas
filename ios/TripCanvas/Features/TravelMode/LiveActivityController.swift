@@ -176,6 +176,10 @@ final class LiveActivityController: LiveActivityControlling {
     }
 
     func sync(_ response: TravelStateResponse, changed: Bool) async {
+        if response.liveActivity.shouldEnd == true {
+            await end()
+            return
+        }
         #if canImport(ActivityKit)
         generation += 1
         let request = generation
@@ -257,6 +261,7 @@ final class LiveActivityController: LiveActivityControlling {
 
     func end() async {
         generation += 1
+        lastError = nil
         stopRemoteObservation()
         pushRegistration?.reset()
         // 안내를 껐다 — 다시 켜졌다고 되살릴 것도, 접어 둔 안내도 없다.

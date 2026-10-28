@@ -22,6 +22,24 @@ final class TripPlanViewModel: DayPlanContext {
     var isPresentingEditor = false
     enum FocusIntent: Equatable { case edit, move }
     var focusActivity: ActivitySummary?
+    private(set) var viewingTarget: LiveActivityTarget?
+    func requestViewing(_ target: LiveActivityTarget) {
+        focusActivity = nil
+        selectedDay = max(0, target.dayIndex)
+        if revision != target.revision { needsRemoteReload = true }
+        viewingTarget = target
+    }
+    /// 위치 기반 id는 같은 문서에서만 유효하다. 바뀌거나 지워졌으면 해당 일자 목록에 머문다.
+    func takeLinkedSpot() -> (index: Int, spot: TripSpot)? {
+        guard let target = viewingTarget, document != nil else { return nil }
+        viewingTarget = nil
+        guard target.revision == revision, target.dayIndex == selectedDay,
+              let index = target.spotIndex, let day, day.spots.indices.contains(index) else {
+            store.report("표시된 일정이 바뀌었어요. 이 날의 최신 일정을 확인해 주세요.")
+            return nil
+        }
+        return (index, day.spots[index])
+    }
     var focusRevision: Int?
     private var focusIntent: FocusIntent = .edit
     func requestFocus(_ activity: ActivitySummary, day: Int, revision: Int) {
