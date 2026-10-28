@@ -118,7 +118,7 @@ struct SharedImportView: View {
                                 }
                                 Text("선택한 날의 마지막에 담아요. 위치는 저장 후 지도 검색으로 지정해 주세요.").font(.caption)
                             }
-                            if title.utf16.count > 120 || bodyText.utf16.count > 4000 { Text("제목은 120자, 본문은 4,000자까지 저장할 수 있어요. 원문은 아래에서 계속 볼 수 있어요.").foregroundStyle(.red) }
+                            if title.utf16.count > 120 || bodyText.utf16.count > 4000 { Text("제목은 120자, 본문은 4,000자까지 저장할 수 있어요. 원문은 아래에서 계속 볼 수 있어요.").foregroundStyle(Ink.danger) }
                             Button("확인한 내용 저장") { saveText() }
                                 .accessibilityIdentifier("sharedImportSave")
                                 .disabled(model.snapshot?.canEdit != true || model.isWorking || (title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (kind == .place || bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)) || title.utf16.count > 120 || bodyText.utf16.count > 4000)
@@ -128,7 +128,7 @@ struct SharedImportView: View {
                 if model.isWorking { ProgressView("확인하는 중") }
                 if let error = model.error {
                     Section {
-                        Text(error).foregroundStyle(.red)
+                        Text(error).foregroundStyle(Ink.danger)
                         if !tripID.isEmpty { Button("여행 다시 불러오기") { Task { await model.selectTrip(tripID) } }.disabled(model.isWorking) }
                     }
                 }

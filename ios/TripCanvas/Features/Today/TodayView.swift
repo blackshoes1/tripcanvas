@@ -25,7 +25,8 @@ struct TodayView: View {
     @State private var quickChoice: QuickChoiceModel?
 
     var body: some View {
-        ScrollView {
+        ScrollView(.vertical) {
+            Group {
                 // 아직 시작하지 않은 여행에서는 '지금'이 할 말이 없다 — 며칠 남았는지부터 말한다.
                 // '여행 보기'를 눌렀는지는 모델이 기억한다 — 탭을 오갔다고 D-day로 되돌아가지 않는다.
                 if let days = countdownDays, !model.showsPlanPreview {
@@ -233,6 +234,8 @@ struct TodayView: View {
                 }
                 .padding(Space.l)
                 }
+            }
+            .containerRelativeFrame(.horizontal)
         }
         // ⚠️ 여기에 배경을 두지 않는다 — 먼저 붙은 배경이 위에 깔려 `paperGround()`의 종이를 덮는다.
         // 제목(여행 이름)은 `TripHomeView`가 정한다 — 두 형제 화면이 같은 제목을 써야 한다.
@@ -846,14 +849,15 @@ struct ActivityRow: View {
             }
         } content: {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: Space.s) {
-                    Text(activity.name)
-                        .font(.body.weight(isNext ? .semibold : .regular))
-                        .foregroundStyle(Ink.ink)
-                        .lineLimit(1)
-                    if isNext { TagChip(text: activity.status == .inProgress ? "지금" : "다음", tint: Ink.accent) }
-                    if activity.isFixedCommitment { TagChip(text: "예약", tint: Ink.info) }
-                    if activity.mustVisit { TagChip(text: "꼭 가기", tint: Ink.warning) }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Space.s) {
+                        activityName
+                        badges
+                    }
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        activityName
+                        FlowLayout(spacing: Space.s) { badges }
+                    }
                 }
                 if !activity.desc.isEmpty {
                     Text(activity.desc).font(.caption).foregroundStyle(Ink.soft).lineLimit(1)
@@ -889,6 +893,19 @@ struct ActivityRow: View {
                 if let onMove { Button("다른 날로 옮기기", action: onMove) }
             }
         }
+    }
+
+    private var activityName: some View {
+        Text(activity.name)
+            .font(.body.weight(isNext ? .semibold : .regular))
+            .foregroundStyle(Ink.ink)
+            .lineLimit(1)
+    }
+
+    @ViewBuilder private var badges: some View {
+        if isNext { TagChip(text: activity.status == .inProgress ? "지금" : "다음", tint: Ink.accent) }
+        if activity.isFixedCommitment { TagChip(text: "예약", tint: Ink.info) }
+        if activity.mustVisit { TagChip(text: "꼭 가기", tint: Ink.warning) }
     }
 }
 

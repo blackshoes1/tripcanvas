@@ -288,7 +288,7 @@ struct MapDiscoveryView: View {
                 }
             }
             if let url = hit.placeURL, url.scheme == "https" { Link("장소 페이지 확인", destination: url).frame(minHeight: 44) }
-            PlaceAdmissionLookup(provider: hit.provider, providerID: hit.providerId).id(hit.id)
+            if PlaceAdmissionLookup.isConnected { PlaceAdmissionLookup(provider: hit.provider, providerID: hit.providerId).id(hit.id) }
         }
         .padding(Space.m)
         .background(Ink.sunken, in: RoundedRectangle(cornerRadius: Radius.card))

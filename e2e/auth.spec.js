@@ -115,7 +115,9 @@ test('이메일 없이 재설정을 누르면 서버에 보내지 않는다',asy
   await page.goto('/');
   await openLogin(page);
   await page.locator('#authReset').click();
-  await expect(page.locator('#toast')).toContainText('이메일을 먼저');
+  // F-8(AC-13): 토스트가 아니라 이메일 칸 아래에서 말한다
+  await expect(page.locator('#authEmailErr')).toContainText('이메일을 먼저');
+  await expect(page.locator('#authEmail')).toBeFocused();
   expect(await page.evaluate(()=>window.__calls.filter(c=>c[0].indexOf('/api/auth/')===0).length)).toBe(0);
 });
 
@@ -130,7 +132,8 @@ test('#reset= 링크로 새 비밀번호를 정하고, 토큰은 주소창에 �
   // 서버(better-auth)의 최소 길이와 같은 8자 — 7자는 서버까지 가지 않는다(예전 웹은 6자라 6~7자가 서버에서 엉뚱하게 막혔다)
   await page.locator('#resetPass').fill('1234567');
   await page.locator('#resetSubmit').click();
-  await expect(page.locator('#toast')).toContainText('8자 이상');
+  await expect(page.locator('#resetPassErr')).toContainText('8자 이상');   // F-8(AC-13): 칸 옆에서 말한다
+  await expect(page.locator('#resetPass')).toBeFocused();
   expect(await page.evaluate(()=>window.__calls.filter(c=>c[0]==='/api/auth/reset-password').length)).toBe(0);
 
   await page.locator('#resetPass').fill('newpw123456');

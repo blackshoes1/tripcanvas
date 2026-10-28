@@ -589,7 +589,7 @@
     },
     {
       "word": "123",
-      "particle": "를"
+      "particle": "을"
     },
     {
       "word": "라멘🍜",
@@ -602,6 +602,212 @@
     {
       "word": "힣",
       "particle": "을"
+    },
+    {
+      "word": "Hotel 3",
+      "particle": "을"
+    },
+    {
+      "word": "Hotel 2",
+      "particle": "를"
+    },
+    {
+      "word": "Hotel 1",
+      "particle": "을"
+    }
+  ],
+  "josas": [
+    {
+      "word": "경복궁",
+      "withFinal": "을",
+      "withoutFinal": "를",
+      "particle": "을"
+    },
+    {
+      "word": "남산타워",
+      "withFinal": "을",
+      "withoutFinal": "를",
+      "particle": "를"
+    },
+    {
+      "word": "철수",
+      "withFinal": "은",
+      "withoutFinal": "는",
+      "particle": "는"
+    },
+    {
+      "word": "영희",
+      "withFinal": "은",
+      "withoutFinal": "는",
+      "particle": "는"
+    },
+    {
+      "word": "민수, 철수",
+      "withFinal": "은",
+      "withoutFinal": "는",
+      "particle": "는"
+    },
+    {
+      "word": "철수, 민수",
+      "withFinal": "은",
+      "withoutFinal": "는",
+      "particle": "는"
+    },
+    {
+      "word": "서울",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "로"
+    },
+    {
+      "word": "부산",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "으로"
+    },
+    {
+      "word": "제주",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "로"
+    },
+    {
+      "word": "Camp Nou",
+      "withFinal": "을",
+      "withoutFinal": "를",
+      "particle": "를"
+    },
+    {
+      "word": "Day 3",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "으로"
+    },
+    {
+      "word": "Day 0",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "으로"
+    },
+    {
+      "word": "Day 1",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "로"
+    },
+    {
+      "word": "Day 2",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "로"
+    },
+    {
+      "word": "Day 4",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "로"
+    },
+    {
+      "word": "Day 5",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "로"
+    },
+    {
+      "word": "Day 6",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "으로"
+    },
+    {
+      "word": "Day 7",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "로"
+    },
+    {
+      "word": "Day 8",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "로"
+    },
+    {
+      "word": "Day 9",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "로"
+    },
+    {
+      "word": "Day 10",
+      "withFinal": "으로",
+      "withoutFinal": "로",
+      "particle": "으로"
+    },
+    {
+      "word": "Hotel 3",
+      "withFinal": "을",
+      "withoutFinal": "를",
+      "particle": "을"
+    },
+    {
+      "word": "Hotel 2",
+      "withFinal": "을",
+      "withoutFinal": "를",
+      "particle": "를"
+    },
+    {
+      "word": "철수 2",
+      "withFinal": "은",
+      "withoutFinal": "는",
+      "particle": "는"
+    },
+    {
+      "word": "라멘🍜",
+      "withFinal": "을",
+      "withoutFinal": "를",
+      "particle": "를"
+    },
+    {
+      "word": "  경복궁  ",
+      "withFinal": "을",
+      "withoutFinal": "를",
+      "particle": "을"
+    },
+    {
+      "word": "﻿경복궁﻿",
+      "withFinal": "을",
+      "withoutFinal": "를",
+      "particle": "을"
+    },
+    {
+      "word": "경복궁",
+      "withFinal": "을",
+      "withoutFinal": "를",
+      "particle": "를"
+    },
+    {
+      "word": "",
+      "withFinal": "은",
+      "withoutFinal": "는",
+      "particle": "는"
+    },
+    {
+      "word": null,
+      "withFinal": "은",
+      "withoutFinal": "는",
+      "particle": "는"
+    },
+    {
+      "word": "가",
+      "withFinal": "은",
+      "withoutFinal": "는",
+      "particle": "는"
+    },
+    {
+      "word": "힣",
+      "withFinal": "은",
+      "withoutFinal": "는",
+      "particle": "은"
     }
   ],
   "condense": [

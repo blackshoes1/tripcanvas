@@ -76,13 +76,20 @@
     return h+'시간'+(r? ' '+r+'분' : '');
   }
   /**
-   * 받침에 맞는 조사 — '북촌한옥마을는'·'을(를)'을 쓰지 않는다(2026-10-03). 한글이 아니면(외국어 상호·괄호로 끝나는 이름)
-   * 받침 없는 쪽을 고른다(`collab.js` `objParticle`과 같은 기본값). '으로'는 ㄹ 받침이면 '로'다.
+   * 받침에 맞는 조사 — '북촌한옥마을는'·'을(를)'을 쓰지 않는다(2026-10-03). 한글도 숫자도 아니면(외국어 상호·괄호로 끝나는 이름)
+   * 받침 없는 쪽을 고른다(`collab.js` `objParticle`과 같은 기본값). 숫자는 읽는 소리의 받침을 따른다(3 삼→받침 있음, 2 이→없음). '으로'는 ㄹ 받침(1 일·7 칠·8 팔 포함)이면 '로'다.
    * @param {unknown} word @param {string} withFinal 받침이 있을 때 @param {string} withoutFinal 받침이 없을 때 @returns {string}
    */
   function josa(word, withFinal, withoutFinal){
     const s=String(word==null?'':word).trim();
-    const code=s? s.charCodeAt(s.length-1)-0xAC00 : -1;
+    const last=s? s.charCodeAt(s.length-1) : -1;
+    // 숫자는 읽는 소리의 받침을 따른다 — 영·일·삼·육·칠·팔은 받침 있음(일·칠·팔은 ㄹ 받침), 이·사·오·구는 없음. 'Day 3으로'
+    if(last>=0x30 && last<=0x39){
+      const d=last-0x30;
+      if(withFinal==='으로' && (d===1||d===7||d===8)) return withoutFinal;
+      return (d===0||d===1||d===3||d===6||d===7||d===8)? withFinal : withoutFinal;
+    }
+    const code=last-0xAC00;
     if(code<0||code>11171) return withoutFinal;
     const fin=code%28;
     if(withFinal==='으로' && fin===8) return withoutFinal;
