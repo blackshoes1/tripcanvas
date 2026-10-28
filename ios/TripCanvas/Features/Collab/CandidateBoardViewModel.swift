@@ -254,7 +254,7 @@ final class CandidateBoardViewModel {
 
     /// 분류만 바꾼다(빈 값이면 '고르지 않음'으로). 순위·묶음은 그대로다.
     func setCategory(candidateId: Int, category: CandidateCategory?) async {
-        await perform(category.map { "\($0.label)(으)로 표시했어요" } ?? "분류를 지웠어요") {
+        await perform(category.map { "\(CollabModel.withJosa($0.label, "으로", "로")) 표시했어요" } ?? "분류를 지웠어요") {
             try await self.service.manageCandidate(tripId: self.trip.id, candidateId: candidateId, action: "CATEGORY", value: category?.rawValue)
         }
     }

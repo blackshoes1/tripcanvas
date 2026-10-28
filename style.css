@@ -843,6 +843,8 @@ body.theme-dark input:not([type=checkbox]):not([type=radio]),body.theme-dark sel
   .addSpot,.addSpotBtn{min-height:44px}
   .candReact button,.candActions .btn,.commentForm .btn{min-height:44px}
   #sampleBar .btn,.viewMenu>summary,#travel .btn,.btn.sgEnergyBtn,.sgActions .btn,#verLabel{min-height:44px}
+  /* 줄 안의 작은 버튼(.btn.sm)·갈린 후보 선택지·그룹 제안·가격 동작·새로고침 — 겉모양은 두고 손가락이 닿는 높이만(2026-10-16 UX 점검, F-9) */
+  .btn.sm,.candOption .btn,.proposalActions .btn,.pxActions .btn,#membersRefresh,#candRefresh{min-height:44px}
   .viewMenu>summary{display:flex;align-items:center}
   .legModeBtn{min-width:36px;min-height:36px}.legModeBtn::after{inset:-4px}
   .spotMetaItem.stayMin.unset{position:relative}.spotMetaItem.stayMin.unset::after{content:'';position:absolute;inset:-10px -2px}

@@ -22,6 +22,13 @@ struct TripNote: Identifiable, Hashable {
         }
     }
 
+    /// 웹이 고칠 때 넣는 `updatedAt`과 같은 모양(ISO 8601, 밀리초) — `new Date().toISOString()`.
+    static func timestamp(_ date: Date = Date()) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
+
     static let categories = ["VISA", "ENTRY", "TRANSPORT", "MONEY", "COMM", "SHOPPING", "PACKING", "HEALTH", "ETC"]
 
     static func label(_ category: String) -> String {
@@ -42,6 +49,7 @@ struct TripNote: Identifiable, Hashable {
 struct TripNotesView: View {
     let model: TripPlanViewModel
     @State private var showsAdd = false
+    @State private var editing: TripNote?
 
     private var notes: [TripNote] { TripNote.notes(in: model.document) }
 
@@ -50,7 +58,7 @@ struct TripNotesView: View {
             if let date = model.documentCachedAt { OfflineNotice(savedAt: date) }
             if let error = model.conflict ?? model.errorMessage {
                 Section {
-                    Text(error).foregroundStyle(.red)
+                    Text(error).foregroundStyle(Ink.danger)
                     Button("최신 메모 불러오기") { Task { await model.reloadFromServer() } }
                 }
             }
@@ -66,25 +74,44 @@ struct TripNotesView: View {
                     let rows = notes.filter { $0.category == cat && !$0.done } + notes.filter { $0.category == cat && $0.done }
                     Section {
                         ForEach(rows) { note in
-                            VStack(alignment: .leading, spacing: Space.xs) {
-                                Button {
-                                    Task { await model.setNoteDone(id: note.id, done: !note.done) }
-                                } label: {
-                                    Label(note.title.isEmpty ? "(제목 없음)" : note.title,
-                                          systemImage: note.done ? "checkmark.circle.fill" : "circle")
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(note.done ? Ink.soft : Ink.ink)
-                                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            HStack(alignment: .top, spacing: Space.s) {
+                                VStack(alignment: .leading, spacing: Space.xs) {
+                                    Button {
+                                        Task { await model.setNoteDone(id: note.id, done: !note.done) }
+                                    } label: {
+                                        Label(note.title.isEmpty ? "(제목 없음)" : note.title,
+                                              systemImage: note.done ? "checkmark.circle.fill" : "circle")
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(note.done ? Ink.soft : Ink.ink)
+                                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(!model.canEdit || model.isSaving)
+                                    .accessibilityValue(note.done ? "확인 완료" : "준비 중")
+                                    .accessibilityHint(note.done ? "확인 표시를 해제해요" : "준비가 끝났다고 표시해요")
+                                    if !note.body.isEmpty {
+                                        Text(note.body).font(.subheadline).foregroundStyle(Ink.soft).textSelection(.enabled)
+                                    }
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(!model.canEdit || model.isSaving)
-                                .accessibilityValue(note.done ? "확인 완료" : "준비 중")
-                                .accessibilityHint(note.done ? "확인 표시를 해제해요" : "준비가 끝났다고 표시해요")
-                                if !note.body.isEmpty {
-                                    Text(note.body).font(.subheadline).foregroundStyle(Ink.soft).textSelection(.enabled)
+                                // 보기 권한에는 고치기·지우기가 없다 — 화면은 감출 뿐이고 결정은 서버가 한다.
+                                if model.canEdit {
+                                    Button { editing = note } label: {
+                                        Image(systemName: "pencil").frame(minWidth: 44, minHeight: 44)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(Ink.accent)
+                                    .disabled(model.isSaving)
+                                    .accessibilityLabel("메모 고치기")
+                                    .accessibilityIdentifier("noteEdit")
                                 }
                             }
                             .padding(.vertical, Space.xs)
+                            .swipeActions(edge: .trailing) {
+                                if model.canEdit {
+                                    // 확인창은 없다 — 지운 뒤 토스트의 '되돌리기'가 있다.
+                                    Button("지우기", role: .destructive) { Task { await model.removeNote(id: note.id) } }
+                                }
+                            }
                         }
                     } header: {
                         let done = rows.filter(\.done).count
@@ -106,6 +133,22 @@ struct TripNotesView: View {
             }
         }
         .sheet(isPresented: $showsAdd) { AddTripNoteView(model: model) }
+        .sheet(item: $editing) { note in EditTripNoteView(model: model, note: note) }
+        .overlay(alignment: .bottom) {
+            if let toast = model.toast {
+                // 방금 한 일(고치기·지우기 포함)을 되돌릴 수 있으면 그 자리에서 말한다.
+                let undoable = model.canUndo && toast != "변경을 되돌렸어요"
+                ToastView(text: toast, actionTitle: undoable ? "되돌리기" : nil) {
+                    model.clearToast()
+                    Task { await model.undoLastChange() }
+                }
+                .padding(Space.l)
+                .task(id: toast) {
+                    try? await Task.sleep(for: .seconds(undoable ? 5 : 2))
+                    model.clearToast()
+                }
+            }
+        }
         .refreshable { await model.load() }
         .task { await model.loadIfStale() }
     }
@@ -126,7 +169,7 @@ private struct AddTripNoteView: View {
                 TextField("제목", text: $title)
                 TextField("짧은 메모", text: $text, axis: .vertical).lineLimit(3...8)
                 if let error = model.conflict ?? model.errorMessage {
-                    Text(error).foregroundStyle(.red)
+                    Text(error).foregroundStyle(Ink.danger)
                     if model.conflict != nil { Button("최신 메모 불러오기") { Task { await model.reloadFromServer() } } }
                 }
             }
@@ -137,6 +180,62 @@ private struct AddTripNoteView: View {
                     Button("저장") {
                         Task { if await model.addNote(title: title, body: text, category: category) { dismiss() } }
                     }.disabled(model.isSaving || !model.canEdit || (title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                }
+            }
+            .interactiveDismissDisabled(model.isSaving)
+        }
+    }
+}
+
+/// 메모 하나를 고친다. 열 때의 revision을 고정해 두고 저장한다 — 편집하는 동안 원격 변경이 오면 다른 메모를 덮지 않고 이유를 말한다.
+private struct EditTripNoteView: View {
+    let model: TripPlanViewModel
+    let note: TripNote
+    @State private var title: String
+    @State private var text: String
+    @State private var category: String
+    @State private var revision: Int
+    @Environment(\.dismiss) private var dismiss
+
+    init(model: TripPlanViewModel, note: TripNote) {
+        self.model = model
+        self.note = note
+        _title = State(initialValue: note.title)
+        _text = State(initialValue: note.body)
+        _category = State(initialValue: note.category)
+        _revision = State(initialValue: model.revision)
+    }
+
+    private var isEmpty: Bool {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            PaperForm {
+                Picker("분류", selection: $category) {
+                    ForEach(TripNote.categories, id: \.self) { Text(TripNote.label($0)).tag($0) }
+                }
+                TextField("제목", text: $title)
+                TextField("짧은 메모", text: $text, axis: .vertical).lineLimit(3...8)
+                if isEmpty { Text("제목이나 내용을 적어 주세요.").font(.caption).foregroundStyle(Ink.danger) }
+                if let error = model.conflict ?? model.errorMessage {
+                    Text(error).foregroundStyle(Ink.danger)
+                    if model.conflict != nil { Button("최신 메모 불러오기") { Task { await model.reloadFromServer() } } }
+                }
+                Button("메모 지우기", role: .destructive) {
+                    Task { if await model.removeNote(id: note.id, expectedRevision: revision) { dismiss() } }
+                }
+                .disabled(model.isSaving || !model.canEdit)
+                .accessibilityIdentifier("noteDelete")
+            }
+            .navigationTitle("준비 메모 고치기")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() }.disabled(model.isSaving) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        Task { if await model.updateNote(id: note.id, title: title, body: text, category: category, expectedRevision: revision) { dismiss() } }
+                    }.disabled(model.isSaving || !model.canEdit || isEmpty)
                 }
             }
             .interactiveDismissDisabled(model.isSaving)

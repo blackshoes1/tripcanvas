@@ -174,12 +174,14 @@ final class ActivityTextParityTests: XCTestCase {
     private struct Fixture: Decodable {
         struct Case: Decodable { let name: String; let event: ActivityView; let count: Int?; let text: String }
         struct Particle: Decodable { let word: String; let particle: String }
+        struct Josa: Decodable { let word: String?; let withFinal: String; let withoutFinal: String; let particle: String }
         struct Line: Decodable { let id: Int; let count: Int; let text: String }
         struct Condense: Decodable { let name: String; let rows: [ActivityView]; let lines: [Line] }
         struct Relative: Decodable { let iso: String?; let text: String }
         struct RelativeTimes: Decodable { let now: String; let cases: [Relative] }
         let cases: [Case]
         let particles: [Particle]
+        let josas: [Josa]
         let condense: [Condense]
         let relativeTimes: RelativeTimes
     }
@@ -202,6 +204,18 @@ final class ActivityTextParityTests: XCTestCase {
         for p in try load().particles {
             XCTAssertEqual(CollabModel.objectParticle(p.word), p.particle, p.word)
         }
+    }
+
+    /// F-12 — 은/는·을/를·으로/로. 받침 있음·없음·ㄹ 받침·이은 이름(마지막 기준)·영문·숫자·빈 값·JS `trim()` 공백 집합까지 원본이 낸 답과 같다.
+    func testJosaMatchesTheJavaScriptRule() throws {
+        let josas = try load().josas
+        XCTAssertGreaterThan(josas.count, 10)
+        for j in josas {
+            XCTAssertEqual(CollabModel.josa(j.word ?? "", j.withFinal, j.withoutFinal), j.particle, "\(j.word ?? "null") \(j.withFinal)/\(j.withoutFinal)")
+        }
+        // 받침 있는 이름과 없는 이름 — 화면에 괄호 꼴이 나오지 않는다
+        XCTAssertEqual(CollabModel.withJosa("경복궁", "을", "를"), "경복궁을")
+        XCTAssertEqual(CollabModel.withJosa("남산타워", "을", "를"), "남산타워를")
     }
 
     /// 입력·출력 모두 최신순. 같은 사람의 연속 저장은 한 줄(횟수), 같은 후보 반응은 마지막 것만.

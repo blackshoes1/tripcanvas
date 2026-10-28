@@ -65,10 +65,10 @@ final class AddSpotFlowTests: XCTestCase {
         let model = TripPlanViewModel(tripId: "t", service: service)
         await model.load()
         model.selectedDay = 0
-        let saved = await model.addSpot(station.makeSpot(), dayIndex: 1, expectedRevision: 3, toast: "‘가루이자와 역’을(를) 2일차에 추가했어요")
+        let saved = await model.addSpot(station.makeSpot(), dayIndex: 1, expectedRevision: 3, toast: "‘가루이자와 역’을 2일차에 추가했어요")
         XCTAssertTrue(saved)
         XCTAssertEqual(model.document?.days[1].spots.map(\.name), ["가루이자와 역"])
-        XCTAssertEqual(model.toast, "‘가루이자와 역’을(를) 2일차에 추가했어요")
+        XCTAssertEqual(model.toast, "‘가루이자와 역’을 2일차에 추가했어요")
         XCTAssertTrue(model.canUndo, "방금 담은 것은 토스트의 '되돌리기'로 되돌릴 수 있다")
     }
 
