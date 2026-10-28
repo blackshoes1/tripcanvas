@@ -15,6 +15,7 @@ const config: ApnsConfig = { teamId: 'ABCDEFGHIJ', keyId: '0123456789', privateK
 const at = new Date('2026-10-27T12:00:00.000Z');
 const target = { pushToken: 'ab'.repeat(32), environment: 'production' as const };
 const state: LiveActivityState = {
+  target: { dayIndex: 1, activityId: 'd1s1', revision: 7 },
   tripName: '서울 여행', dayLabel: 'Day 2', status: 'UPCOMING', nextTitle: '점심',
   nextStartISO: '2026-10-27T12:30:00.250Z', travelMinutes: 12, departureText: '곧 나설 시간이에요',
   scheduleElapsed: false, fixedTitle: null, fixedStartISO: null, pulseText: '여유 있게 가요', stateVersion: 'v2'
@@ -38,11 +39,15 @@ describe('ActivityKit APNs 전송', () => {
     await send(target, { ...update, at: new Date('2026-10-27T14:00:00Z'), staleAt: null,
       state: { ...state, tripName: '잠금화면 정합성', dayLabel: 'Day 2', status: 'COMPLETED',
         nextTitle: '예정 시간 지남', nextStartISO: null, travelMinutes: null, departureText: null,
-        fixedTitle: null, fixedStartISO: null, scheduleElapsed: true, pulseText: '예정한 시간은 지났어요', stateVersion: 'elapsed-v2' } });
+        fixedTitle: null, fixedStartISO: null, scheduleElapsed: true, shouldEnd: true, target: undefined,
+        pulseText: '예정한 시간은 지났어요', stateVersion: 'elapsed-v2' } });
     expect(requests).toHaveLength(2);
     const payloads = requests.map(request => JSON.parse(request.body));
     expect(payloads[0].aps['content-state'].nextStartAt).toBe(814797000.25);
     expect(payloads[1].aps['content-state'].nextStartAt).toBeUndefined();
+    expect(payloads[0].aps['content-state'].target).toEqual(state.target);
+    expect(payloads[1].aps['content-state'].target).toBeUndefined();
+    expect(payloads[1].aps['content-state'].shouldEnd).toBe(true);
     // P256 키는 테스트마다 새로 만들지만 JWT·header는 파일에 넣지 않는다. body는 결정적이다.
     writeFixture(path.join(__dirname, '../../../../ios/TripCanvasTests/Fixtures/live-activity-push.json'),
       JSON.stringify(payloads, null, 2) + '\n');
@@ -64,6 +69,7 @@ describe('ActivityKit APNs 전송', () => {
     expect(aps.event).toBe('update');
     expect(aps['stale-date']).toBe(update.staleAt!.getTime() / 1000);
     expect(aps['content-state']).toEqual({
+      target: state.target,
       tripName: state.tripName, dayLabel: state.dayLabel, nextTitle: state.nextTitle,
       nextStartAt: Date.parse(state.nextStartISO!) / 1000 - 978307200,
       travelMinutes: 12, departureText: state.departureText, status: 'UPCOMING',

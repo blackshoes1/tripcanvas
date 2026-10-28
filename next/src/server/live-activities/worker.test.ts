@@ -49,9 +49,51 @@ describe('앱이 닫힌 동안 현재 일정으로 전환하는 서버 worker', 
     expect(send).not.toHaveBeenCalled();
     expect(repo.complete).toHaveBeenLastCalledWith(expect.anything(), at('11:32'), stateVersion);
   });
-  it('전부 지난 미방문 일정은 완료 체크 대신 시간 경과 내용을 발송한다', async () => {
+  it('전부 지난 미방문 일정도 end를 보내고 등록을 종료한다', async () => {
     await runLiveActivityBatch({ repo, send, now: () => at('13:00') });
-    expect(vi.mocked(send).mock.calls[0][1].state).toMatchObject({ scheduleElapsed: true, nextTitle: '예정 시간 지남' });
+    expect(vi.mocked(send).mock.calls[0][1]).toMatchObject({ event: 'end', staleAt: null,
+      state: { shouldEnd: true, status: 'COMPLETED', nextTitle: '일정 안내 종료', nextStartISO: null } });
+    expect(repo.discard).toHaveBeenCalledWith(claim, at('13:00'));
+    expect(delivery.document.days![0].spots!.every(spot => !spot.status)).toBe(true);
+  });
+  it.each(['11:59', '12:00'])('마지막 일정의 종료 경계를 지킨다: %s', async time => {
+    await runLiveActivityBatch({ repo, send, now: () => at(time) });
+    const ended = time === '12:00';
+    expect(vi.mocked(send).mock.calls[0][1].event).toBe(ended ? 'end' : 'update');
+    expect(vi.mocked(repo.discard).mock.calls).toHaveLength(ended ? 1 : 0);
+  });
+  it('현재 일정이 없어도 뒤에 미래 일정이 남은 공백에는 종료하지 않는다', async () => {
+    await runLiveActivityBatch({ repo, send, now: () => at('10:30') });
+    expect(vi.mocked(send).mock.calls[0][1]).toMatchObject({ event: 'update', state: { nextTitle: '점심' } });
+    expect(repo.discard).not.toHaveBeenCalled();
+  });
+  it.each([['COMPLETED', 'COMPLETED'], ['SKIPPED', 'SKIPPED'], ['COMPLETED', 'SKIPPED']])(
+    '종료 시각 전에도 모두 처리한 날은 종료한다: %s/%s', async (first, second) => {
+      const copy = structuredClone(delivery);
+      copy.document.days![0].spots![0].status = first;
+      copy.document.days![0].spots![1].status = second;
+      vi.mocked(repo.delivery).mockResolvedValue(copy);
+      await runLiveActivityBatch({ repo, send, now: () => at('09:30') });
+      expect(vi.mocked(send).mock.calls[0][1].event).toBe('end');
+      expect(repo.discard).toHaveBeenCalledWith(claim, at('09:30'));
+    });
+  it('이미 같은 종료 지문을 갱신했어도 end 발송을 생략하지 않는다', async () => {
+    const state = buildTravelState({ tripId: delivery.tripId, trip: delivery.document, revision: 1,
+      updatedAt: delivery.updatedAt, todayISO: '2026-10-27', nowMinutes: 780, travelMode: true });
+    vi.mocked(repo.claimDue).mockResolvedValue([{ ...claim, lastStateVersion: state.stateVersion }]);
+    await runLiveActivityBatch({ repo, send, now: () => at('13:00') });
+    expect(send).toHaveBeenCalledOnce();
+    expect(vi.mocked(send).mock.calls[0][1].event).toBe('end');
+    expect(repo.discard).toHaveBeenCalled();
+  });
+  it('end 전송이 일시 실패하면 등록을 남겨 재시도하고 수락 후에 종료한다', async () => {
+    vi.mocked(send).mockResolvedValueOnce({ ok: false, permanent: false, reason: 'ServiceUnavailable' });
+    await runLiveActivityBatch({ repo, send, now: () => at('13:00') });
+    expect(repo.retry).toHaveBeenCalled();
+    expect(repo.discard).not.toHaveBeenCalled();
+    await runLiveActivityBatch({ repo, send, now: () => at('13:01') });
+    expect(vi.mocked(send).mock.calls.every(call => call[1].event === 'end')).toBe(true);
+    expect(repo.discard).toHaveBeenCalledWith(claim, at('13:01'));
   });
   it('APNs가 지정한 지연을 존중하고 토큰 오류만 등록을 폐기한다', async () => {
     vi.mocked(send).mockResolvedValue({ ok: false, permanent: false, retryAfterMs: 900_000, reason: 'ServiceUnavailable' });
@@ -83,7 +125,7 @@ describe('다음 경계 시각', () => {
     completed.today.activities[0].status = 'COMPLETED';
     expect(nextLiveActivityBoundary(completed, at('09:59'))).toEqual(at('11:00'));
   });
-  it('모든 일정이 지나도 현지 자정에 다음 날을 다시 계산한다', () => {
+  it('활동 중에는 현지 자정을 다음 날 계산의 경계로 둔다', () => {
     const result = response();
     expect(nextLiveActivityBoundary(result, at('23:59'))).toEqual(new Date('2026-10-28T00:00:00Z'));
   });

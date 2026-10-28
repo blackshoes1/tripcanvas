@@ -62,21 +62,21 @@ export async function runLiveActivityBatch(deps: {
       }
       const state = buildTravelState({ tripId: delivery.tripId, trip: delivery.document, revision: delivery.revision,
         updatedAt: delivery.updatedAt, ...clock, generatedAt: now.toISOString(), jTone: delivery.jTone, travelMode: true, legCache });
-      const outsideTravel = !state.today.currentState.live;
-      const boundary = outsideTravel ? null : nextLiveActivityBoundary(state, now);
+      const shouldEnd = state.liveActivity.shouldEnd === true;
+      const boundary = shouldEnd ? null : nextLiveActivityBoundary(state, now);
       // 시간 경계에는 즉시, 다른 기기의 일정 수정은 최대 1분 뒤 확인한다. 외부 경로 제공자는 호출하지 않는다.
       const nextAt = new Date(Math.min(claim.expiresAt.getTime(), now.getTime() + 60_000, boundary?.getTime() ?? Infinity));
-      if (!outsideTravel && state.stateVersion === claim.lastStateVersion) {
+      if (!shouldEnd && state.stateVersion === claim.lastStateVersion) {
         await deps.repo.complete(claim, nextAt, state.stateVersion); return;
       }
-      const content = outsideTravel ? { ...state.liveActivity, status: 'COMPLETED' as const,
+      const content = shouldEnd ? { ...state.liveActivity, status: 'COMPLETED' as const,
         nextTitle: '일정 안내 종료', nextStartISO: null, travelMinutes: null, departureText: null,
         fixedTitle: null, fixedStartISO: null, scheduleElapsed: false } : state.liveActivity;
-      const result = await deps.send(delivery, { state: content, event: outsideTravel ? 'end' : 'update', at: now,
+      const result = await deps.send(delivery, { state: content, event: shouldEnd ? 'end' : 'update', at: now,
         staleAt: boundary, expiresAt: claim.expiresAt });
       if (result.ok) {
         stats.sent++;
-        if (outsideTravel) await deps.repo.discard(claim, now);
+        if (shouldEnd) await deps.repo.discard(claim, now);
         else await deps.repo.complete(claim, nextAt, state.stateVersion);
       }
       else if (result.invalidToken) await deps.repo.discard(claim, now);

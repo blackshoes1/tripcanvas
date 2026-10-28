@@ -30,6 +30,7 @@ struct TripHomeView: View {
     let trip: TripSummary
     /// 알림·딥링크가 목적지를 정해서 들어온 경우. nil이면 아래 규칙이 정한다.
     var requested: TripHomeTab?
+    @Binding var requestedActivity: TripActivityRequest?
     @Binding var panel: TripPanel?
     var onLeft: (() -> Void)?
 
@@ -48,9 +49,10 @@ struct TripHomeView: View {
     /// 탭 바의 높이. 내용이 이만큼 위에서 끝나야 마지막 줄이 바에 가리지 않는다 — 재지 않고 정한다.
     static let tabBarHeight: CGFloat = 50
 
-    init(trip: TripSummary, requested: TripHomeTab? = nil, panel: Binding<TripPanel?>, env: AppEnvironment, onLeft: (() -> Void)? = nil) {
+    init(trip: TripSummary, requested: TripHomeTab? = nil, activity: Binding<TripActivityRequest?> = .constant(nil), panel: Binding<TripPanel?>, env: AppEnvironment, onLeft: (() -> Void)? = nil) {
         self.trip = trip
         self.requested = requested
+        _requestedActivity = activity
         self.onLeft = onLeft
         _panel = panel
         // `@State`의 초기값은 처음 만들 때 한 번만 쓰인다 — 부모가 다시 그려도 이 객체는 유지된다.
@@ -138,6 +140,12 @@ struct TripHomeView: View {
         }
         .sheet(item: $storyTarget) { StorySheet(placeID: $0.id) }
         .onChange(of: requested) { _, value in tab = value }
+        .onChange(of: requestedActivity, initial: true) { _, request in
+            guard let request, request.tripId == trip.id else { return }
+            models.plan.requestViewing(request.target)
+            tab = .plan
+            requestedActivity = nil
+        }
         // 예약 상세의 '일정 N일차에서 수정'·'비용에서 수정' — 날짜·항목을 다시 찾게 하지 않는다(2026-09-27 UX 검토).
         .onChange(of: models.sourceRequest) { _, request in
             guard let request else { return }

@@ -79,11 +79,25 @@ describe('일정 변경 미리보기', () => {
     expect(saveTrip).not.toHaveBeenCalled();
   });
 
-  it.each([undefined, false])('시간순 옵션이 %s이면 기존 순서와 응답 모양을 유지한다', async sortByTime => {
-    const draft = { ...document(), days: [{ spots: [{ name: '13시', at: '13:00' }, { name: '9시', at: '09:00' }] }] };
+  it.each([undefined, false])('시간순 옵션이 %s이어도 기존 순서를 유지한 정규화 원문을 돌려준다', async sortByTime => {
+    const draft = { ...document(), id: 'unsaved-id', days: [{ spots: [
+      { name: '13시', at: '13:00', bookAt: '13:30', bookingId: 'keep-booking', futureSpot: { keep: true } },
+      { name: '9시', at: '09:00' }
+    ] }] };
+    const submitted = structuredClone(draft);
     const body = await (await preview({ document: draft, dayIndex: 0, revision: 7, sortByTime })).json() as PlanPreviewResponse;
     expect(body.after.day.spots.map(s => s.name)).toEqual(['13시', '9시']);
-    expect(body).not.toHaveProperty('document');
+    expect(body.document).toMatchObject({ id: 'trip-1', schemaVersion: lib.TC_SCHEMA, custom: { keep: true },
+      days: [{ mode: 'car', spots: [
+        { name: '13시', at: '13:00', bookAt: '13:30', bookingId: 'keep-booking', futureSpot: { keep: true } },
+        { name: '9시', at: '09:00' }
+      ] }] });
+    // 응답 원문을 그대로 다시 미리보기해도 계산 결과가 같다 — Swift에서 기본값을 복제하지 않는다.
+    const again = await (await preview({ document: body.document, dayIndex: 0, revision: 7, sortByTime })).json() as PlanPreviewResponse;
+    expect(again.after).toEqual(body.after);
+    expect(again.document).toEqual(body.document);
+    expect(draft).toEqual(submitted);
+    expect(saveTrip).not.toHaveBeenCalled();
   });
 
   it.each([null, 0, 1, 'true', [], {}])('잘못된 시간순 옵션 %j는 저장 없이 거절한다', async sortByTime => {
