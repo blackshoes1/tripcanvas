@@ -5,21 +5,30 @@
 //   node scripts/stories/build-stories.js --draft      검수 전 원고까지 stories-draft/에 만든다(들어 보고 검수할 때)
 //   node scripts/stories/build-stories.js              검수한 원고(reviewedAt)만 stories/에 만들고 카탈로그를 쓴다
 //
-// ⚠️ TTS 키(GOOGLE_TTS_API_KEY)는 저장소·CI에 넣지 않는다. 키가 있는 기기에서 사람이 돌린다.
+// ⚠️ TTS 키(GOOGLE_TTS_API_KEY)는 저장소·CI에 넣지 않는다. 키가 있는 기기에서 사람이 돌린다. 합성에는 ffmpeg가 필요하다(MP3로 굳힌다).
 // 같은 원고·같은 목소리면 다시 합성하지 않는다(build-state.json의 지문) — 무료 한도(월 100만 자)를 아낀다.
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { spawnSync } = require('node:child_process');
 
 // ⚠️ 경로는 저장소 루트 기준이다(sync-agents.js와 같은 관례 — `__dirname`은 eslint 전역 목록에 없다). 루트에서 돌린다
 const ROOT = process.cwd();
 const SOURCE = path.join(ROOT, 'scripts', 'stories', 'source');
 const STATE_FILE = path.join(ROOT, 'scripts', 'stories', 'build-state.json');
-// 사용자가 고른 목소리(2026-10): Chirp 3 HD Despina · 보통 속도 · 문단 사이 쉼
+// 사용자가 고른 목소리(2026-10): Chirp 3 HD Despina · 보통 속도
 const VOICE = { languageCode: 'ko-KR', name: 'ko-KR-Chirp3-HD-Despina' };
-const AUDIO = { audioEncoding: 'MP3', speakingRate: 1.0 };
-const PARAGRAPH_PAUSE = '[pause long]';
+const SAMPLE_RATE = 24000;
+const AUDIO = { audioEncoding: 'LINEAR16', sampleRateHertz: SAMPLE_RATE, speakingRate: 1.0 };
+// 쉼은 엔진에 맡기지 않는다(2026-10-28 "띄어읽기가 거의 안 된다"). 트랙을 통째로 보내면 Chirp 3 HD가 문단 사이 [pause long]을
+// 빼먹기도 하고(스페인 광장 72초에 0.7초 넘는 쉼이 한 번도 없었다) 7초로 늘리기도 했으며(대성당 1번), 쉼표는 그냥 지나갔다
+// ('카스티야, 레온, 아라곤, 나바라'가 8초 동안 쉼 없이). 그래서 문장마다 따로 합성하고, 쉼표 뒤에는 [pause short]를 넣고
+// (한 문장 안에서는 0.2~0.35초로 지켜졌다), 문장·문단 사이는 무음을 직접 끼운다 — 길이를 초로 정해 두면 들을 때마다 같다
+const PAUSE = { lead: 0.2, sentence: 0.6, paragraph: 1.2, tail: 0.6 };
+const COMMA_PAUSE = '[pause short]';
+const MP3_BITRATE = '48k';
+const MAKE_VERSION = 2;   // 소리 처리(다듬기·잇기·굳히기)를 바꾸면 올린다 — 지문에 들어가 모든 트랙을 다시 만든다
 const MAX_REQUEST_BYTES = 4500;   // API 한도(5000바이트)보다 여유 있게 — 한글은 글자당 3바이트다
 
 const DIGITS = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
@@ -88,18 +97,107 @@ function spokenText(text) {
   // ⚠️ '44개'·'3명' 같은 고유어 수는 바꾸지 않는다 — '사십사 개'는 틀린 읽기다. 엔진에 맡기고 들어서 확인한다
 }
 
-/** 문단을 지키며 요청 크기 안으로 나눈다 @returns {string[]} */
-function chunks(paragraphs) {
-  const out = [];
-  let cur = [];
-  const size = (list) => Buffer.byteLength(list.join(`\n${PARAGRAPH_PAUSE}\n`), 'utf8');
-  for (const p of paragraphs) {
-    if (Buffer.byteLength(p, 'utf8') > MAX_REQUEST_BYTES) throw new Error(`문단 하나가 너무 깁니다(${Buffer.byteLength(p, 'utf8')}바이트): ${p.slice(0, 40)}…`);
-    if (cur.length && size([...cur, p]) > MAX_REQUEST_BYTES) { out.push(cur); cur = []; }
-    cur.push(p);
+/** 낭독 글 → 문단마다 문장 요청(markup) — 빈 줄이 문단, 마침표·물음표·느낌표 뒤 공백이 문장 경계다 @returns {string[][]} */
+function sentencePlan(spoken) {
+  return spoken.split(/\n\s*\n/).map((p) => p.replace(/\s+/g, ' ').trim()).filter(Boolean).map((p) => p.split(/(?<=[.?!])\s+/).map((s) => {
+    const markup = s.replace(/,\s+/g, `, ${COMMA_PAUSE} `);
+    if (Buffer.byteLength(markup, 'utf8') > MAX_REQUEST_BYTES) throw new Error(`문장 하나가 너무 깁니다(${Buffer.byteLength(markup, 'utf8')}바이트): ${s.slice(0, 40)}…`);
+    return markup;
+  }));
+}
+
+// ── 소리(16비트 PCM) — 쉼을 재고 다듬고 끼운다 ──
+const FRAME_SEC = 0.01;
+// 10ms 평균 세기로 가른다. 앞뒤를 걷을 때는 낮게(-45dB — 첫소리·끝소리 꼬리를 남긴다), 쉼을 잴 때는 높게(-35dB) 본다:
+// 엔진이 '쉰' 자리에도 숨소리 같은 바닥 소리가 -45~-35dB로 깔려 있어 낮게 보면 대성당 1번의 7초 쉼도 쉼으로 안 잡힌다
+const QUIET_DB = -45;
+const PAUSE_DB = -35;
+
+/** WAV(LINEAR16)의 data 묶음 @returns {Int16Array} */
+function wavSamples(buf) {
+  for (let i = 12; i + 8 <= buf.length;) {
+    const id = buf.toString('latin1', i, i + 4), len = buf.readUInt32LE(i + 4);
+    if (id === 'data') {
+      const data = Buffer.from(buf.subarray(i + 8, i + 8 + len));   // 짝수 위치에서 시작하는 사본이어야 Int16Array로 본다
+      return new Int16Array(data.buffer, data.byteOffset, data.length >> 1);
+    }
+    i += 8 + len + (len & 1);
   }
-  if (cur.length) out.push(cur);
-  return out.map((list) => list.join(`\n${PARAGRAPH_PAUSE}\n`));
+  throw new Error('WAV에 소리(data)가 없습니다');
+}
+
+/** 10ms마다 평균 세기(dBFS) @returns {number[]} */
+function frameLevels(pcm, rate) {
+  const n = Math.round(rate * FRAME_SEC), out = [];
+  for (let i = 0; i < pcm.length; i += n) {
+    let sum = 0;
+    const end = Math.min(pcm.length, i + n);
+    for (let j = i; j < end; j++) sum += pcm[j] * pcm[j];
+    out.push(20 * Math.log10(Math.sqrt(sum / (end - i)) / 32768 + 1e-9));
+  }
+  return out;
+}
+
+/** 앞뒤 쉼을 걷는다 — 말소리 앞 40ms·뒤 150ms는 남긴다(첫소리·끝소리 꼬리를 자르지 않게). 소리가 없으면 빈 배열 */
+function trimSilence(pcm, rate) {
+  const lv = frameLevels(pcm, rate), n = Math.round(rate * FRAME_SEC);
+  const first = lv.findIndex((x) => x > QUIET_DB);
+  if (first < 0) return pcm.subarray(0, 0);
+  let last = lv.length - 1;
+  while (lv[last] <= QUIET_DB) last--;
+  return pcm.subarray(Math.max(0, (first - 4) * n), Math.min(pcm.length, (last + 16) * n));
+}
+
+/** 소리 사이의 쉼 길이(초) — 앞뒤 쉼은 세지 않는다 @returns {number[]} */
+function innerPauses(pcm, rate) {
+  const out = [];
+  let run = 0, heard = false;
+  for (const x of frameLevels(pcm, rate)) {
+    if (x <= PAUSE_DB) { run++; continue; }
+    if (heard && run) out.push(run * FRAME_SEC);
+    heard = true;
+    run = 0;
+  }
+  return out;
+}
+
+/** 앞뒤 끝의 조용한 길이(초, -35dB 아래) — 걷고 남긴 숨소리·끝소리 꼬리도 귀에는 쉼이다 */
+function edgeQuiet(pcm, rate) {
+  const lv = frameLevels(pcm, rate);
+  let head = 0, tail = 0;
+  while (head < lv.length && lv[head] <= PAUSE_DB) head++;
+  while (tail < lv.length - head && lv[lv.length - 1 - tail] <= PAUSE_DB) tail++;
+  return { head: head * FRAME_SEC, tail: tail * FRAME_SEC };
+}
+
+/** 문단마다 문장 소리를 잇는다 — 사이의 '들리는 쉼'(-35dB 아래)이 PAUSE가 되게 무음을 채운다.
+ *  고정 무음만 끼우면 문장마다 다른 끝소리 꼬리가 더해져 문장 사이가 0.7~1.1초, 문단 사이가 2초 넘게 흔들렸다 @returns {Int16Array} */
+function joinTrack(paragraphs, rate) {
+  const gap = (sec) => new Int16Array(Math.max(0, Math.round(rate * sec)));
+  const parts = [];
+  let tail = 0, first = true;
+  paragraphs.forEach((sentences) => sentences.forEach((s, si) => {
+    const edge = edgeQuiet(s, rate);
+    const want = first ? PAUSE.lead : si ? PAUSE.sentence : PAUSE.paragraph;
+    parts.push(gap(want - tail - edge.head), s);
+    tail = edge.tail;
+    first = false;
+  }));
+  parts.push(gap(PAUSE.tail - tail));
+  const out = new Int16Array(parts.reduce((a, p) => a + p.length, 0));
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+
+/** PCM → MP3(ffmpeg·LAME) */
+function encodeMp3(pcm, rate) {
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 's16le', '-ar', String(rate), '-ac', '1', '-i', 'pipe:0',
+    '-codec:a', 'libmp3lame', '-b:a', MP3_BITRATE, '-map_metadata', '-1', '-id3v2_version', '0', '-f', 'mp3', 'pipe:1'],
+  { input: Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength), maxBuffer: 1 << 28 });
+  if (r.error) throw new Error(`ffmpeg가 필요합니다(MP3로 굳힌다): ${r.error.message}`);
+  if (r.status !== 0) throw new Error(`ffmpeg: ${String(r.stderr).slice(0, 300)}`);
+  return r.stdout;
 }
 
 /** MP3 프레임을 세어 길이(초)를 잰다 — MPEG-1/2/2.5 Layer III */
@@ -125,16 +223,27 @@ function mp3Seconds(buf) {
 
 const sha256 = (data) => crypto.createHash('sha256').update(data).digest('hex');
 
-// 말 빠르기 — Despina 1.0배는 5.3~5.9자/초다. 2026-10-27 대성당 13번이 원고는 65초 분량인데 89초로 나왔다
-// (문단별로 다시 합성하면 65초). 어긋난 음성은 들어 보기 전에는 모르므로 합성할 때 걸러 낸다
-const PAUSE_SECONDS = 1.0;
-const RATE_BAND = [4.6, 7.0];
+// 말 빠르기 — 2026-10-27 대성당 13번이 원고는 65초 분량인데 89초로 나왔다(다시 합성하면 65초). 어긋난 음성은 들어 보기
+// 전에는 모르므로 합성할 때 문장마다 걸러 낸다. 앞뒤 쉼을 걷은 문장 하나의 빠르기라 짧은 문장일수록 빠르게 나온다
+const RATE_BAND = [4.2, 8.5];
+const SHORT_SENTENCE = 12;   // 이보다 짧은 문장은 빠르기가 들쭉날쭉해 재지 않는다
+// 문장 안 쉼의 상한 — 쉼표 자리는 -35dB로 재면 0.6초 안쪽이다(대성당 13번에서 가장 길었던 것이 0.57초). 대성당 1번은 엔진이 7초를 쉬었다
+const MAX_INNER_PAUSE = 1.0;
 
-/** 공백·쉼 표시를 뺀 글자 수를 (길이 − 쉼) 초로 나눈다 */
+/** 쉼 표시·공백을 뺀 글자 수를 초로 나눈다 */
 function speechRate(markup, seconds) {
-  const parts = markup.split(PARAGRAPH_PAUSE);
-  const chars = parts.join('').replace(/\s/g, '').length;
-  return chars / Math.max(0.1, seconds - (parts.length - 1) * PAUSE_SECONDS);
+  return speechChars(markup) / Math.max(0.1, seconds);
+}
+function speechChars(markup) { return markup.replace(/\[[^\]]*\]/g, '').replace(/\s/g, '').length; }
+
+/** 문장 소리를 들이기 전에 잰다 — 틀리면 이유 문장, 맞으면 null */
+function sentenceProblem(markup, pcm, rate) {
+  if (!pcm.length) return '소리가 없습니다';
+  const longest = Math.max(0, ...innerPauses(pcm, rate));
+  if (longest > MAX_INNER_PAUSE) return `문장 안에서 ${longest.toFixed(1)}초를 쉽니다`;
+  const r = speechRate(markup, pcm.length / rate);
+  if (speechChars(markup) >= SHORT_SENTENCE && (r < RATE_BAND[0] || r > RATE_BAND[1])) return `말 빠르기 ${r.toFixed(2)}자/초`;
+  return null;
 }
 
 /** 원고 묶음 — source/seville/*.json. 대성당은 관람 지점 원고(narration/NN_narration.txt)를 읽어 들인다 */
@@ -172,11 +281,12 @@ function check(places) {
       if (!['CORE', 'MORE', 'STOP'].includes(t.role)) errors.push(`${tw}: role은 CORE·MORE·STOP입니다`);
       if (!t.title) errors.push(`${tw}: 제목이 없습니다`);
       if (!t.text || t.text.length < 100) errors.push(`${tw}: 원고가 비었거나 너무 짧습니다`);
-      if (/S\d{2}|[A-Z]\d{2}\b|\*\*|#|\(|\)/.test(t.text || '')) errors.push(`${tw}: 원고에 출처 ID·괄호·마크다운이 섞여 있습니다 — 소리 내 읽힙니다`);
+      // 대괄호는 합성 표시([pause short])로 읽힌다
+      if (/S\d{2}|[A-Z]\d{2}\b|\*\*|#|\(|\)|\[|\]/.test(t.text || '')) errors.push(`${tw}: 원고에 출처 ID·괄호·마크다운이 섞여 있습니다 — 소리 내 읽힙니다`);
       for (const s of t.sources || []) if (!p.sources || !p.sources[s]) errors.push(`${tw}: 출처 ${s}가 sources에 없습니다`);
       if (!(t.sources || []).length) errors.push(`${tw}: 출처가 하나도 없습니다`);
       if (t.role === 'STOP' && !(t.stop && Number.isInteger(t.stop.n))) errors.push(`${tw}: 관람 지점 번호가 없습니다`);
-      try { chunks(spokenText(t.text).split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean)); } catch (e) { errors.push(`${tw}: ${e.message}`); }
+      try { sentencePlan(spokenText(t.text)); } catch (e) { errors.push(`${tw}: ${e.message}`); }
     }
     for (const [k, v] of Object.entries(p.sources || {})) if (!/^https:\/\//.test(v.url || '')) errors.push(`${where}: 출처 ${k}의 주소가 https가 아닙니다`);
     // 확인하지 못한 사실은 검수 전에 처리를 적는다 — 본문에서 뺐거나(OMITTED) 단정하지 않게 고쳤거나(HEDGED).
@@ -189,33 +299,55 @@ function check(places) {
   return errors;
 }
 
-async function synthesize(markup, key) {
-  const res = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(key)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input: { markup }, voice: VOICE, audioConfig: AUDIO })
-  });
-  if (!res.ok) throw new Error(`TTS ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  return Buffer.from((await res.json()).audioContent, 'base64');
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 문장 하나 → 16비트 PCM. 한도 초과·서버 오류는 잠깐 쉬고 다시 묻는다.
+ *  다시 합성할 때(2·3번째)마다 속도를 1%씩 늦춘다 — 같은 요청을 곧바로 다시 보내면 같은 소리가 돌아왔다(대성당 5번의 한 문장이 세 번 다 3.99자/초) */
+async function synthesize(markup, key, retry = 0) {
+  const audioConfig = { ...AUDIO, speakingRate: +(AUDIO.speakingRate - retry * 0.01).toFixed(2) };
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: { markup }, voice: VOICE, audioConfig })
+    });
+    if (res.ok) return wavSamples(Buffer.from((await res.json()).audioContent, 'base64'));
+    if ((res.status === 429 || res.status >= 500) && attempt < 4) { await wait(2000 * attempt); continue; }
+    throw new Error(`TTS ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  }
 }
 
-/** 한 트랙을 덩어리마다 합성한다 — 말 빠르기가 어긋나면 한 번 더, 또 어긋나면 audio 없이 돌려준다 */
+/** 여럿을 동시에 n개까지 */
+async function mapLimit(items, n, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (next < items.length) { const k = next++; out[k] = await fn(items[k], k); }
+  }));
+  return out;
+}
+
+/** 한 트랙을 문장마다 합성해 잇는다 — 잰 값이 어긋난 문장은 두 번까지 다시, 그래도 어긋나면 audio 없이 돌려준다 */
 async function synthesizeTrack(spoken, src, key) {
-  const parts = [];
+  const plan = sentencePlan(spoken);
+  const flat = plan.flatMap((sentences, pi) => sentences.map((markup) => ({ pi, markup })));
   let spent = 0;
-  for (const c of chunks(spoken.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean))) {
-    let audio = null;
-    for (let attempt = 1; attempt <= 2 && !audio; attempt++) {
-      const got = await synthesize(c, key);
-      spent += c.length;
-      const rate = speechRate(c, mp3Seconds(got));
-      if (rate >= RATE_BAND[0] && rate <= RATE_BAND[1]) audio = got;
-      else console.warn(`  ⚠ ${src}: 말 빠르기 ${rate.toFixed(2)}자/초 — ${attempt === 1 ? '다시 합성합니다' : '두 번 다 어긋났습니다'}`);
+  const clips = await mapLimit(flat, 4, async ({ markup }) => {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const pcm = trimSilence(await synthesize(markup, key, attempt - 1), SAMPLE_RATE);
+      spent += markup.length;
+      const problem = sentenceProblem(markup, pcm, SAMPLE_RATE);
+      if (!problem) return pcm;
+      console.warn(`  ⚠ ${src}: ${problem} — ${attempt < 3 ? '다시 합성합니다' : '세 번 다 어긋났습니다'} («${markup.slice(0, 24)}…»)`);
     }
-    if (!audio) return { audio: null, spent };
-    parts.push(audio);
-  }
-  return { audio: Buffer.concat(parts), spent };
+    return null;
+  });
+  if (clips.includes(null)) return { audio: null, spent };
+  const pcm = joinTrack(plan.map((_, pi) => clips.filter((_c, k) => flat[k].pi === pi)), SAMPLE_RATE);
+  const inner = Math.max(0, ...clips.flatMap((c) => innerPauses(c, SAMPLE_RATE)));
+  const n = flat.length;
+  console.log(`  ♪ ${src}: ${Math.round(pcm.length / SAMPLE_RATE)}초 · 문장 ${n} · 쉼 문장 사이 ${n - plan.length}곳 ${PAUSE.sentence}초·문단 사이 ${plan.length - 1}곳 ${PAUSE.paragraph}초 · 문장 안 가장 긴 쉼 ${inner.toFixed(2)}초`);
+  return { audio: encodeMp3(pcm, SAMPLE_RATE), spent };
 }
 
 async function main() {
@@ -244,7 +376,7 @@ async function main() {
       const src = `seville/${p.id.replace(/^seville-/, '')}-${t.id}.mp3`;
       const file = path.join(outDir, src);
       const spoken = spokenText(t.text);
-      const fingerprint = sha256(JSON.stringify([spoken, VOICE, AUDIO, PARAGRAPH_PAUSE]));
+      const fingerprint = sha256(JSON.stringify([spoken, VOICE, AUDIO, PAUSE, COMMA_PAUSE, MP3_BITRATE, MAKE_VERSION]));
       if (!(state[src] === fingerprint && fs.existsSync(file))) {
         const made = await synthesizeTrack(spoken, src, key);
         spent += made.spent;
@@ -252,7 +384,6 @@ async function main() {
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, made.audio);
         if (!draft) state[src] = fingerprint;
-        console.log(`  ♪ ${src}`);
       }
       const buf = fs.readFileSync(file);
       tracks.push({ id: t.id, role: t.role, title: t.title, src, seconds: Math.round(mp3Seconds(buf)), bytes: buf.length,
@@ -267,7 +398,7 @@ async function main() {
   if (!draft) fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n');
   if (failed.length) {
     // 카탈로그는 쓰지 않는다 — 실패한 트랙이 빠지거나 옛 파일이 실린 채 배포되지 않게
-    console.error(`✗ 말 빠르기가 원고와 맞지 않는 트랙 ${failed.length}편: ${failed.join(', ')} — 다시 돌리면 이것만 합성합니다. 계속되면 원고를 들어 보세요`);
+    console.error(`✗ 잰 값(말 빠르기·문장 안 쉼)이 어긋난 문장이 있는 트랙 ${failed.length}편: ${failed.join(', ')} — 다시 돌리면 이것만 합성합니다. 계속되면 그 문장을 들어 보세요`);
     process.exit(1);
   }
   fs.mkdirSync(outDir, { recursive: true });
@@ -275,5 +406,6 @@ async function main() {
   console.log(`${draft ? '검수용 ' : ''}카탈로그: ${catalog.places.length}곳 · 이번에 합성한 글자 ${spent.toLocaleString()}자 → ${path.relative(ROOT, outDir)}/`);
 }
 
-module.exports = { sinoKorean, spokenText, withJosa, chunks, mp3Seconds, speechRate, RATE_BAND, check, loadPlaces };
+module.exports = { sinoKorean, spokenText, withJosa, sentencePlan, mp3Seconds, speechRate, RATE_BAND, PAUSE, check, loadPlaces,
+  wavSamples, trimSilence, innerPauses, joinTrack, sentenceProblem, synthesizeTrack, SAMPLE_RATE };
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });

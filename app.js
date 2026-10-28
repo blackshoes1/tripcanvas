@@ -1223,24 +1223,42 @@ async function loadStories(){
   storyCatalog=TC_STORIES.normalizeCatalog(raw);
   if(storyCatalog.places.length) bgRender(renderSidebar);
 }
-/** 음성 한 편 — 담아 둔 사본이 먼저, 없으면 받아서 지문(sha256)을 확인하고 담는다. @returns {Promise<Blob>} */
+async function sha256Hex(buf){
+  return [...new Uint8Array(await crypto.subtle.digest('SHA-256',buf))].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+// 담아 둔 사본이 지금 카탈로그의 그 음성인가 — 같은 주소에 다시 만든 음성이 올라오면(2026-10-28 띄어읽기 재합성) 옛 사본을 계속 틀었다.
+// 담을 때 지문을 머리글에 적어 두고, 그 전에 담긴 사본만 한 번 해시한다
+async function storyFresh(hit, track){
+  const tag=hit.headers.get('X-Story-Sha256');
+  if(tag) return tag===track.sha256;
+  if(!(window.crypto&&crypto.subtle)) return true;
+  try{ return await sha256Hex(await hit.clone().arrayBuffer())===track.sha256; }catch(_){ return false; }
+}
+/** 음성 한 편 — 지금 카탈로그와 같은 사본이 먼저, 없으면 받아서 지문(sha256)을 확인하고 담는다. @returns {Promise<Blob>} */
 async function storyBlob(track){
   const url=TC_STORIES.trackUrl(track), cache=await storyCache();
-  if(cache){ const hit=await cache.match(url).catch(()=>null); if(hit) return hit.blob(); }
-  const res=await fetch(url);
-  if(!res.ok) throw new Error('HTTP '+res.status);
-  const buf=await res.arrayBuffer();
-  if(window.crypto&&crypto.subtle){
-    const hex=[...new Uint8Array(await crypto.subtle.digest('SHA-256',buf))].map(b=>b.toString(16).padStart(2,'0')).join('');
-    if(hex!==track.sha256) throw new Error('INTEGRITY');   // 받다 끊긴 파일을 담아 두면 오프라인에서 계속 끊긴다
+  let stale=null;
+  if(cache){
+    const hit=await cache.match(url).catch(()=>null);
+    if(hit){ if(await storyFresh(hit,track)) return hit.blob(); stale=hit; }
   }
-  const blob=new Blob([buf],{type:'audio/mpeg'});
-  if(cache) await cache.put(url,new Response(blob,{headers:{'Content-Type':'audio/mpeg'}})).catch(()=>{});
-  return blob;
+  try{
+    const res=await fetch(url,stale?{cache:'no-cache'}:undefined);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const buf=await res.arrayBuffer();
+    if(window.crypto&&crypto.subtle&&await sha256Hex(buf)!==track.sha256) throw new Error('INTEGRITY');   // 받다 끊긴 파일을 담아 두면 오프라인에서 계속 끊긴다
+    const blob=new Blob([buf],{type:'audio/mpeg'});
+    if(cache) await cache.put(url,new Response(blob,{headers:{'Content-Type':'audio/mpeg','X-Story-Sha256':track.sha256}})).catch(()=>{});
+    return blob;
+  }catch(e){
+    if(stale) return stale.blob();   // 새 음성을 못 받으면(비행기 모드) 옛 사본이라도 들려준다 — 다음에 연결되면 바뀐다
+    throw e;
+  }
 }
 async function storySavedCount(place){
   const cache=await storyCache(); if(!cache) return 0;
-  let n=0; for(const t of place.tracks) if(await cache.match(TC_STORIES.trackUrl(t)).catch(()=>null)) n++;
+  let n=0;
+  for(const t of place.tracks){ const hit=await cache.match(TC_STORIES.trackUrl(t)).catch(()=>null); if(hit&&await storyFresh(hit,t)) n++; }
   return n;
 }
 function storyPlace(id){ return storyCatalog? storyCatalog.places.find(p=>p.id===id)||null : null; }

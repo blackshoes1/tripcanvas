@@ -43,13 +43,69 @@ test('트랙 번호는 횟수로 들리지 않게 읽는다 — 날짜·세는 �
   }
 });
 
-test('요청은 문단을 지키며 나누고, 문단 사이에 쉼을 넣는다', () => {
-  const para = '가'.repeat(700);   // 2100바이트
-  const parts = B.chunks([para, para, para]);
-  assert.equal(parts.length, 2);
-  assert.ok(parts.every((p) => Buffer.byteLength(p, 'utf8') <= 4500));
-  assert.match(parts[0], /\[pause long\]/);
-  assert.throws(() => B.chunks(['가'.repeat(1600)]), /너무 깁니다/);
+test('요청은 문장 하나씩 — 문단을 지키고, 쉼표 뒤에만 짧은 쉼 표시를 넣는다', () => {
+  const plan = B.sentencePlan('운하 앞, 광장 가운데로 나오세요. 두 탑을 보세요!\n\n카스티야, 레온, 아라곤, 나바라를 나타냅니다.\n줄만 바뀐 문장도 같은 문단입니다?');
+  assert.deepEqual(plan, [
+    ['운하 앞, [pause short] 광장 가운데로 나오세요.', '두 탑을 보세요!'],
+    ['카스티야, [pause short] 레온, [pause short] 아라곤, [pause short] 나바라를 나타냅니다.', '줄만 바뀐 문장도 같은 문단입니다?']
+  ]);
+  // 숫자의 점·쉼표(천 단위)는 문장 경계도 쉼도 아니다
+  assert.deepEqual(B.sentencePlan('높이는 97.5미터, 계단은 1,200개입니다.'), [['높이는 97.5미터, [pause short] 계단은 1,200개입니다.']]);
+  assert.throws(() => B.sentencePlan('가'.repeat(1600) + '.'), /너무 깁니다/);
+  // 저장소의 원고는 전부 요청 한도 안이다
+  for (const p of B.loadPlaces()) for (const t of p.tracks) assert.ok(B.sentencePlan(B.spokenText(t.text)).flat().length > 1, `${p.id}/${t.id}`);
+});
+
+// 합성한 소리를 흉내 낸다 — 말소리는 -12dB 안팎, '쉰' 자리의 숨소리 바닥은 -40dB, 진짜 무음은 0
+const RATE = B.SAMPLE_RATE;
+const voice = (sec) => Int16Array.from({ length: Math.round(RATE * sec) }, (_, i) => Math.round(8000 * Math.sin(i / 3)));
+const floor = (sec) => Int16Array.from({ length: Math.round(RATE * sec) }, (_, i) => (i % 2 ? 330 : -330));
+const quiet = (sec) => new Int16Array(Math.round(RATE * sec));
+const cat = (...xs) => { const out = new Int16Array(xs.reduce((a, x) => a + x.length, 0)); let o = 0; for (const x of xs) { out.set(x, o); o += x.length; } return out; };
+const secs = (pcm) => pcm.length / RATE;
+
+test('WAV(LINEAR16)에서 소리 표본을 꺼낸다', () => {
+  const pcm = Int16Array.from([1, -2, 300, -32768]);
+  const data = Buffer.from(pcm.buffer);
+  const head = Buffer.alloc(44);
+  head.write('RIFF', 0, 'latin1'); head.writeUInt32LE(36 + data.length, 4); head.write('WAVE', 8, 'latin1');
+  head.write('fmt ', 12, 'latin1'); head.writeUInt32LE(16, 16); head.writeUInt16LE(1, 20); head.writeUInt16LE(1, 22);
+  head.writeUInt32LE(RATE, 24); head.writeUInt32LE(RATE * 2, 28); head.writeUInt16LE(2, 32); head.writeUInt16LE(16, 34);
+  head.write('data', 36, 'latin1'); head.writeUInt32LE(data.length, 40);
+  assert.deepEqual([...B.wavSamples(Buffer.concat([head, data]))], [1, -2, 300, -32768]);
+  assert.throws(() => B.wavSamples(head.subarray(0, 36)), /data/);
+});
+
+test('문장 앞뒤 쉼은 걷되 첫소리·끝소리 꼬리는 남긴다 — 숨소리 바닥(-40dB)은 걷지 않는다', () => {
+  const trimmed = B.trimSilence(cat(quiet(0.5), voice(2), quiet(0.8)), RATE);
+  assert.ok(Math.abs(secs(trimmed) - (2 + 0.04 + 0.15)) < 0.011, String(secs(trimmed)));
+  assert.equal(B.trimSilence(quiet(1), RATE).length, 0);
+  assert.equal(secs(B.trimSilence(cat(floor(0.3), voice(1)), RATE)), 1.3);
+});
+
+test('문장 사이·문단 사이 쉼은 엔진이 아니라 정한 길이의 무음이다', () => {
+  const s = voice(1);
+  const pcm = B.joinTrack([[s, s], [s]], RATE);
+  const { lead, sentence, paragraph, tail } = B.PAUSE;
+  assert.ok(sentence >= 0.5 && paragraph >= 1.0 && paragraph > sentence);
+  assert.equal(secs(pcm), +(lead + 1 + sentence + 1 + paragraph + 1 + tail).toFixed(6));
+  assert.deepEqual(B.innerPauses(pcm, RATE), [sentence, paragraph]);
+  // 문장 끝에 숨소리 꼬리(-40dB)가 남아 있어도 들리는 쉼은 같은 길이다 — 꼬리만큼 무음을 덜 넣는다
+  const tailed = cat(floor(0.12), voice(1), floor(0.3));
+  const near = (xs, ys) => xs.length === ys.length && xs.every((x, i) => Math.abs(x - ys[i]) < 0.011);
+  const joined = B.innerPauses(B.joinTrack([[tailed, tailed], [tailed]], RATE), RATE);
+  assert.ok(near(joined, [sentence, paragraph]), JSON.stringify(joined));
+});
+
+test('문장 안에서 길게 쉬거나 늘어진 소리는 들이지 않는다 — 대성당 1번의 7초 쉼, 13번의 늘어진 낭독', () => {
+  const markup = '고야의 성녀 후스타와 루피나, [pause short] 그 이야기를 지금부터 들려 드립니다.';   // 29자
+  assert.equal(B.sentenceProblem(markup, cat(voice(2.4), floor(0.4), voice(2.4)), RATE), null);   // 쉼표 자리 0.4초
+  // 숨소리 바닥(-40dB)이 깔린 7초도 쉼이다 — -45dB로 보면 놓친다
+  assert.match(B.sentenceProblem(markup, cat(voice(2.4), floor(7.2), voice(2.4)), RATE), /7\.2초를 쉽니다/);
+  assert.match(B.sentenceProblem(markup, voice(9), RATE), /말 빠르기 3\.22/);
+  assert.match(B.sentenceProblem(markup, voice(2.5), RATE), /말 빠르기 11\.60/);
+  assert.match(B.sentenceProblem(markup, quiet(0), RATE), /소리가 없습니다/);
+  assert.equal(B.sentenceProblem('네, [pause short] 보세요.', voice(0.5), RATE), null);   // 짧은 문장은 빠르기를 재지 않는다
 });
 
 test('MP3 길이는 프레임을 세어 잰다', () => {
@@ -61,13 +117,10 @@ test('MP3 길이는 프레임을 세어 잰다', () => {
   assert.ok(Math.abs(sec - 2.4) < 0.001, String(sec));
 });
 
-test('말 빠르기로 원고와 어긋난 음성을 가린다 — 대성당 13번(368자·문단 셋)이 89초로 나온 일', () => {
-  const markup = ['가 '.repeat(42), '나 '.repeat(291), '다 '.repeat(35)].join('\n[pause long]\n');
-  assert.equal(B.speechRate(markup, 69 + 2).toFixed(2), '5.33');   // 다시 합성한 71초
-  const odd = B.speechRate(markup, 89);
-  assert.ok(odd < B.RATE_BAND[0], String(odd));
-  const ok = B.speechRate(markup, 71);
-  assert.ok(ok >= B.RATE_BAND[0] && ok <= B.RATE_BAND[1]);
+test('말 빠르기는 쉼 표시·공백을 뺀 글자를 센다', () => {
+  assert.equal(B.speechRate('가나, [pause short] 다라 마바.', 2).toFixed(2), '4.00');   // '가나,다라마바.' 8자
+  const [lo, hi] = B.RATE_BAND;
+  assert.ok(lo > 4 && lo < 5 && hi > 7, `${lo}–${hi}`);   // Despina 1.0배의 문장은 4.7~7.5자/초로 나왔다
 });
 
 test('원고 검사는 소리 내 읽힐 출처 ID·괄호와 빈 출처를 잡는다', () => {
