@@ -54,6 +54,12 @@ jobs:
             exit 1
           fi
 
+      - name: Xcode signing tools
+        run: |
+          xcodebuild -version
+          xcode-select -p
+          xcodebuild -help 2>&1 | python3 -c 'import re, sys; lines = sys.stdin.read().splitlines(); start = next((i for i, line in enumerate(lines) if re.match(r"\s*signingStyle\s*:", line)), None); print("\n".join(lines[start:start + 6]) if start is not None else "SIGNING_STYLE_HELP_NOT_FOUND")'
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
@@ -70,10 +76,8 @@ jobs:
             > ~/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
           chmod 600 ~/private_keys/*.p8
 
-      # ⚠️ archive에서 자동 서명을 켜면 Xcode가 **개발용(App Development)** 프로파일을 만들려 하고,
-      # 그건 **등록된 기기를 요구한다** — 새 팀에는 기기가 없어 "your team has no devices"로 죽는다.
-      # App Store 배포용 프로파일은 기기가 필요 없다. 그래서 archive는 서명 없이 만들고
-      # 서명은 export에서 배포용으로 한 번만 한다(CI에서 쓰는 표준 순서).
+      # archive의 개발용 프로파일 발급은 피하고, 요청 권한은 다음 단계에서 임시 서명에 넣는다.
+      # export가 필요한 권한을 유지하도록 unsigned archive에 임시 서명을 추가한다.
       - name: Archive (unsigned)
         working-directory: ios
         run: |
@@ -87,17 +91,19 @@ jobs:
             DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
-      # destination=upload 로 두면 export와 업로드가 한 번에 끝난다.
-      # 서명은 여기서 일어난다 — method: app-store-connect 라서 **배포용** 프로파일을 받는다
-      # (기기 등록이 필요 없는 쪽).
+      - name: Preserve and verify archive entitlements
+        run: python3 scripts/check-ios-signing.py prepare-archive "$RUNNER_TEMP/TripCanvas.xcarchive"
+
+      # 실제 배포 서명된 IPA를 먼저 검사한다. 검사한 파일을 다시 export하거나 묶지 않고 올린다.
       - name: Export options
         run: |
+          umask 077
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
             <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>upload</string>
+            <key>destination</key><string>export</string>
             <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
             <key>signingStyle</key><string>automatic</string>
             <key>uploadSymbols</key><true/>
@@ -105,16 +111,35 @@ jobs:
           </dict></plist>
           PLIST
 
-      - name: Upload to TestFlight
+      - name: Export distribution-signed IPA
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
         run: |
-          xcodebuild -exportArchive \
+          umask 077
+          if xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/TripCanvas.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
             -exportPath "$RUNNER_TEMP/export" \
             -allowProvisioningUpdates \
             -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
             -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }}
+            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} > "$RUNNER_TEMP/export.log" 2>&1; then
+            echo "배포 서명된 IPA 생성 완료"
+          else
+            status=$?
+            python3 scripts/check-ios-signing.py export-errors "$RUNNER_TEMP/export.log" || true
+            echo "배포 서명 실패: xcodebuild exit=$status — 서명·프로파일 원문 로그는 출력하지 않습니다."
+            exit "$status"
+          fi
+
+      - name: Verify signed IPA and upload the same file
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: python3 scripts/check-ios-signing.py upload "$RUNNER_TEMP/export/TripCanvas.ipa"
 
       # 이 실패는 Apple 메시지("No profiles ... were found")가 엉뚱한 곳을 가리킨다 —
       # 번들 ID나 앱 레코드 문제로 읽히지만 실제로는 **키 권한**이다. 로그를 파고들지 않아도
@@ -123,8 +148,9 @@ jobs:
         if: failure()
         run: |
           {
-            echo "### 업로드 실패 — 먼저 API 키 역할부터 볼 것"
+            echo "### 서명·업로드 실패"
             echo ""
+            echo "검증 단계가 실패했으면 표시된 서명 검사 코드를 먼저 확인하세요."
             echo "로그에 \`Cloud signing permission error\` 또는"
             echo "\`No profiles for 'com.fromj.trip...' were found\` 가 있으면"
             echo "**App Store Connect API 키 역할이 \`Admin\` 이 아니다.**"
