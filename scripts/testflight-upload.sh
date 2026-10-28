@@ -26,6 +26,7 @@
 #   조용히 충돌한다. Actions의 run number와 한 줄에 세는 것이 안전하다
 #   (`gh run list --workflow=ios-testflight.yml` 의 가장 큰 번호보다 크게).
 set -euo pipefail
+umask 077
 
 cd "$(dirname "$0")/.."
 IOS_DIR="$PWD/ios"
@@ -53,9 +54,8 @@ echo "▸ TestFlight 업로드 — com.fromj.trip · 빌드 $BUILD"
 # 1) 프로젝트 생성 (저장소에는 .xcodeproj를 넣지 않는다)
 ( cd "$IOS_DIR" && xcodegen generate >/dev/null )
 
-# 2) 아카이브는 **서명 없이** 만든다.
-#    여기서 자동 서명을 켜면 Xcode가 개발용 프로파일을 만들려 하고, 그건 등록된 기기를 요구해
-#    기기가 없는 팀에서는 "your team has no devices"로 죽는다. 배포용 프로파일은 기기가 필요 없다.
+# 2) archive의 개발용 프로파일 발급은 피하고, 임시 서명에 요청 권한을 명시한다.
+#    export가 필요한 권한을 유지하도록 unsigned archive에 임시 서명을 추가한다.
 rm -rf "$WORK"; mkdir -p "$WORK"
 echo "▸ 아카이브 (Release, 서명 없음)"
 ( cd "$IOS_DIR" && xcodebuild archive \
@@ -67,19 +67,21 @@ echo "▸ 아카이브 (Release, 서명 없음)"
     CURRENT_PROJECT_VERSION="$BUILD" ) > "$WORK/archive.log" 2>&1 \
   || { tail -30 "$WORK/archive.log"; fail "아카이브 실패 — 전체 로그: $WORK/archive.log"; }
 
+python3 scripts/check-ios-signing.py prepare-archive "$WORK/TripCanvas.xcarchive"
+
 APP="$WORK/TripCanvas.xcarchive/Products/Applications/TripCanvas.app"
 VER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist")
 GOT=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist")
 [ "$GOT" = "$BUILD" ] || fail "빌드 번호가 안 박혔습니다 (기대 $BUILD, 실제 $GOT)"
 echo "  $VER ($GOT)"
 
-# 3) 서명과 업로드는 여기서 한 번에. method=app-store-connect라 **배포용** 프로파일을 받는다.
+# 3) 배포 서명된 IPA를 로컬 생성해 검사한 뒤 같은 파일을 올린다.
 cat > "$WORK/ExportOptions.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>method</key><string>app-store-connect</string>
-  <key>destination</key><string>upload</string>
+  <key>destination</key><string>export</string>
   <key>teamID</key><string>${APPLE_TEAM_ID}</string>
   <key>signingStyle</key><string>automatic</string>
   <key>uploadSymbols</key><true/>
@@ -87,25 +89,31 @@ cat > "$WORK/ExportOptions.plist" <<PLIST
 </dict></plist>
 PLIST
 
-echo "▸ 서명 + 업로드"
-if ! xcodebuild -exportArchive \
+echo "▸ 배포 서명"
+if xcodebuild -exportArchive \
     -archivePath "$WORK/TripCanvas.xcarchive" \
     -exportOptionsPlist "$WORK/ExportOptions.plist" \
     -exportPath "$WORK/export" \
     -allowProvisioningUpdates \
     -authenticationKeyPath "$KEY" \
     -authenticationKeyID "$APPSTORE_KEY_ID" \
-    -authenticationKeyIssuerID "$APPSTORE_ISSUER_ID" > "$WORK/upload.log" 2>&1; then
-  tail -30 "$WORK/upload.log"
+    -authenticationKeyIssuerID "$APPSTORE_ISSUER_ID" > "$WORK/export.log" 2>&1; then
+  echo "  배포 서명된 IPA 생성 완료"
+else
+  status=$?
   echo "" >&2
+  python3 scripts/check-ios-signing.py export-errors "$WORK/export.log" || true
   # 이 실패는 Apple 메시지가 엉뚱한 곳을 가리킨다 — 번들 ID나 앱 레코드 문제로 읽히지만 실제로는 키 권한이다.
-  if grep -qE "Cloud signing permission error|No profiles for" "$WORK/upload.log"; then
+  if grep -qE "Cloud signing permission error|No profiles for" "$WORK/export.log"; then
     echo "→ 먼저 API 키 역할부터 보세요: **Admin**이어야 합니다." >&2
     echo "  -allowProvisioningUpdates가 프로파일을 직접 만드는데 App Manager에는 그 권한이 없습니다." >&2
     echo "  역할은 나중에 못 바꿉니다 — Admin으로 키를 새로 만드세요(Issuer ID는 그대로)." >&2
   fi
-  fail "업로드 실패 — 전체 로그: $WORK/upload.log"
+  fail "배포 서명 실패: xcodebuild exit=$status — 서명·프로파일 원문 로그는 출력하지 않습니다."
 fi
+
+echo "▸ 실제 서명·프로파일 검증 + 같은 IPA 업로드"
+python3 scripts/check-ios-signing.py upload "$WORK/export/TripCanvas.ipa"
 
 # 바이너리만 올리면 폰에서 뭐가 바뀐 빌드인지 알 수 없다. NOTES가 있으면 채운다.
 # ⚠️ 여기서 실패해도 업로드는 이미 성공이다 — 스크립트를 실패로 끝내지 않는다.

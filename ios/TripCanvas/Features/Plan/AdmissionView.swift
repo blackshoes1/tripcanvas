@@ -184,6 +184,8 @@ struct SpotInformationView: View {
             PaperList {
                 Section {
                     PlacePhotoView(placeId: spot.placeId, kakaoId: spot.kakaoId, name: spot.name)
+                    // 듣기는 편집이 아니다 — 보기 권한에도 연다.
+                    StoryOpenButton(spot: StorySpot(spot))
                 }
                 Section {
                     if let contextLabel, !contextLabel.isEmpty {

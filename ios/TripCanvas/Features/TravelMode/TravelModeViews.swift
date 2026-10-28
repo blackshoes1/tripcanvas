@@ -237,3 +237,73 @@ struct TravelModeSetupView: View {
         dismiss()
     }
 }
+
+/// 실시간 현황이 꺼져 있을 때 `지금`이 하는 말. 여행 중 권유(`TravelModeInviteCard`)와 같은 얇은 띠이고 같은 자리,
+/// 다음 일정 카드 **바로 아래**에 둔다 — 지금 할 일보다 먼저 읽히면 안 된다. 꺼 둔 것은 사용자의 선택이라 조르지 않는다:
+/// '이대로 둘게요'(✕)로 접으면 여행 중 안내를 다시 켜거나 설정이 바뀔 때까지 말하지 않는다.
+/// ⚠️ 켜는 곳을 글로도 적는다 — '설정에서 켜기'(`openSettingsURLString`)가 앱 페이지가 아니라 설정 첫 화면에
+/// 떨어지는 경우가 있다(시뮬레이터 iOS 26.5·27에서 7번 중 7번, 2026-10-26). 경로에 '앱' 단계를 적지 않는다 —
+/// iOS 17(최소 지원)에는 그 메뉴가 없고 앱이 설정 첫 화면 아래에 바로 있다.
+/// ⚠️ "바로 시작해요"라고 약속하지 않는다 — 켜고 돌아와도 연결이 없으면 다음에 새로 받을 때 뜬다.
+struct LiveActivitySettingsNotice: View {
+    let onDismiss: () -> Void
+    @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// 언제 말하는가 — 이 여행의 여행 중 안내가 켜져 있고, 설정에서 꺼져 있고, 접지 않았을 때.
+    /// `지금`과 검증 하네스가 같은 판정을 쓴다.
+    static func isShown(travelModeTripId: String?, tripId: String, disabledInSettings: Bool, dismissed: Bool) -> Bool {
+        travelModeTripId == tripId && disabledInSettings && !dismissed
+    }
+
+    var body: some View {
+        // 큰 글씨에서는 버튼이 줄 끝에 들어가지 않는다 — 문구 아래로 내린다.
+        let stacked = typeSize >= .xxxLarge
+        HStack(alignment: stacked ? .top : .center, spacing: Space.m) {
+            Image(systemName: "lock.iphone")
+                .foregroundStyle(Ink.warning)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("잠금화면 실시간 현황이 꺼져 있어요")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Ink.ink)
+                Text("설정 앱의 With J > 실시간 현황에서 켤 수 있어요")
+                    .font(.caption)
+                    .foregroundStyle(Ink.soft)
+                if stacked { settingsButton.padding(.top, Space.s) }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            if !stacked { settingsButton }
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Ink.soft)
+                    .frame(width: 32, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("이대로 둘게요")
+        }
+        .padding(.leading, Space.l)
+        .padding(.trailing, Space.s)
+        .padding(.vertical, Space.s)
+        .background(Ink.warning.opacity(0.09), in: RoundedRectangle(cornerRadius: Radius.card))
+    }
+
+    private var settingsButton: some View {
+        Button {
+            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+            openURL(url)
+        } label: {
+            Text("설정에서 켜기")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .padding(.horizontal, Space.m)
+                .frame(minHeight: 36)
+                .background(Ink.accent, in: Capsule())
+                .foregroundStyle(Ink.onAccent)
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: 44)
+    }
+}

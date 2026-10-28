@@ -134,6 +134,27 @@
       "when": 1792037104950,
       "tag": "0018_daily_moments",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793081222759,
+      "tag": "0019_live_activity_subscriptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793138410154,
+      "tag": "0020_auth_account_issuer_nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793140840586,
+      "tag": "0021_auth_rate_limit_key_unique",
+      "breakpoints": true
     }
   ]
 }

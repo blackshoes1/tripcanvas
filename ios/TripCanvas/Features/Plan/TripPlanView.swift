@@ -180,6 +180,11 @@ struct TripPlanView: View {
                     },
                     onMoveToDay: { index, day, spot in
                         await model.moveSpot(at: index, toDay: day, with: spot, dayIndex: session.day, expectedRevision: session.revision) ? nil : model.saveFailureMessage
+                    },
+                    moveContext: model.document.map { document in
+                        SpotMoveContext(tripId: trip.id, document: document, revision: session.revision, source: env.service) { draft, revision in
+                            await model.savePreparedDocument(draft, expectedRevision: revision, message: "장소를 옮겼어요") ? nil : model.saveFailureMessage
+                        }
                     })
             }
         }
@@ -394,7 +399,12 @@ struct TripPlanView: View {
 
     private func openFocusedActivity() {
         guard let target = model.takeFocusedSpot() else { return }
-        editSpot(target.index, spot: target.spot, model: model)
+        switch target.intent {
+        case .edit: editSpot(target.index, spot: target.spot, model: model)
+        case .move:
+            guard model.canEdit else { return }
+            prepareMove([target.index], model: model)
+        }
     }
 
     private func editSpot(_ index: Int, spot: TripSpot, model: TripPlanViewModel) {

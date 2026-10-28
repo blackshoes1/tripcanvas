@@ -1365,3 +1365,89 @@ test('일정 조정에서 빼는 곳의 문장 — 조사를 이름에 맞추고
   assert.equal(A.replanDropNote(['Sagrada'], false), "Sagrada는 '건너뜀'으로 표시해요");
   assert.equal(A.replanDropNote([], true), null);
 });
+
+
+test('지금 일정: 겹친 일정은 가장 최근 시작한 곳을 보고 미래 장소보다 현재를 먼저 본다', () => {
+  const trip=tripOf([{startAt:'09:00',spots:[
+    {name:'오전 장소',at:'09:00',stayMin:180},
+    {name:'나중 장소',at:'15:00',stayMin:60},
+    {name:'지금 장소',at:'11:00',stayMin:60},
+    {name:'같은 시각 장소',at:'11:00',stayMin:60}
+  ]}]);
+  const state=stateOf(trip,{todayISO:TODAY,nowMin:690,legMin:()=>0});
+  assert.equal(state.currentItem.name,'지금 장소');
+  assert.equal(state.nextItem.name,'지금 장소');
+});
+
+test('지금 일정: 현재가 없으면 저장 순서와 관계없이 가장 가까운 미래를 본다', () => {
+  const trip=tripOf([{startAt:'09:00',spots:[
+    {name:'나중 장소',at:'15:00',stayMin:60},
+    {name:'먼저 갈 곳',at:'11:00',stayMin:60}
+  ]}]);
+  const state=stateOf(trip,{todayISO:TODAY,nowMin:630,legMin:()=>0});
+  assert.equal(state.currentItem,null);
+  assert.equal(state.nextItem.name,'먼저 갈 곳');
+  assert.equal(state.nextFixed.title,'먼저 갈 곳');
+  assert.equal(state.freeBefore.name,'먼저 갈 곳');
+  const preview=stateOf(trip,{todayISO:'2026-12-25',nowMin:630,legMin:()=>0});
+  assert.equal(preview.nextItem.name,'나중 장소');
+  assert.equal(preview.nextFixed.title,'나중 장소');
+});
+
+test('지금 일정: 끝나는 시각에는 다음으로 가고 체류 0분인 지금 일정도 놓치지 않는다', () => {
+  const trip=tripOf([{startAt:'09:00',spots:[
+    {name:'끝난 곳',at:'09:00',stayMin:60},
+    {name:'잠깐 들를 곳',at:'10:00',stayMin:0},
+    {name:'다음 장소',at:'11:00',stayMin:60}
+  ]}]);
+  assert.equal(stateOf(trip,{todayISO:TODAY,nowMin:600,legMin:()=>0}).nextItem.name,'잠깐 들를 곳');
+  assert.equal(stateOf(trip,{todayISO:TODAY,nowMin:601,legMin:()=>0}).nextItem.name,'다음 장소');
+});
+
+test('지금 일정: 전부 지난 뒤 첫 장소로 돌아가지 않고 방문 표시는 사용자가 정한다', () => {
+  const trip=tripOf([{startAt:'09:00',spots:[
+    {name:'오전 장소',at:'09:00',stayMin:60},
+    {name:'점심 장소',at:'11:00',stayMin:60}
+  ]}]);
+  const before=JSON.stringify(trip);
+  const state=stateOf(trip,{todayISO:TODAY,nowMin:780,legMin:()=>0});
+  assert.equal(state.nextItem,null);
+  assert.equal(state.currentItem,null);
+  assert.deepEqual(state.remainingItems,['d0s0','d0s1']);
+  assert.deepEqual(state.completedItems,[]);
+  assert.deepEqual(state.items.map(item=>item.status),['PLANNED','PLANNED']);
+  assert.equal(JSON.stringify(trip),before);
+  const pulse=A.tripPulse(state,{needed:false});
+  assert.equal(pulse.code,'ON_TRACK');
+  assert.match(pulse.text,/시간.*지났/);
+  assert.ok(!/모두.*다녀|마쳤|완료/.test(pulse.text));
+});
+
+test('지금 일정: 완료·건너뜀·취소는 제외하고 미리보기는 사람이 정한 순서를 지킨다', () => {
+  const trip=tripOf([{startAt:'09:00',spots:[
+    {name:'완료',at:'11:00',stayMin:60,status:'COMPLETED'},
+    {name:'건너뜀',at:'11:00',stayMin:60,status:'SKIPPED'},
+    {name:'취소',at:'11:00',stayMin:60,status:'CANCELLED'},
+    {name:'먼 곳 먼저',at:'15:00',stayMin:60},
+    {name:'가까운 시각',at:'11:00',stayMin:60}
+  ]}]);
+  const live=stateOf(trip,{todayISO:TODAY,nowMin:690,legMin:()=>0});
+  assert.equal(live.nextItem.name,'가까운 시각');
+  assert.equal(live.currentItem.name,'가까운 시각');
+  const preview=stateOf(trip,{todayISO:'2026-12-25',nowMin:690,legMin:()=>0});
+  assert.equal(preview.nextItem.name,'먼 곳 먼저');
+  assert.equal(preview.currentItem,null);
+});
+
+test('지금 일정 지문: 방문 표시가 같아도 시각으로 고른 장소가 바뀌면 갱신한다', () => {
+  const trip=tripOf([{startAt:'09:00',spots:[
+    {name:'오전 장소',at:'09:00',stayMin:60},
+    {name:'점심 장소',at:'11:00',stayMin:60}
+  ]}]);
+  const before=stateOf(trip,{todayISO:TODAY,nowMin:480,legMin:()=>0});
+  const after=stateOf(trip,{todayISO:TODAY,nowMin:630,legMin:()=>0});
+  assert.deepEqual(before.items.map(item=>item.status),after.items.map(item=>item.status));
+  assert.notEqual(A.stateVersion(before),A.stateVersion(after));
+  const same=stateOf(trip,{todayISO:TODAY,nowMin:631,legMin:()=>0});
+  assert.equal(A.stateVersion(after),A.stateVersion(same));
+});

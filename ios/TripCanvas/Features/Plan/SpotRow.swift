@@ -12,6 +12,8 @@ struct SpotRow: View {
     /// 세로 선을 이 줄 위·아래로 잇는가. 하루의 첫 줄 위와 끝 줄 아래는 비운다(선이 허공에서 시작하지 않게).
     var railTop = true
     var railBottom = true
+    /// With J 이야기가 붙는 장소인가. **표시만** 한다 — 여는 길은 길게 누르기·편집기·장소 정보다(`PlanSpotList`).
+    var hasStory = false
 
     /// 시간 칸 폭. 승인 시안의 왼쪽 시각 열이다 — `07:20`이 기준이고 글자 크기 설정을 따라 커진다.
     /// ⚠️ 고정 시각의 📌와 `(익일)`은 여기 그대로 남는다. 좁혔다고 **뜻을 버리지 않는다** —
@@ -132,6 +134,12 @@ struct SpotRow: View {
                 if let text = admissionText {
                     Label(text, systemImage: spot.admission.isBooked ? "checkmark.seal" : "ticket")
                         .font(.caption).foregroundStyle(spot.needsReservation ? Ink.warning : Ink.soft)
+                }
+                // ⚠️ 줄 안에 버튼을 두지 않는다 — 줄 전체를 탭 표면(`PlanSpotTapSurface`)이 덮어 눌리지 않는다.
+                //    누르면 편집기·장소 정보의 '듣기'로, 길게 누르면 바로 열린다.
+                if hasStory {
+                    Label("With J 이야기", systemImage: "headphones")
+                        .font(.caption).foregroundStyle(Ink.accent)
                 }
                 // 갈라졌던 사람들이 다시 만나는 지점. 시각은 타임라인이 정하므로 여기서 말하지 않는다.
                 if plan?.reunion == true {

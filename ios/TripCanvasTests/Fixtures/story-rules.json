@@ -1,0 +1,1240 @@
+{
+  "catalog": {
+    "version": 1,
+    "updated": "2026-10-27",
+    "places": [
+      {
+        "id": "seville-plaza-espana",
+        "kind": "PLACE",
+        "name": "스페인 광장",
+        "localName": "Plaza de España",
+        "city": "세비야",
+        "lat": 37.3772,
+        "lng": -5.9869,
+        "radiusM": 300,
+        "aliases": [
+          "세비야 스페인 광장",
+          ""
+        ],
+        "placeIds": [
+          "ChIJ_plaza_sevilla"
+        ],
+        "tracks": [
+          {
+            "id": "more",
+            "role": "MORE",
+            "title": "더 듣기",
+            "src": "seville/plaza-more.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01",
+              "X99",
+              "P02"
+            ],
+            "reviewedAt": "2026-10-22"
+          },
+          {
+            "id": "core",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/plaza-core.mp3",
+            "seconds": 90.5,
+            "bytes": 1000.4,
+            "sha256": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          },
+          {
+            "id": "core",
+            "role": "CORE",
+            "title": "같은 id는 앞의 것만",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          }
+        ]
+      },
+      {
+        "id": "seville-alcazar",
+        "kind": "PLACE",
+        "name": "레알 알카사르",
+        "localName": "  Real Alcázar de Sevilla ﻿",
+        "city": "세비야",
+        "lat": 37.3831,
+        "lng": -5.9903,
+        "radiusM": 300,
+        "aliases": [
+          "알카사르",
+          "Real Alcázar",
+          "Alcázar de Sevilla"
+        ],
+        "placeIds": [],
+        "tracks": [
+          {
+            "id": "core",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/alcazar-core.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          },
+          {
+            "id": "evil-up",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "../secret.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          },
+          {
+            "id": "evil-url",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "https://evil.example/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          },
+          {
+            "id": "upper",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "Seville/X.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          },
+          {
+            "id": "badsha",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "xyz",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          },
+          {
+            "id": "unreviewed",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": null
+          },
+          {
+            "id": "blankreview",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "   "
+          },
+          {
+            "id": "zero",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 0,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          },
+          {
+            "id": "textsec",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": "90",
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          },
+          {
+            "id": "bonus",
+            "role": "BONUS",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          },
+          {
+            "id": "stop-no-n",
+            "role": "STOP",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          },
+          {
+            "id": "stop-half",
+            "role": "STOP",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22",
+            "stop": {
+              "n": 1.5
+            }
+          }
+        ]
+      },
+      {
+        "id": "seville-cathedral",
+        "kind": "PLACE",
+        "name": "세비야 대성당",
+        "localName": "Catedral de Sevilla",
+        "city": "세비야",
+        "lat": 37.3858,
+        "lng": -5.9931,
+        "radiusM": 250,
+        "aliases": [
+          "대성당",
+          "Catedral de Sevilla",
+          "히랄다"
+        ],
+        "placeIds": [],
+        "tracks": [
+          {
+            "id": "s3",
+            "role": "STOP",
+            "title": "지점 3",
+            "src": "seville/cathedral-03.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22",
+            "stop": {
+              "n": 3,
+              "find": [
+                "금빛",
+                "",
+                "제단",
+                "넷",
+                "다섯",
+                "여섯"
+              ],
+              "localName": "Retablo Mayor"
+            }
+          },
+          {
+            "id": "s1",
+            "role": "STOP",
+            "title": "지점 1",
+            "src": "seville/cathedral-01.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22",
+            "stop": {
+              "n": 1,
+              "find": [],
+              "localName": ""
+            }
+          },
+          {
+            "id": "s2b",
+            "role": "STOP",
+            "title": "지점 2 · 둘째",
+            "src": "seville/cathedral-02b.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22",
+            "stop": {
+              "n": 2
+            }
+          },
+          {
+            "id": "s2a",
+            "role": "STOP",
+            "title": "지점 2 · 첫째",
+            "src": "seville/cathedral-02a.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22",
+            "stop": {
+              "n": 2
+            }
+          },
+          {
+            "id": "intro",
+            "role": "CORE",
+            "title": "먼저 들을 것",
+            "src": "seville/cathedral-core.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          }
+        ]
+      },
+      {
+        "id": "seville-city",
+        "kind": "CITY",
+        "name": "세비야",
+        "lat": 37.3891,
+        "lng": -5.9845,
+        "radiusM": 8000,
+        "tracks": [
+          {
+            "id": "intro",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/city.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          }
+        ]
+      },
+      {
+        "id": "madrid-city",
+        "kind": "CITY",
+        "name": "마드리드",
+        "lat": 40.4168,
+        "lng": -3.7038,
+        "radiusM": 10000,
+        "tracks": [
+          {
+            "id": "intro",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "madrid/city.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          }
+        ]
+      },
+      {
+        "id": "seville-plaza-espana",
+        "kind": "PLACE",
+        "name": "같은 id는 앞의 것만",
+        "lat": 37,
+        "lng": -5,
+        "radiusM": 100,
+        "tracks": [
+          {
+            "id": "core",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          }
+        ]
+      },
+      {
+        "id": "nothing-to-hear",
+        "kind": "PLACE",
+        "name": "들을 것 없음",
+        "lat": 37,
+        "lng": -5,
+        "radiusM": 100,
+        "tracks": [
+          {
+            "id": "core",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": null
+          }
+        ]
+      },
+      {
+        "id": "too-wide",
+        "kind": "PLACE",
+        "name": "너무 넓음",
+        "lat": 37,
+        "lng": -5,
+        "radiusM": 999999,
+        "tracks": [
+          {
+            "id": "core",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          }
+        ]
+      },
+      {
+        "id": "bad-lat",
+        "kind": "PLACE",
+        "name": "위도 밖",
+        "lat": 91,
+        "lng": -5,
+        "radiusM": 100,
+        "tracks": [
+          {
+            "id": "core",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          }
+        ]
+      },
+      {
+        "id": "text-lat",
+        "kind": "PLACE",
+        "name": "글자 위도",
+        "lat": "37",
+        "lng": -5,
+        "radiusM": 100,
+        "tracks": [
+          {
+            "id": "core",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          }
+        ]
+      },
+      {
+        "id": "area",
+        "kind": "AREA",
+        "name": "모르는 종류",
+        "lat": 37,
+        "lng": -5,
+        "radiusM": 100,
+        "tracks": [
+          {
+            "id": "core",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/x.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "reviewedAt": "2026-10-22"
+          }
+        ]
+      },
+      "not-an-object"
+    ],
+    "sources": {
+      "P01": {
+        "title": "세비야 관광청",
+        "url": "https://visitasevilla.es/"
+      },
+      "P02": {
+        "title": "  알카사르 공식  ",
+        "url": " https://www.alcazarsevilla.org/ "
+      },
+      "BAD1": {
+        "title": "x",
+        "url": "javascript:alert(1)"
+      },
+      "BAD2": {
+        "title": "x",
+        "url": "http://plain.example/"
+      },
+      "BAD3": {
+        "title": "x",
+        "url": "https://has space.example/"
+      },
+      "BAD4": {
+        "title": "",
+        "url": "https://no-title.example/"
+      },
+      "BAD5": "not-an-object",
+      "P03": {
+        "title": "결합 문자",
+        "url": "https://́x.example/"
+      }
+    }
+  },
+  "normalized": {
+    "version": 1,
+    "updated": "2026-10-27",
+    "disclosure": "AI 음성으로 읽었어요",
+    "places": [
+      {
+        "id": "seville-plaza-espana",
+        "kind": "PLACE",
+        "name": "스페인 광장",
+        "localName": "Plaza de España",
+        "city": "세비야",
+        "lat": 37.3772,
+        "lng": -5.9869,
+        "radiusM": 300,
+        "placeIds": [
+          "ChIJ_plaza_sevilla"
+        ],
+        "aliases": [
+          "세비야 스페인 광장"
+        ],
+        "tracks": [
+          {
+            "id": "core",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/plaza-core.mp3",
+            "seconds": 91,
+            "bytes": 1000,
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "sources": [
+              "P01"
+            ],
+            "stop": null
+          },
+          {
+            "id": "more",
+            "role": "MORE",
+            "title": "더 듣기",
+            "src": "seville/plaza-more.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01",
+              "X99",
+              "P02"
+            ],
+            "stop": null
+          }
+        ]
+      },
+      {
+        "id": "seville-alcazar",
+        "kind": "PLACE",
+        "name": "레알 알카사르",
+        "localName": "Real Alcázar de Sevilla",
+        "city": "세비야",
+        "lat": 37.3831,
+        "lng": -5.9903,
+        "radiusM": 300,
+        "placeIds": [],
+        "aliases": [
+          "알카사르",
+          "Real Alcázar",
+          "Alcázar de Sevilla"
+        ],
+        "tracks": [
+          {
+            "id": "core",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/alcazar-core.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "stop": null
+          }
+        ]
+      },
+      {
+        "id": "seville-cathedral",
+        "kind": "PLACE",
+        "name": "세비야 대성당",
+        "localName": "Catedral de Sevilla",
+        "city": "세비야",
+        "lat": 37.3858,
+        "lng": -5.9931,
+        "radiusM": 250,
+        "placeIds": [],
+        "aliases": [
+          "대성당",
+          "Catedral de Sevilla",
+          "히랄다"
+        ],
+        "tracks": [
+          {
+            "id": "intro",
+            "role": "CORE",
+            "title": "먼저 들을 것",
+            "src": "seville/cathedral-core.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "stop": null
+          },
+          {
+            "id": "s1",
+            "role": "STOP",
+            "title": "지점 1",
+            "src": "seville/cathedral-01.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "stop": {
+              "n": 1,
+              "find": [],
+              "localName": ""
+            }
+          },
+          {
+            "id": "s2b",
+            "role": "STOP",
+            "title": "지점 2 · 둘째",
+            "src": "seville/cathedral-02b.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "stop": {
+              "n": 2,
+              "find": [],
+              "localName": ""
+            }
+          },
+          {
+            "id": "s2a",
+            "role": "STOP",
+            "title": "지점 2 · 첫째",
+            "src": "seville/cathedral-02a.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "stop": {
+              "n": 2,
+              "find": [],
+              "localName": ""
+            }
+          },
+          {
+            "id": "s3",
+            "role": "STOP",
+            "title": "지점 3",
+            "src": "seville/cathedral-03.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "stop": {
+              "n": 3,
+              "find": [
+                "금빛",
+                "제단",
+                "넷",
+                "다섯",
+                "여섯"
+              ],
+              "localName": "Retablo Mayor"
+            }
+          }
+        ]
+      },
+      {
+        "id": "seville-city",
+        "kind": "CITY",
+        "name": "세비야",
+        "localName": "",
+        "city": "",
+        "lat": 37.3891,
+        "lng": -5.9845,
+        "radiusM": 8000,
+        "placeIds": [],
+        "aliases": [],
+        "tracks": [
+          {
+            "id": "intro",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "seville/city.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "stop": null
+          }
+        ]
+      },
+      {
+        "id": "madrid-city",
+        "kind": "CITY",
+        "name": "마드리드",
+        "localName": "",
+        "city": "",
+        "lat": 40.4168,
+        "lng": -3.7038,
+        "radiusM": 10000,
+        "placeIds": [],
+        "aliases": [],
+        "tracks": [
+          {
+            "id": "intro",
+            "role": "CORE",
+            "title": "핵심",
+            "src": "madrid/city.mp3",
+            "seconds": 90,
+            "bytes": 700000,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sources": [
+              "P01"
+            ],
+            "stop": null
+          }
+        ]
+      }
+    ],
+    "sources": {
+      "P01": {
+        "title": "세비야 관광청",
+        "url": "https://visitasevilla.es/"
+      },
+      "P02": {
+        "title": "알카사르 공식",
+        "url": "https://www.alcazarsevilla.org/"
+      },
+      "P03": {
+        "title": "결합 문자",
+        "url": "https://́x.example/"
+      }
+    }
+  },
+  "nameKeys": [
+    {
+      "input": "Alcázar de Sevilla",
+      "key": "alcazardesevilla"
+    },
+    {
+      "input": "  Plaza de España, Sevilla! ",
+      "key": "plazadeespanasevilla"
+    },
+    {
+      "input": "세비야 대성당",
+      "key": "세비야대성당"
+    },
+    {
+      "input": "ＡＢＣ１２３",
+      "key": "abc123"
+    },
+    {
+      "input": "ﬁesta",
+      "key": "fiesta"
+    },
+    {
+      "input": "İstanbul",
+      "key": "istanbul"
+    },
+    {
+      "input": "Crème Brûlée",
+      "key": "cremebrulee"
+    },
+    {
+      "input": "﻿히랄다 ",
+      "key": "히랄다"
+    },
+    {
+      "input": "L'Àgora",
+      "key": "lagora"
+    },
+    {
+      "input": "São Paulo",
+      "key": "saopaulo"
+    },
+    {
+      "input": "🎧 대성당",
+      "key": "대성당"
+    },
+    {
+      "input": "Ⅻ세기",
+      "key": "xii세기"
+    },
+    {
+      "input": "",
+      "key": ""
+    },
+    {
+      "input": "ΟΔΟΣ",
+      "key": "οδοσ"
+    },
+    {
+      "input": "ΑΚΡΟΠΟΛΙΣ",
+      "key": "ακροπολισ"
+    },
+    {
+      "input": "Ακρόπολις",
+      "key": "ακροπολισ"
+    },
+    {
+      "input": "ΣΟΦΙΑ",
+      "key": "σοφια"
+    }
+  ],
+  "matches": [
+    {
+      "name": "placeId가 같으면 좌표가 없어도",
+      "spot": {
+        "name": "광장",
+        "placeId": "ChIJ_plaza_sevilla"
+      },
+      "story": "seville-plaza-espana"
+    },
+    {
+      "name": "placeId 앞뒤 공백은 떼고 본다",
+      "spot": {
+        "name": "광장",
+        "placeId": " ChIJ_plaza_sevilla "
+      },
+      "story": "seville-plaza-espana"
+    },
+    {
+      "name": "모르는 placeId면 좌표와 이름으로",
+      "spot": {
+        "name": "스페인 광장",
+        "lat": 37.377,
+        "lng": -5.9871,
+        "placeId": "ChIJ_unknown"
+      },
+      "story": "seville-plaza-espana"
+    },
+    {
+      "name": "한국어 이름 · 반경 안",
+      "spot": {
+        "name": "스페인 광장",
+        "lat": 37.377,
+        "lng": -5.9871
+      },
+      "story": "seville-plaza-espana"
+    },
+    {
+      "name": "악센트 없는 스페인어",
+      "spot": {
+        "name": "Real Alcazar de Sevilla",
+        "lat": 37.3829,
+        "lng": -5.9905
+      },
+      "story": "seville-alcazar"
+    },
+    {
+      "name": "별칭을 담은 이름",
+      "spot": {
+        "name": "알카사르 궁전",
+        "lat": 37.3833,
+        "lng": -5.9901
+      },
+      "story": "seville-alcazar"
+    },
+    {
+      "name": "이름이 별칭에 담긴 경우",
+      "spot": {
+        "name": "Alcázar",
+        "lat": 37.3833,
+        "lng": -5.9901
+      },
+      "story": "seville-alcazar"
+    },
+    {
+      "name": "마드리드 스페인 광장",
+      "spot": {
+        "name": "스페인 광장",
+        "lat": 40.4233,
+        "lng": -3.7122
+      },
+      "story": null
+    },
+    {
+      "name": "세고비아 알카사르",
+      "spot": {
+        "name": "알카사르",
+        "lat": 40.9527,
+        "lng": -4.1325
+      },
+      "story": null
+    },
+    {
+      "name": "좌표 없음",
+      "spot": {
+        "name": "스페인 광장"
+      },
+      "story": null
+    },
+    {
+      "name": "좌표가 반쪽",
+      "spot": {
+        "name": "스페인 광장",
+        "lat": 37.3772,
+        "lng": null
+      },
+      "story": null
+    },
+    {
+      "name": "(0,0)은 위치 없음",
+      "spot": {
+        "name": "스페인 광장",
+        "lat": 0,
+        "lng": 0
+      },
+      "story": null
+    },
+    {
+      "name": "너무 짧은 이름",
+      "spot": {
+        "name": "광장",
+        "lat": 37.3772,
+        "lng": -5.9869
+      },
+      "story": null
+    },
+    {
+      "name": "반경 안이지만 이름이 다르다",
+      "spot": {
+        "name": "Bodega Santa Cruz",
+        "lat": 37.385,
+        "lng": -5.991
+      },
+      "story": null
+    },
+    {
+      "name": "반경이 겹치면 이름이 맞는 쪽",
+      "spot": {
+        "name": "알카사르",
+        "lat": 37.3845,
+        "lng": -5.9915
+      },
+      "story": "seville-alcazar"
+    },
+    {
+      "name": "대성당",
+      "spot": {
+        "name": "세비야 대성당",
+        "lat": 37.3858,
+        "lng": -5.9931
+      },
+      "story": "seville-cathedral"
+    },
+    {
+      "name": "히랄다 별칭",
+      "spot": {
+        "name": "히랄다 탑",
+        "lat": 37.3862,
+        "lng": -5.9926
+      },
+      "story": "seville-cathedral"
+    },
+    {
+      "name": "도시는 장소에 붙지 않는다",
+      "spot": {
+        "name": "세비야",
+        "lat": 37.3891,
+        "lng": -5.9845
+      },
+      "story": null
+    },
+    {
+      "name": "빈 placeId는 없는 것",
+      "spot": {
+        "name": "스페인 광장",
+        "lat": 37.377,
+        "lng": -5.9871,
+        "placeId": "   "
+      },
+      "story": "seville-plaza-espana"
+    }
+  ],
+  "cities": [
+    {
+      "name": "위치 없는 장소 다음 세비야",
+      "points": [
+        null,
+        {
+          "lat": 37.39,
+          "lng": -5.99
+        }
+      ],
+      "story": "seville-city"
+    },
+    {
+      "name": "마드리드",
+      "points": [
+        {
+          "lat": 40.4138,
+          "lng": -3.6921
+        }
+      ],
+      "story": "madrid-city"
+    },
+    {
+      "name": "첫 위치 장소가 먼저 — 마드리드 다음 세비야",
+      "points": [
+        {
+          "lat": 40.4138,
+          "lng": -3.6921
+        },
+        {
+          "lat": 37.39,
+          "lng": -5.99
+        }
+      ],
+      "story": "madrid-city"
+    },
+    {
+      "name": "빈 날",
+      "points": [],
+      "story": null
+    },
+    {
+      "name": "(0,0)뿐",
+      "points": [
+        {
+          "lat": 0,
+          "lng": 0
+        }
+      ],
+      "story": null
+    },
+    {
+      "name": "어느 도시에도 없음",
+      "points": [
+        {
+          "lat": 41.3874,
+          "lng": 2.1686
+        }
+      ],
+      "story": null
+    }
+  ],
+  "durations": [
+    {
+      "seconds": 0,
+      "text": "0초"
+    },
+    {
+      "seconds": 45,
+      "text": "45초"
+    },
+    {
+      "seconds": 60,
+      "text": "1분"
+    },
+    {
+      "seconds": 105,
+      "text": "1분 45초"
+    },
+    {
+      "seconds": 120,
+      "text": "2분"
+    },
+    {
+      "seconds": 3600,
+      "text": "1시간"
+    },
+    {
+      "seconds": 3720,
+      "text": "1시간 2분"
+    },
+    {
+      "seconds": 3725,
+      "text": "1시간 2분"
+    },
+    {
+      "seconds": -5,
+      "text": "0초"
+    }
+  ],
+  "sizes": [
+    {
+      "bytes": 0,
+      "text": "1KB"
+    },
+    {
+      "bytes": 300,
+      "text": "1KB"
+    },
+    {
+      "bytes": 512,
+      "text": "1KB"
+    },
+    {
+      "bytes": 1536,
+      "text": "2KB"
+    },
+    {
+      "bytes": 839680,
+      "text": "820KB"
+    },
+    {
+      "bytes": 1048575,
+      "text": "1024KB"
+    },
+    {
+      "bytes": 1048576,
+      "text": "1.0MB"
+    },
+    {
+      "bytes": 1310720,
+      "text": "1.3MB"
+    },
+    {
+      "bytes": 1468006,
+      "text": "1.4MB"
+    },
+    {
+      "bytes": 12466752,
+      "text": "11.9MB"
+    }
+  ],
+  "placeSources": [
+    {
+      "place": "seville-plaza-espana",
+      "ids": [
+        "P01",
+        "P02"
+      ]
+    },
+    {
+      "place": "seville-alcazar",
+      "ids": [
+        "P01"
+      ]
+    },
+    {
+      "place": "seville-cathedral",
+      "ids": [
+        "P01"
+      ]
+    },
+    {
+      "place": "seville-city",
+      "ids": [
+        "P01"
+      ]
+    },
+    {
+      "place": "madrid-city",
+      "ids": [
+        "P01"
+      ]
+    }
+  ]
+}

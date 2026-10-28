@@ -57,6 +57,9 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # With J 이야기를 화면을 끄고 듣는다 — project.yml과 같은 줄(한쪽만 고치면 무료 빌드에서 빠진다).
+        UIBackgroundModes:
+          - audio
         # 첫 실행에 권한을 몰아 요청하지 않는다 — 쓸모를 설명할 수 있을 때 묻는다(§6·§42).
         NSLocationWhenInUseUsageDescription: 다음 장소까지 걸리는 시간과 나서기 좋은 시간을 알려드리기 위해 사용합니다. 위치는 그때 계산에만 쓰고 저장하지 않습니다.
         # 운영 API는 NAS다(2026-09-04 전환) — Tailscale Funnel이 ts.net 이름에 HTTPS를 붙인다.

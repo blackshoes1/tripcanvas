@@ -1,7 +1,946 @@
 {
   "version": 1,
-  "updated": "2026-10-22",
-  "voice": { "engine": "Google Cloud TTS Chirp 3 HD", "name": "ko-KR-Chirp3-HD-Despina", "disclosure": "AI 음성으로 읽었어요" },
-  "places": [],
-  "sources": {}
+  "updated": "2026-10-27",
+  "voice": {
+    "engine": "Google Cloud TTS Chirp 3 HD",
+    "name": "ko-KR-Chirp3-HD-Despina",
+    "disclosure": "AI 음성으로 읽었어요"
+  },
+  "places": [
+    {
+      "id": "seville-alcazar",
+      "kind": "PLACE",
+      "name": "세비야 알카사르",
+      "localName": "Real Alcázar de Sevilla",
+      "city": "세비야",
+      "lat": 37.3831,
+      "lng": -5.9903,
+      "radiusM": 300,
+      "aliases": [
+        "알카사르",
+        "세비야 알카사르",
+        "레알 알카사르",
+        "Real Alcázar",
+        "Alcázar de Sevilla"
+      ],
+      "placeIds": [],
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "페드로 1세 궁전의 정면",
+          "src": "seville/alcazar-core.mp3",
+          "seconds": 79,
+          "bytes": 315456,
+          "sha256": "6568b2d3d527e3fcbfde52420b6885e6e882f977152d1cd1fd1473c58936c29d",
+          "sources": [
+            "A01",
+            "A02",
+            "A03",
+            "A04",
+            "A05",
+            "A15",
+            "A16"
+          ],
+          "reviewedAt": "2026-10-23"
+        },
+        {
+          "id": "more",
+          "role": "MORE",
+          "title": "더 듣기 — 묻혔던 정원과 대서양의 관청",
+          "src": "seville/alcazar-more.mp3",
+          "seconds": 110,
+          "bytes": 441216,
+          "sha256": "d3a7600f016c2e9e5f8feeb29538d9da2e251860464701a7ec36817bae2aace1",
+          "sources": [
+            "A01",
+            "A02",
+            "A06",
+            "A07",
+            "A08",
+            "A09",
+            "A10",
+            "A11",
+            "A12",
+            "A13",
+            "A14",
+            "A17"
+          ],
+          "reviewedAt": "2026-10-23"
+        }
+      ]
+    },
+    {
+      "id": "seville-cathedral",
+      "kind": "PLACE",
+      "name": "세비야 대성당",
+      "localName": "Catedral de Sevilla",
+      "city": "세비야",
+      "lat": 37.3858,
+      "lng": -5.9931,
+      "radiusM": 250,
+      "aliases": [
+        "대성당",
+        "세비야 대성당",
+        "히랄다",
+        "La Giralda",
+        "Catedral de Sevilla",
+        "Catedral de Santa María de la Sede"
+      ],
+      "placeIds": [],
+      "tracks": [
+        {
+          "id": "stop-01",
+          "role": "STOP",
+          "title": "입장 전 도입",
+          "src": "seville/cathedral-stop-01.mp3",
+          "seconds": 145,
+          "bytes": 581472,
+          "sha256": "0a48c882f0f86a630e7f708fc4ea342a5a544643f80bfe65f23f30a699d92517",
+          "sources": [
+            "S01",
+            "S02",
+            "S10",
+            "S11",
+            "S16",
+            "S44",
+            "S43"
+          ],
+          "stop": {
+            "n": 1,
+            "find": [
+              "입장권에 적힌 문을 먼저 확인",
+              "아직 특정 작품 앞일 필요 없음",
+              "입장 후 La Giralda 표지 찾기"
+            ],
+            "localName": "입장권에 적힌 입구"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-02",
+          "role": "STOP",
+          "title": "히랄다 - 오르기 전",
+          "src": "seville/cathedral-stop-02.mp3",
+          "seconds": 179,
+          "bytes": 716064,
+          "sha256": "e973e305aa9c36a9353090ff36eb47404e28f1c41e2e2aa76cb49e27882bda97",
+          "sources": [
+            "S02",
+            "S03",
+            "S04",
+            "S05",
+            "S06",
+            "S44",
+            "S43"
+          ],
+          "stop": {
+            "n": 2,
+            "find": [
+              "La Giralda라는 이름",
+              "탑으로 들어가는 입구",
+              "오르기 직전, 통행을 막지 않는 자리"
+            ],
+            "localName": "La Giralda"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-03",
+          "role": "STOP",
+          "title": "히랄다 - 종루 전망",
+          "src": "seville/cathedral-stop-03.mp3",
+          "seconds": 219,
+          "bytes": 874464,
+          "sha256": "ac14edeeea40e76453629c90d4082c95c452ce318dbcc8a08b7b1beb8f15b404",
+          "sources": [
+            "S02",
+            "S10",
+            "S11",
+            "S12",
+            "S13",
+            "S14",
+            "S53",
+            "S44",
+            "S43"
+          ],
+          "stop": {
+            "n": 3,
+            "find": [
+              "큰 종과 아치형 개구부",
+              "아래로 보이는 도시와 성당 지붕",
+              "경사로를 벗어난 위쪽 종루"
+            ],
+            "localName": "La Giralda / 종루"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-04",
+          "role": "STOP",
+          "title": "본당의 큰 공간",
+          "src": "seville/cathedral-stop-04.mp3",
+          "seconds": 196,
+          "bytes": 784512,
+          "sha256": "3e0c2ad8ed34868b1fafdafe1dcf2d4aff321c85da2b670ef81213f5916bd18d",
+          "sources": [
+            "S01",
+            "S05",
+            "S07",
+            "S08",
+            "S09",
+            "S44",
+            "S43"
+          ],
+          "stop": {
+            "n": 4,
+            "find": [
+              "높은 돌기둥",
+              "뾰족한 아치 천장",
+              "본당 전체를 함께 볼 수 있는 자리"
+            ],
+            "localName": "Catedral / 본당"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-05",
+          "role": "STOP",
+          "title": "중앙 제단",
+          "src": "seville/cathedral-stop-05.mp3",
+          "seconds": 181,
+          "bytes": 722784,
+          "sha256": "943c041154b9149fea5f435e4988e6cb1b260f670ce231f0cc7a9a9920ff4109",
+          "sources": [
+            "S07",
+            "S15",
+            "S44",
+            "S43"
+          ],
+          "stop": {
+            "n": 5,
+            "find": [
+              "여러 층으로 쌓인 금빛 조각 장면",
+              "성당 중심의 큰 제단",
+              "관람객과 작품 사이의 철책"
+            ],
+            "localName": "Retablo Mayor"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-06",
+          "role": "STOP",
+          "title": "콜럼버스 기념묘",
+          "src": "seville/cathedral-stop-06.mp3",
+          "seconds": 201,
+          "bytes": 803616,
+          "sha256": "19f65d8bdee8b394c30cbe94cb4ea9e1435b3a79618756afde18d7d1c4d09140",
+          "sources": [
+            "S17",
+            "S18",
+            "S19",
+            "S20",
+            "S44",
+            "S43"
+          ],
+          "stop": {
+            "n": 6,
+            "find": [
+              "관을 어깨에 멘 네 인물",
+              "왕국을 상징하는 문장과 복장",
+              "바닥이 아니라 높이 올린 관"
+            ],
+            "localName": "Tumba de Colón"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-07",
+          "role": "STOP",
+          "title": "안티구아 성모",
+          "src": "seville/cathedral-stop-07.mp3",
+          "seconds": 178,
+          "bytes": 712992,
+          "sha256": "a49acdf5f8cddcbd4fbe05ca0187c1ef624c0e3241cd9cc6d6cafceddcfce573",
+          "sources": [
+            "S21",
+            "S22",
+            "S41",
+            "S44",
+            "S43"
+          ],
+          "stop": {
+            "n": 7,
+            "find": [
+              "Virgen de la Antigua라는 이름",
+              "아기 예수를 안고 서 있는 성모",
+              "금빛 바탕의 오래된 벽화"
+            ],
+            "localName": "Capilla Virgen de la Antigua"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-08",
+          "role": "STOP",
+          "title": "대성물실",
+          "src": "seville/cathedral-stop-08.mp3",
+          "seconds": 244,
+          "bytes": 977664,
+          "sha256": "cadb8466fec2cb555fe88ff2510af5b82a89f874775487bc0aea9f9616d61788",
+          "sources": [
+            "S05",
+            "S23",
+            "S24",
+            "S25",
+            "S26",
+            "S27",
+            "S28",
+            "S39",
+            "S54",
+            "S55",
+            "S56",
+            "S44",
+            "S43"
+          ],
+          "stop": {
+            "n": 8,
+            "find": [
+              "Sacristía Mayor라는 이름",
+              "큰 돔으로 덮인 방",
+              "입구 아치 안쪽의 음식 접시 조각"
+            ],
+            "localName": "Sacristía Mayor"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-09",
+          "role": "STOP",
+          "title": "참사회실",
+          "src": "seville/cathedral-stop-09.mp3",
+          "seconds": 219,
+          "bytes": 875136,
+          "sha256": "d775c6ed0a60cf76dae8779f1018e8e1a0fef2a4af55010914ab6bd37b902750",
+          "sources": [
+            "S05",
+            "S24",
+            "S29",
+            "S40",
+            "S44",
+            "S43"
+          ],
+          "stop": {
+            "n": 9,
+            "find": [
+              "Sala Capitular라는 이름",
+              "타원형 방의 윤곽",
+              "벽면을 따라 배치된 인물화"
+            ],
+            "localName": "Sala Capitular"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-10",
+          "role": "STOP",
+          "title": "성가대석과 오르간",
+          "src": "seville/cathedral-stop-10.mp3",
+          "seconds": 250,
+          "bytes": 998304,
+          "sha256": "9c5057a2e5af6ae913663191b7057009766a59513e8ce293f1b0b7bf5a9c4bc3",
+          "sources": [
+            "S30",
+            "S31",
+            "S32",
+            "S38",
+            "S57",
+            "S58",
+            "S59",
+            "S44",
+            "S43"
+          ],
+          "stop": {
+            "n": 10,
+            "find": [
+              "Coro라는 이름",
+              "철책 안의 목제 좌석",
+              "위쪽 양편에 마주 선 큰 오르간"
+            ],
+            "localName": "Coro"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-11",
+          "role": "STOP",
+          "title": "산안토니오 예배당",
+          "src": "seville/cathedral-stop-11.mp3",
+          "seconds": 248,
+          "bytes": 990912,
+          "sha256": "735ad0c1aa271d37dc02c4de4313397b57f022bbf23b526566108aee64995b3b",
+          "sources": [
+            "S33",
+            "S34",
+            "S35",
+            "S60",
+            "S44",
+            "S43"
+          ],
+          "stop": {
+            "n": 11,
+            "find": [
+              "Capilla San Antonio 또는 Bautismo",
+              "아래에서 무릎 꿇은 성인",
+              "위쪽 빛 속의 아기 예수와 천사들"
+            ],
+            "localName": "Capilla San Antonio / Bautismo"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-12",
+          "role": "STOP",
+          "title": "오렌지 정원",
+          "src": "seville/cathedral-stop-12.mp3",
+          "seconds": 213,
+          "bytes": 850656,
+          "sha256": "d555f3439af3d22f5cb8a46a1a11c50df7c1600514d9c492b80b65fe1054caf6",
+          "sources": [
+            "S36",
+            "S30",
+            "S07",
+            "S37",
+            "S44",
+            "S43"
+          ],
+          "stop": {
+            "n": 12,
+            "find": [
+              "Patio de los Naranjos라는 이름",
+              "하늘이 열린 바깥뜰",
+              "오렌지나무와 가운데 분수"
+            ],
+            "localName": "Patio de los Naranjos"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-13",
+          "role": "STOP",
+          "title": "고야의 두 성녀 (선택)",
+          "src": "seville/cathedral-stop-13.mp3",
+          "seconds": 71,
+          "bytes": 285696,
+          "sha256": "fe9a444a6a908bcf3c79407b46de6ab5370ee0139007df2ae0b6d6d134b60f48",
+          "sources": [
+            "S56"
+          ],
+          "stop": {
+            "n": 13,
+            "find": [
+              "Sacristía de los Cálices라는 이름",
+              "고야의 〈성녀 후스타와 루피나〉 작품표",
+              "서 있는 두 성녀와 아래쪽의 사자"
+            ],
+            "localName": "Sacristía de los Cálices"
+          },
+          "reviewedAt": "2026-10-22"
+        },
+        {
+          "id": "stop-14",
+          "role": "STOP",
+          "title": "자비의 그리스도 (선택)",
+          "src": "seville/cathedral-stop-14.mp3",
+          "seconds": 69,
+          "bytes": 275136,
+          "sha256": "2901fb7f3fb248d50e3878150c7a9d80761437463fb966460ba61a935937667e",
+          "sources": [
+            "S58",
+            "S59"
+          ],
+          "stop": {
+            "n": 14,
+            "find": [
+              "Capilla San Andrés라는 이름",
+              "십자가에 매달린 목조 그리스도상",
+              "기도 공간으로 운영되는 예배당"
+            ],
+            "localName": "Capilla San Andrés"
+          },
+          "reviewedAt": "2026-10-22"
+        }
+      ]
+    },
+    {
+      "id": "seville-city",
+      "kind": "CITY",
+      "name": "세비야",
+      "localName": "Sevilla",
+      "city": "세비야",
+      "lat": 37.3891,
+      "lng": -5.9845,
+      "radiusM": 8000,
+      "aliases": [
+        "세비야",
+        "세빌리아",
+        "Sevilla",
+        "Seville"
+      ],
+      "placeIds": [],
+      "tracks": [
+        {
+          "id": "intro",
+          "role": "CORE",
+          "title": "강과 함께 바뀐 도시",
+          "src": "seville/city-intro.mp3",
+          "seconds": 132,
+          "bytes": 528672,
+          "sha256": "20c4cd66b1ab0af9437300ec5dc3a03732af2ad5c5bb3192500a27d681e8a001",
+          "sources": [
+            "C01",
+            "C02",
+            "C03",
+            "C04",
+            "C05",
+            "C06",
+            "C07",
+            "C08",
+            "C09",
+            "C10",
+            "C11",
+            "C12"
+          ],
+          "reviewedAt": "2026-10-23"
+        }
+      ]
+    },
+    {
+      "id": "seville-plaza-espana",
+      "kind": "PLACE",
+      "name": "스페인 광장",
+      "localName": "Plaza de España",
+      "city": "세비야",
+      "lat": 37.3772,
+      "lng": -5.9869,
+      "radiusM": 300,
+      "aliases": [
+        "세비야 스페인 광장",
+        "에스파냐 광장",
+        "Plaza de España Sevilla"
+      ],
+      "placeIds": [],
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "박람회를 위해 지은 반원의 광장",
+          "src": "seville/plaza-espana-core.mp3",
+          "seconds": 72,
+          "bytes": 287424,
+          "sha256": "c1882335352285d43ecd1c6b3222df5414dd653c1982004319c5bd87bde206e7",
+          "sources": [
+            "P01",
+            "P02",
+            "P03",
+            "P05",
+            "P06",
+            "P10"
+          ],
+          "reviewedAt": "2026-10-23"
+        },
+        {
+          "id": "more",
+          "role": "MORE",
+          "title": "더 듣기 — 주의 벤치, 공원, 박람회 이후",
+          "src": "seville/plaza-espana-more.mp3",
+          "seconds": 111,
+          "bytes": 444576,
+          "sha256": "7e7d2de46b10b3a297fef0e146a86029c17c29975165f664328503c60c2b1923",
+          "sources": [
+            "P02",
+            "P07",
+            "P08",
+            "P09",
+            "P10",
+            "P11",
+            "P12",
+            "P13"
+          ],
+          "reviewedAt": "2026-10-23"
+        }
+      ]
+    }
+  ],
+  "sources": {
+    "A01": {
+      "title": "알카사르 관리청 공식·역사 — 알모하드 시대 건물, 1248년 이후 왕실의 거처, 1356년부터의 페드로 1세 공사, 지금도 쓰이는 왕궁",
+      "url": "https://alcazarsevilla.org/historia/"
+    },
+    "A02": {
+      "title": "세비야시 세계유산 안내·레알 알카사르 — 913년 아브드 알라흐만 3세, 알무타미드, 알모하드 칼리프, 페드로 1세, 1526년 카를 5세 결혼, 왕실 공식 거처",
+      "url": "https://unesco.urbanismosevilla.org/unesco/en/heritage/humanidad/real-alc%C3%A1zar"
+    },
+    "A03": {
+      "title": "세비야시 역사지구 보호계획·페드로 1세 궁전 카드 — 무데하르 궁전, 아랍어·카스티야어 비문",
+      "url": "https://unesco.urbanismosevilla.org/unesco/sites/default/files/ficha_alcazar_palacio_del_rey__pedro_i.pdf"
+    },
+    "A04": {
+      "title": "세비야시 역사지구 보호계획·몬테리아 안뜰 카드",
+      "url": "https://unesco.urbanismosevilla.org/unesco/sites/default/files/ficha_alcazar_patio_de_la_monteria.pdf"
+    },
+    "A05": {
+      "title": "비시타 세비야·레알 알카사르, 왕들의 궁전 — 1356~1366년 공사, 톨레도·그라나다·코르도바·세비야 장인",
+      "url": "https://legacy.visitasevilla.es/en/history/royal-alcazar-palace-kings"
+    },
+    "A15": {
+      "title": "세비야 건축 안내 세비야xm2·페드로 1세 궁전 정면 — 비문과 1364년",
+      "url": "https://sevillaxm2.com/en/facade-palace-pedro-seville/"
+    },
+    "A16": {
+      "title": "안달루시아 자치정부 교육 블로그·알카사르 안내서 — 정면 비문 내용",
+      "url": "https://blogsaverroes.juntadeandalucia.es/centroadultospalmete/files/2023/06/ALC%C3%81ZAR-DE-SEVILLA-GU%C3%8DA.pdf"
+    },
+    "A06": {
+      "title": "알카사르 관리청 공식·알카사르 노트 연구 — 처녀들의 안뜰 2002년 발굴, 1583년 포장으로 묻힌 정원",
+      "url": "https://www.alcazarsevilla.org/wp-content/pdfs/APUNTES/apuntes4/investigacion03/investigacion.html"
+    },
+    "A07": {
+      "title": "알카사르 관리청 공식·처녀들의 안뜰 발굴 보고 2002~2005",
+      "url": "https://www.alcazarsevilla.org/en/news/excavaciones-arqueologicas-en-el-patio-de-las-doncellas-del-palacio-de-pedro-i/"
+    },
+    "A08": {
+      "title": "안달루시아 자치정부 문화유산 저장소·처녀들의 안뜰 발굴 2002~2004",
+      "url": "https://www.juntadeandalucia.es/cultura/tabula/handle/20.500.11947/22441"
+    },
+    "A09": {
+      "title": "스페인 문화부·인디아스 문서관 안내서 — 1503년 칙령, 알카사르 안의 관청, 1717년 카디스 이전",
+      "url": "https://www.cultura.gob.es/dam/jcr:5cc4a704-ac88-4197-bbc7-92e753ae885c/folleto-archivo-gral-indias-web.pdf"
+    },
+    "A10": {
+      "title": "스페인 문화부 문서관 총람·카사 데 콘트라타시온 — 1503년 알카사르 제독의 방에 설치",
+      "url": "https://censoarchivos.cultura.gob.es/CensoGuia/productordetail.htm?id=46426"
+    },
+    "A11": {
+      "title": "알카사르 관리청 공식·첫 세계 일주 500주년 전시 — 원정 준비의 장소",
+      "url": "https://www.alcazarsevilla.org/noticias/exposicion-v-centenario-de-la-primera-circunnavegacion-de-la-tierra-atlas-y-codices-iluminados-de-los-40-anos-que-cambiaron-el-mundo/"
+    },
+    "A12": {
+      "title": "안달루시아 안내 사이트·알카사르 르네상스 구역 — 알레호 페르난데스의 항해자들의 성모",
+      "url": "https://andalucia.com/cities/seville/alcazar/renaissance.htm"
+    },
+    "A13": {
+      "title": "위키백과·항해자들의 성모 — 보조 확인용",
+      "url": "https://en.wikipedia.org/wiki/The_Virgin_of_the_Navigators"
+    },
+    "A14": {
+      "title": "비시타 세비야·스타워즈에서 왕좌의 게임까지 — 알카사르 정원이 도른의 물의 정원으로 등장",
+      "url": "https://visitasevilla.es/en/de-star-wars-a-juego-de-tronos/"
+    },
+    "A17": {
+      "title": "블러프턴 대학 미술사 이미지 자료·처녀들의 안뜰 — 16세기 위층 회랑",
+      "url": "https://homepages.bluffton.edu/~SULLIVANM/spain/seville/alcazar/alcazar6.html"
+    },
+    "S01": {
+      "title": "대성당 공식 역사·13세기 연표",
+      "url": "https://www.catedraldesevilla.es/la-catedral/catedral-de-sevilla-su-historia/"
+    },
+    "S02": {
+      "title": "대성당 공식 12세기 연표",
+      "url": "https://www.catedraldesevilla.es/timeline_slider_post/xii/"
+    },
+    "S10": {
+      "title": "스페인 문화부·카사 데 콘트라타시온 500주년",
+      "url": "https://www.cultura.gob.es/cultura/archivos/difusion/boletin-de-archivos-estatales/boletines/bae-16-2003/inicio.html"
+    },
+    "S11": {
+      "title": "PARES·카사 데 콘트라타시온 기관 기록",
+      "url": "https://pares.cultura.gob.es/ParesBusquedas20/catalogo/autoridad/46426"
+    },
+    "S16": {
+      "title": "UNESCO·대성당·알카사르·인디아스 문서관",
+      "url": "https://whc.unesco.org/en/list/383/"
+    },
+    "S44": {
+      "title": "대성당 공식 관람 지도",
+      "url": "https://www.catedraldesevilla.es/wp-content/uploads/2023/01/plano-catedral-descargable.pdf"
+    },
+    "S43": {
+      "title": "대성당 공식 관람 계획·왕실예배당 제한",
+      "url": "https://www.catedraldesevilla.es/como-visitar-la-catedral-de-sevilla-horarios-duracion-accesos-y-recomendaciones/"
+    },
+    "S03": {
+      "title": "대성당 공식 14세기 연표",
+      "url": "https://www.catedraldesevilla.es/timeline_slider_post/s-xiv/"
+    },
+    "S04": {
+      "title": "히랄다 공식 건축 설명",
+      "url": "https://www.catedraldesevilla.es/la-catedral/edificio/la-giralda/"
+    },
+    "S05": {
+      "title": "대성당 공식 16세기 연표",
+      "url": "https://www.catedraldesevilla.es/timeline_slider_post/s-xvi/"
+    },
+    "S06": {
+      "title": "안달루시아 문화유산연구원·히랄디요와 모렐",
+      "url": "https://www.juntadeandalucia.es/organismos/iaph/servicios/actualidad/noticias/detalle/498145.html"
+    },
+    "S12": {
+      "title": "안달루시아 통계지도연구원·세비야 항구",
+      "url": "https://ws089.juntadeandalucia.es/didactica/eltiempovuela/entregas/puerto_sevilla/index.htm"
+    },
+    "S13": {
+      "title": "안달루시아 통계지도연구원·역사적 역병",
+      "url": "https://ws089.juntadeandalucia.es/institutodeestadisticaycartografia/blog/2020/06/estadistica-y-cartografia-epidemias-historicas-andalucia/"
+    },
+    "S14": {
+      "title": "스페인 문화부·카사 론하에서 인디아스 문서관으로",
+      "url": "https://www.cultura.gob.es/gl/cultura/areas/archivos/mc/archivos/agi/destacados/expo-lonja.html"
+    },
+    "S53": {
+      "title": "스페인 국가기록원·인디아스 문서관: 거래소의 건립과 대성당 계단의 상인들",
+      "url": "https://artsandculture.google.com/story/la-casa-lonja-de-mercaderes-in-seville-archivos-estatales/VgWxSE1IA2T5LQ?hl=en"
+    },
+    "S07": {
+      "title": "고딕 성당·중앙 제단·성가대 공식 설명",
+      "url": "https://www.catedraldesevilla.es/la-catedral/edificio/la-catedral-gotica-retablo-mayor-coro-capillas-laterales-y-portadas/"
+    },
+    "S08": {
+      "title": "대성당 공식 15세기 연표",
+      "url": "https://www.catedraldesevilla.es/timeline_slider_post/s-xv/"
+    },
+    "S09": {
+      "title": "교차부 천장 1511년 붕괴·1517년 재건·1888년 붕괴",
+      "url": "https://www.catedraldesevilla.es/en-noviembre-de-1517-se-celebro-la-finalizacion-de-la-reconstruccion-del-cimborrio-de-la-catedral/"
+    },
+    "S15": {
+      "title": "중앙 제단 장인·재료·도상 공식 설명",
+      "url": "https://www.catedraldesevilla.es/el-maestro-artesano-que-ideo-la-biblia-de-madera-mas-grande-de-la-cristiandad/"
+    },
+    "S17": {
+      "title": "대성당·콜럼버스 유해 도착과 1902년 안치 상세",
+      "url": "https://www.catedraldesevilla.es/la-catedral-celebra-el-dia-de-la-hispanidad/"
+    },
+    "S18": {
+      "title": "멜리다의 콜럼버스 기념묘 설계·상징",
+      "url": "https://www.catedraldesevilla.es/el-proyecto-ganador-de-arturo-melida-para-el-monumento-funerario-de-cristobal-colon/"
+    },
+    "S19": {
+      "title": "안달루시아 문서관·콜럼버스 유해 안치 기록",
+      "url": "https://www.juntadeandalucia.es/cultura/archivos/web_es/detalleExposicion?id=db32b20e-8294-11e3-9865-000ae4865a5f&idArchivo=d9f0f1ac-58a4-11dd-b44b-31450f5b9dd5&idContArch=549b9259-53f8-11de-b13b-000ae4865a5f&idProvincia=e88950c4-3b6d-11dd-92fe-31450f5b9dd5&idTipo=5fb8cfa7-e224-11dd-ac81-00e000a6f9bf"
+    },
+    "S20": {
+      "title": "스미스소니언·타이노 전시 안내",
+      "url": "https://americanindian.si.edu/nk360/pdf/Taino-Gallery-Guide-English.pdf"
+    },
+    "S21": {
+      "title": "안달루시아 주정부·세비야 지방역사문서관 — 안티구아 성모 예배당",
+      "url": "https://www.juntadeandalucia.es/organismos/culturapatrimoniohistoricoydeporte/areas/cultura/archivos/archivos-consejeria/archivo-historico-provincial-sevilla/ahps-recomienda/paginas/documento-ahps-sept-2021.html"
+    },
+    "S22": {
+      "title": "그라나다대학교 — Asensio de Maeda y la transformación de la Capilla de la Antigua (1578–1601)",
+      "url": "https://revistaseug.ugr.es/index.php/caug/es/article/view/10383"
+    },
+    "S41": {
+      "title": "대성당·엘카노와 마젤란의 세계일주 귀환 기념 기사",
+      "url": "https://www.catedraldesevilla.es/la-catedral-de-sevilla-participa-en-los-actos-conmemorativo-del-v-centenario-de-elcano-y-magallanes/"
+    },
+    "S23": {
+      "title": "대성당 공식 — 대성물실 돔의 건설과 르네상스",
+      "url": "https://www.catedraldesevilla.es/la-cupula-de-la-sacristia-mayor-de-sevilla-la-piedra-fundacional-que-redefinio-el-renacimiento-en-andalucia/"
+    },
+    "S24": {
+      "title": "대성당 공식 — 왕실예배당·참사회실·대성물실",
+      "url": "https://www.catedraldesevilla.es/la-catedral/edificio/los-anadidos-renacentistas-capilla-real-sala-capitular-y-sacristia-mayor/"
+    },
+    "S25": {
+      "title": "대성당 공식 작품목록 — 페드로 데 캄파냐의 십자가에서 내림",
+      "url": "https://www.catedraldesevilla.es/obras/el-descendimiento/"
+    },
+    "S26": {
+      "title": "대성당 공식 작품목록 — 무리요의 성 이시도로",
+      "url": "https://www.catedraldesevilla.es/obras/san-isidoro-2/"
+    },
+    "S27": {
+      "title": "대성당 공식 작품목록 — 후안 데 아르페의 대성체현시대",
+      "url": "https://www.catedraldesevilla.es/en/obras/custodia-grande/"
+    },
+    "S28": {
+      "title": "대성당 공식 — 성체성혈대축일 행렬 준비와 은제 성체현시대",
+      "url": "https://www.catedraldesevilla.es/la-catedral-de-sevilla-abre-sus-puertas-para-la-vispera-del-corpus-christi-concierto-y-exposicion-de-los-pasos-procesionales/"
+    },
+    "S39": {
+      "title": "대성당 공식 금속공예 — 1580년 모형 승인과 행렬용 성체현시대",
+      "url": "https://www.catedraldesevilla.es/la-catedral/patrimonio/orfebreria/"
+    },
+    "S54": {
+      "title": "후안 클레멘테 로드리게스 에스테베스: El universal convite, 출판사 소개·아치 제작 연대",
+      "url": "https://www.catedra.com/libro/arte-grandes-temas/el-universal-convite-juan-clemente-rodriguez-estevez-9788437642734/"
+    },
+    "S55": {
+      "title": "El universal convite 공개 서문·서론: 68개 음식 부조와 식생활사 연구",
+      "url": "https://www.catedra.com/primer_capitulo/el-universal-convite.pdf"
+    },
+    "S56": {
+      "title": "고야 아라곤 재단 작품목록: 성녀 후스타와 루피나의 주문·인도·당대 논쟁",
+      "url": "https://fundaciongoyaenaragon.es/obra/santas-justa-y-rufina/146"
+    },
+    "S29": {
+      "title": "바티칸 공식 — 원죄 없이 잉태되신 동정 마리아 대축일과 1854년 교의 선포",
+      "url": "https://www.vaticannews.va/en/liturgical-holidays/solemnity-of-the-immaculate-conception-of-the-blessed-virgin-mar.html"
+    },
+    "S40": {
+      "title": "세비야 교구 문화유산 담당자·참사회실의 도상과 1592년 가구",
+      "url": "https://odisur.es/sevilla/sillon-arzobispal-de-la-sala-capitular-en-la-catedral-de-sevilla/"
+    },
+    "S30": {
+      "title": "대성당 공식 장식미술 — 성가대석·가구·용서의 문 문짝",
+      "url": "https://www.catedraldesevilla.es/la-catedral/patrimonio/artes-decorativas/"
+    },
+    "S31": {
+      "title": "대성당 공식 — 오르간의 역사",
+      "url": "https://www.catedraldesevilla.es/la-catedral/musica/el-organo/"
+    },
+    "S32": {
+      "title": "대성당 공식 — 참사회 성직자의 일상 성무일도",
+      "url": "https://www.catedraldesevilla.es/una-catedral-que-comienza-el-dia-rezando-los-canonigos-retoman-este-martes-el-oficio-coral-diario/"
+    },
+    "S38": {
+      "title": "UNESCO — 무데하르 미술의 이슬람 전통과 기독교 지배하 발전",
+      "url": "https://whc.unesco.org/en/list/378/"
+    },
+    "S57": {
+      "title": "대성당 참사회 발행 Seises: 1508년 기록·1613년 열 명 구성·1667년 캐스터네츠",
+      "url": "https://www.catedraldesevilla.es/wp-content/uploads/2023/02/SEISES.pdf"
+    },
+    "S58": {
+      "title": "안달루시아 세비야 지방역사기록원: 자비의 그리스도 1603년 4월 5일 제작 계약",
+      "url": "https://www.juntadeandalucia.es/organismos/culturapatrimoniohistoricoydeporte/areas/cultura/archivos/archivos-consejeria/archivo-historico-provincial-sevilla/ahps-recomienda/paginas/documento-ahps-may-2018.html"
+    },
+    "S59": {
+      "title": "대성당 공식: 산안드레스 예배당의 자비의 그리스도·계약의 시선 지시·기도 공간",
+      "url": "https://www.catedraldesevilla.es/el-cabildo-de-la-catedral-abre-como-espacio-de-oracion-la-capilla-de-san-andres/"
+    },
+    "S33": {
+      "title": "대성당 공식 — 1656년 성 안토니오 그림 주문과 구도",
+      "url": "https://www.catedraldesevilla.es/hoy-celebramos-de-festividad-de-san-antonio/"
+    },
+    "S34": {
+      "title": "대성당 공식 — 무리요 성 안토니오의 환시와 1874년 도난",
+      "url": "https://www.catedraldesevilla.es/la-vision-de-san-antonio-la-historia-secreta-de-una-obra-maestra-de-murillo/"
+    },
+    "S35": {
+      "title": "스페인은행 공식 미술 컬렉션 — 복원가 살바도르 마르티네스 쿠베이스",
+      "url": "https://coleccion.bde.es/wca/es/secciones/coleccion/artistas/salvador-martinez-cubells-489.html"
+    },
+    "S60": {
+      "title": "루브르 작품목록 MI 202: 무리요 성모의 탄생의 원래 예배당·1810년 이전·1858년 입수",
+      "url": "https://collections.louvre.fr/en/ark:/53355/cl010064740"
+    },
+    "S36": {
+      "title": "대성당 공식 — 오렌지 정원·콜롬비나 도서관",
+      "url": "https://www.catedraldesevilla.es/la-catedral/edificio/el-patio-de-los-naranjos-y-biblioteca-colombina/"
+    },
+    "S37": {
+      "title": "세비야 시청 공식 — 용서의 문과 16세기 조각",
+      "url": "https://www.sevilla.org/ciudad/aniversario_boda_carlos_v/ruta_turistica"
+    },
+    "C01": {
+      "title": "브리태니커·세비야 항목 — 과달키비르 강의 내륙 항구, 히스팔리스, 이슬람 지배, 페르난도 3세",
+      "url": "https://www.britannica.com/place/Sevilla-Spain"
+    },
+    "C02": {
+      "title": "안달루시아 통계지도연구원·알안달루스의 도시 — 알모하드 왕조의 수도 세비야",
+      "url": "https://www.juntadeandalucia.es/institutodeestadisticaycartografia/atlasterritorio/at/pdf/24_ciudadesdealandalus.pdf"
+    },
+    "C03": {
+      "title": "세비야시 관광청 비시타 세비야·세비야의 역사 안내서 — 로마 히스팔리스, 1248년 정복, 1503년 교역 독점",
+      "url": "https://tic.visitasevilla.es/vsev/web_php/imatges/guias/13167624e9d176b51e178741462.pdf"
+    },
+    "C04": {
+      "title": "스페인 문화부·인디아스 문서관 안내서 — 1503년 카사 데 콘트라타시온 설치와 1717년 카디스 이전",
+      "url": "https://www.cultura.gob.es/dam/jcr:5cc4a704-ac88-4197-bbc7-92e753ae885c/folleto-archivo-gral-indias-web.pdf"
+    },
+    "C05": {
+      "title": "안달루시아 자치정부·세비야, 1519년 첫 세계 일주",
+      "url": "https://www.juntadeandalucia.es/medioambiente/portal/web/documentos_interactivos/sevilla_1519/files/assets/basic-html/page-32-33.html"
+    },
+    "C06": {
+      "title": "스페인 문화부·세계유산 목록 1987년 — 세비야 대성당, 알카사르, 인디아스 문서관",
+      "url": "https://www.cultura.gob.es/cultura/areas/patrimonio/mc/patrimoniomundial/bienes-declarados/por-ano-de-inscripcion/1987/sevilla.html"
+    },
+    "C07": {
+      "title": "세비야 대학교 건축 도서관·1929년 이베로아메리카 박람회 — 1929년 5월 9일 개막",
+      "url": "https://bib.us.es/arquitectura/noticias/exposici%C3%B3n-iberoamericana-de-sevilla-1929"
+    },
+    "C08": {
+      "title": "국제박람회기구·1992년 세비야 박람회 — 카르투하 섬, 발견의 시대, 고속철도와 다리",
+      "url": "https://www.bie-paris.org/site/en/1992-seville"
+    },
+    "C09": {
+      "title": "유네스코 무형문화유산·플라멩코 2010년 등재",
+      "url": "https://ich.unesco.org/en/RL/flamenco-00363"
+    },
+    "C10": {
+      "title": "안달루시아 관광청·플라멩코 실용 안내서 — 트리아나를 요람의 하나로 소개",
+      "url": "https://multimedia.andalucia.org/media/988BE137F8E94C22A30F48CFAFB43EB2/doc/60A82C7CEC12403583C7AF3377C76198/practical_guide_flamenco_ING.pdf"
+    },
+    "C11": {
+      "title": "세비야시·마리아 루이사 공원의 역사 — 박람회를 위한 재단장",
+      "url": "https://www.sevilla.org/servicios/medio-ambiente-parques-jardines/parques/parques-y-jardines-historicos/parque-de-maria-luisa/historia"
+    },
+    "C12": {
+      "title": "세비야 대성당 공식·역사 — 알모하드 모스크와 1248년 정복 뒤 성당 전환",
+      "url": "https://www.catedraldesevilla.es/la-catedral/catedral-de-sevilla-su-historia/"
+    },
+    "P01": {
+      "title": "세비야시 관광청 비시타 세비야·스페인 광장 — 1914년 착공, 1928년 완공, 곤살레스 사임 뒤 트라베르 마무리",
+      "url": "https://visitasevilla.es/en/plaza-de-espana/"
+    },
+    "P02": {
+      "title": "안달루시아 자치정부 세비야 역사문서관·1929년 박람회의 유산 — 트라베르의 분수, 주별 문장·지도·역사 장면, 1983년 도자기 복원 계획",
+      "url": "https://www.juntadeandalucia.es/organismos/culturapatrimoniohistoricoydeporte/areas/cultura/archivos/archivos-consejeria/archivo-historico-provincial-sevilla/ahps-recomienda/paginas/documento-ahps-may-2020.html"
+    },
+    "P03": {
+      "title": "안달루시아 관광청·스페인 광장 — 벽돌·도자기·단철 재료, 515미터 운하, 옛 왕국을 나타내는 다리",
+      "url": "https://www.andalucia.org/en/sevilla-visitas-espana-square"
+    },
+    "P05": {
+      "title": "비시타 세비야·지역주의 건축 산책로 — 아니발 곤살레스와 지역주의",
+      "url": "https://visitasevilla.es/en/route-through-regionalist-seville-rediscover-the-city-through-its-architecture/"
+    },
+    "P06": {
+      "title": "비시타 세비야 관광 정보·스페인 광장 겸 스페인관",
+      "url": "https://tic.visitasevilla.es/vsev/web_php/index.php?contenido=fichaPoi&idPoi=405&id=0&idNivel=4098&title=&lang=1"
+    },
+    "P10": {
+      "title": "세비야 대학교 건축 도서관·1929년 이베로아메리카 박람회 — 1929년 5월 9일 개막, 1930년 6월 21일 폐막",
+      "url": "https://bib.us.es/arquitectura/noticias/exposici%C3%B3n-iberoamericana-de-sevilla-1929"
+    },
+    "P07": {
+      "title": "비시타 세비야 옛 누리집·스페인 광장 — 주별 벤치와 책자 칸, 아라비아의 로렌스와 스타워즈 촬영",
+      "url": "https://legacy.visitasevilla.es/en/history/plaza-de-espana"
+    },
+    "P08": {
+      "title": "안달루시아 영상위원회·스타워즈 에피소드 2 촬영 — 나부 장면, 이틀 촬영",
+      "url": "https://andaluciafilm.com/en/anuarios/rodaje-de-star-warsepisodio-ii-el-ataque-de-los-clones-de-george-lucas/"
+    },
+    "P09": {
+      "title": "세비야시 공원녹지과·마리아 루이사 공원의 역사 — 1893년 기증, 포레스티에",
+      "url": "https://www.sevilla.org/servicios/medio-ambiente-parques-jardines/parques/parques-y-jardines-historicos/parque-de-maria-luisa/historia"
+    },
+    "P11": {
+      "title": "세비야시 문화유산 안내·1929년 이베로아메리카 박람회 전시관들",
+      "url": "https://www.sevilla.org/patrimonium-hispalense/patrimonium-hispalense/arquitectura/otros-espacios-municipales/pabellones-de-la-exposicion-iberoamericana-de-1929"
+    },
+    "P12": {
+      "title": "세비야시·2024년 스페인 광장 도자기 난간 복원 완료",
+      "url": "https://www.sevilla.org/actualidad/noticias/2024/el-ayuntamiento-finaliza-la-restauracion-de-la-balaustrada-ceramica-de-la-plaza-de-espana"
+    },
+    "P13": {
+      "title": "스페인 육군·세비야 옛 총사령부 건물 위치 안내",
+      "url": "https://ejercito.defensa.gob.es/unidades/Sevilla/futer/Localizacion/index.html"
+    }
+  }
 }

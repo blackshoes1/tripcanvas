@@ -118,7 +118,9 @@
    */
   function nameKey(v){
     // ⚠️ NFKD는 한글도 자모로 쪼갠다 — 악센트만 뗀 뒤 NFC로 다시 붙여야 '광장'이 두 글자로 남는다
-    return str(v).normalize('NFKD').replace(/[̀-ͯ]/g,'').normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'');
+    // 어말 시그마(ς)는 σ로 접는다 — toLowerCase는 단어 끝의 Σ만 ς로 바꿔 'ΑΚΡΟΠΟΛΙΣ'와 'Ακρόπολις'가 갈리고,
+    // iOS 복사본(Swift `lowercased()`)은 언제나 σ라 같은 이름이 두 플랫폼에서 다른 열쇠가 됐다.
+    return str(v).normalize('NFKD').replace(/[̀-ͯ]/g,'').normalize('NFC').toLowerCase().replace(/ς/g,'σ').replace(/[^\p{L}\p{N}]+/gu,'');
   }
 
   /**

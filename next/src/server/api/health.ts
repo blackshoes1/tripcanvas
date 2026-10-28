@@ -23,6 +23,7 @@ export interface HealthReport {
     database: HealthComponent;
     realtime: HealthComponent;
     backup: HealthComponent;
+    liveActivity?: HealthComponent;
   };
   checkedAt: string;
 }
@@ -37,6 +38,8 @@ export interface HealthDeps {
   /** 백업이 이 시간 안에 있어야 정상(기본 26시간 — 하루 한 번 + 여유) */
   backupMaxAgeHours?: number;
   readOnly?: boolean;
+  /** 잠금화면 갱신 worker의 준비 상태. APNs 수락·기기 도착 여부는 아니다. */
+  liveActivity?: HealthComponent;
   /** `TC_REVISION` — 빈 값이면 'unknown'으로 답한다 */
   revision?: string;
   now?: () => Date;
@@ -86,10 +89,11 @@ export async function healthReport(deps: HealthDeps): Promise<HealthReport> {
     } catch { backup = { status: 'error', detail: '백업 기록을 읽지 못했다' }; }
   }
 
-  const components = { api: { status: 'ok' as const }, database, realtime, backup };
+  const components = { api: { status: 'ok' as const }, database, realtime, backup,
+    ...(deps.liveActivity ? { liveActivity: deps.liveActivity } : {}) };
   const status: OverallStatus = database.status === 'error'
     ? 'UNAVAILABLE'
-    : (readOnly || [realtime, backup].some((c) => c.status === 'error' || c.status === 'degraded'))
+    : (readOnly || [realtime, backup, ...(deps.liveActivity ? [deps.liveActivity] : [])].some((c) => c.status === 'error' || c.status === 'degraded'))
       ? 'DEGRADED'
       : 'HEALTHY';
   return {

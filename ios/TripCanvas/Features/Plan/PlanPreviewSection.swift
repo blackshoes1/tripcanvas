@@ -6,6 +6,7 @@ struct PlanPreviewSection: View {
     let revision: Int
     let days: [Int]
     let source: TripDocumentSource
+    var precomputed: [Int: PlanChangePreview]? = nil
     @State private var previews: [Int: PlanChangePreview] = [:]
     @State private var error: String?
     @State private var working = false
@@ -15,7 +16,7 @@ struct PlanPreviewSection: View {
         Section {
             if working { ProgressView("변경 전후 확인 중") }
             ForEach(days.sorted(), id: \.self) { day in
-                if let preview = previews[day] {
+                if let preview = (precomputed ?? previews)[day] {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         Text("Day \(day + 1)").font(.subheadline.weight(.semibold))
                         comparison("변경 전", response: preview.before)
@@ -36,6 +37,7 @@ struct PlanPreviewSection: View {
             Text("예약·입장 시각은 그대로 유지해요. 추정 경로는 실제 이동과 다를 수 있어요. 날짜를 옮기면 실제 예약일과 맞는지 확인해 주세요.")
         }
         .task(id: document) {
+            guard precomputed == nil else { return }
             // 피커를 훑는 동안 요청을 묶는다(2026-09-18) — id가 바뀌면 이 task가 취소되므로 잠깐 기다렸다 살아 있는 것만 나간다.
             try? await Task.sleep(for: .milliseconds(400))
             guard !Task.isCancelled else { return }
@@ -49,8 +51,8 @@ struct PlanPreviewSection: View {
             Text("\(title): 이동 \(TimeFormat.duration(day.totals.travelMinutes)) · 종료 \(day.totals.endMinutes.map(TimeFormat.clockAcrossMidnight) ?? "미정")")
                 .font(.caption)
             if response.travelTimeSource != .routed { Text("이동시간에 추정 포함").font(.caption2).foregroundStyle(Ink.soft) }
-            ForEach(day.spots.filter { $0.bookedAtMinutes != nil }, id: \.index) { spot in
-                Text("\(spot.name): 예상 도착 \(TimeFormat.clockAcrossMidnight(spot.etaMinutes)) · 예약 \(TimeFormat.clockAcrossMidnight(spot.bookedAtMinutes ?? 0))\(spot.conflict ? " · 시간 확인 필요" : "")")
+            ForEach(day.spots.filter { $0.bookedAtMinutes != nil || $0.conflict || ($0.bookingLateMinutes ?? 0) > 0 }, id: \.index) { spot in
+                Text(Self.spotLine(spot))
                     .font(.caption2).foregroundStyle(spot.conflict ? Ink.warning : Ink.soft)
                 if let late = spot.bookingLateMinutes, late > 0 {
                     Text("예약보다 \(TimeFormat.duration(late)) 늦게 도착할 수 있어요")
@@ -58,6 +60,13 @@ struct PlanPreviewSection: View {
                 }
             }
         }
+    }
+
+    static func spotLine(_ spot: DayPlanSpot) -> String {
+        var text = "\(spot.name): 예상 도착 \(TimeFormat.clockAcrossMidnight(spot.etaMinutes))"
+        if let at = spot.bookedAtMinutes { text += " · 예약 \(TimeFormat.clockAcrossMidnight(at))" }
+        if spot.conflict { text += " · 시간 확인 필요" }
+        return text
     }
 
     private func refresh() async {

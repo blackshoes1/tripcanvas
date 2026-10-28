@@ -464,7 +464,7 @@ declare module '@legacy/adaptive.js' {
     } | null;
     tripPulse(state: TripState, replan: ReplanResult | null, departure?: unknown, opts?: Record<string, unknown>):
       { code: string; text: string; detail: string };
-    stateVersion(state: TripState, extra?: { stage?: string; pulse?: string }): string;
+    stateVersion(state: TripState, extra?: { stage?: string; pulse?: string; travelMinutes?: number | null; timeZone?: string }): string;
     notificationPlan(state: TripState, input?: {
       departure?: unknown; pulse?: unknown; replan?: unknown; suggestions?: unknown[];
       suppressUntilMin?: number; travelMode?: boolean; quiet?: boolean;
@@ -620,6 +620,37 @@ declare module '@legacy/collab.js' {
     candidate: { id?: number | string; title?: string | null; lat?: number | null; lng?: number | null };
     di: number; km: number | null; reasons: string[];
   }
+  export = api;
+}
+
+declare module '@legacy/stories.js' {
+  type TrackRole = 'CORE' | 'MORE' | 'STOP';
+  interface StoryTrack {
+    id: string; role: TrackRole; title: string; src: string; seconds: number; bytes: number; sha256: string;
+    sources: string[]; stop: { n: number; find: string[]; localName: string } | null;
+  }
+  interface StoryPlace {
+    id: string; kind: 'PLACE' | 'CITY'; name: string; localName: string; city: string;
+    lat: number; lng: number; radiusM: number; placeIds: string[]; aliases: string[]; tracks: StoryTrack[];
+  }
+  interface StoryCatalog {
+    version: number; updated: string; disclosure: string; places: StoryPlace[];
+    sources: Record<string, { title: string; url: string }>;
+  }
+  const api: {
+    ROLES: readonly TrackRole[];
+    ROLE_LABEL: Readonly<Record<TrackRole, string>>;
+    DISCLOSURE: string;
+    normalizeCatalog(raw: unknown): StoryCatalog;
+    nameKey(value: unknown): string;
+    nameMatches(spotName: unknown, place: StoryPlace): boolean;
+    distanceM(lat1: number, lng1: number, lat2: number, lng2: number): number;
+    storyForSpot(spot: unknown, catalog: StoryCatalog | null | undefined): StoryPlace | null;
+    cityStoryForDay(day: { spots?: unknown[] } | null | undefined, catalog: StoryCatalog | null | undefined): StoryPlace | null;
+    durationText(seconds: number): string;
+    sizeText(bytes: number): string;
+    placeSources(place: StoryPlace, catalog: StoryCatalog): { id: string; title: string; url: string }[];
+  };
   export = api;
 }
 

@@ -236,7 +236,7 @@ Tests/        디코딩·상태 계산·ViewModel
 |---|---|---|
 | Travel Mode | `Features/TravelMode/TravelModeController.swift` | 켜져 있을 때만 먼저 말을 건다. 시계로 polling하지 않고 앱 전환·사용자 동작·알림 열기에만 갱신 |
 | 출발 알림 | `Core/Push/PushService.swift` | 기기가 판단하는 것(`origin: DEVICE`)만 로컬 알림. `dedupeKey`가 식별자라 같은 상황은 한 번만 뜬다 |
-| 잠금화면 | `TripCanvasWidgets/` + `TripCanvasShared/TripCanvasActivityAttributes.swift` | `stateVersion`이 같으면 **갱신하지 않는다**. 오류가 나도 마지막 상태를 유지 |
+| 잠금화면 | `TripCanvasWidgets/` + `TripCanvasShared/TripCanvasActivityAttributes.swift` | `stateVersion`이 같으면 **갱신하지 않는다**. 오류가 나도 마지막 상태를 유지. 설정에서 실시간 현황이 꺼져 있으면 `지금`의 다음 일정 카드 바로 아래 띠가 말하고 켜는 곳(설정 앱의 With J > 실시간 현황 — iOS 17에는 '앱' 단계가 없어 적지 않는다)을 적고 설정을 연다(`LiveActivitySettingsNotice`, ✕로 접으면 기기에 남는다). 시스템의 변경 알림은 거의 오지 않아 앱 복귀 때 다시 읽는다(`sceneBecameActive`). 다시 켜지면 앱이 앞에 있을 때 travel-state를 새로 받아 시작한다(`LiveActivityController.onReenable` → `TravelModeController.liveActivityReenabled`) — 연결이 없으면 다음에 새로 받을 때다. 무료 계정 빌드처럼 실시간 현황이 없는 빌드에서는 말하지 않는다 |
 | 위젯 | `TripCanvasWidgets/TripCanvasWidgets.swift` | 네트워크·인증 없음. 앱이 App Group에 써 둔 압축본만 읽고, 30분이 지나면 받은 시각을 함께 표시 |
 | 위치 | `Core/Location/LocationProvider.swift` + `LocationPrimerView` | 첫 실행에 묻지 않는다. 필요한 순간에 이유를 먼저 말하고 단발성으로만 조회 |
 
@@ -244,8 +244,9 @@ Tests/        디코딩·상태 계산·ViewModel
 잠금화면/위젯 압축본을 준다. 여행 중에 endpoint를 연달아 부르는 것이 곧 배터리다.
 
 ⚠️ `NSSupportsLiveActivities`·App Group·`aps-environment`는 `project.yml`에 선언돼 있지만
-**APNs 키와 서명은 각자 설정해야 한다.** 서버 → APNs 실제 발송은 아직 붙이지 않았다 —
-서버는 "무엇을 보낼 만한가"(`notifications`)까지만 계산하고, 지금은 기기가 그중 자기 몫만 로컬로 띄운다.
+**APNs 키와 서명은 각자 설정해야 한다.** ActivityKit 전용 token을 등록하면 서버가
+앱이 화면에 없을 때의 잠금화면 상태 갱신을 APNs로 보낸다. [운영 설정과 실기기 확인](../docs/ios-live-activity-push.md)을 따른다.
+출발 알림은 지금처럼 기기가 자기 몫(`origin: DEVICE`)만 로컬로 띄운다.
 
 ## 확장 표면 (Siri · 공유 · Watch · 기록)
 
@@ -260,7 +261,7 @@ Tests/        디코딩·상태 계산·ViewModel
 
 ## 이번 단계에서 하지 않은 것
 
-Apple Watch · Siri/App Intents · 서버발 APNs 발송 · Live Activity remote update ·
+Apple Watch · Siri/App Intents · 일반 서버 알림 발송 ·
 연속 위치 추적 · 백그라운드 geofencing · 완전 offline-first · 자동 예약/결제 · 실시간 항공/교통 API.
 구조상 막히지 않도록 자리는 열어 두었다: 알림 계획에 `origin: SERVER` 항목이 이미 나오고,
 `notification_log`가 중복을 막고, `TravelActivityState`는 ActivityKit이 그대로 쓰는 모양이다.

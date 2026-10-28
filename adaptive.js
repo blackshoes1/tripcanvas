@@ -285,9 +285,13 @@
       startMin:(it.fixedAt!=null? it.fixedAt : it.eta), endMin:it.end,
       location:it.location, flexibility:it.flexibility
     }));
-    const nextFixed=fixedCommitments.filter(f=>f.startMin>=nowMin)[0]||null;
+    const fixedAhead=fixedCommitments.filter(f=>f.startMin>=nowMin);
+    if(live) fixedAhead.sort((a,b)=>a.startMin-b.startMin);
+    const nextFixed=fixedAhead[0]||null;
     const lastDone=completed.length? completed[completed.length-1] : null;
-    const inProgress=items.filter(it=>it.status==='IN_PROGRESS')[0]||null;
+    const inProgress=remaining.filter(it=>it.status==='IN_PROGRESS').sort((a,b)=>b.depart-a.depart)[0]||null;
+    const future=remaining.filter(it=>it.depart>=nowMin).sort((a,b)=>a.depart-b.depart);
+    const nextItem=live? (inProgress||future[0]||null) : (remaining[0]||null);
     /** @type {LatLng|null} */
     let passedLoc=null;
     if(live) for(let i=0;i<items.length;i++){ const it=items[i]; if(it.location && it.end<=nowMin) passedLoc=it.location; }
@@ -305,7 +309,7 @@
     // 쉬기 카드가 "명동교자 19:00까지 480분 남았어요"라고 했고, 바로 위 '다음 장소'는 0분 여유였다.
     // 머무는 곳이 있으면 그곳이 끝난 뒤부터, 다음 곳은 떠나야 하는 시각(예약 대기 포함, 이동 앞)까지다 — 이동은 빈 시간이 아니다.
     // '다녀왔어요'를 누른 곳은 끝난 것이다 — 계획한 종료 시각까지 붙잡아 두지 않는다.
-    const freeBefore=remaining.filter(it=>it.status!=='IN_PROGRESS' && (!live || it.end>nowMin || it.depart>=nowMin))[0]||null;
+    const freeBefore=(live? future : remaining).filter(it=>it.status!=='IN_PROGRESS')[0]||null;
     const freeFrom=Math.max(nowMin, inProgress? inProgress.end : nowMin);
     const availableMin=freeBefore? Math.max(0, (freeBefore.depart-freeBefore.travelIn)-freeFrom) : Math.max(0, dayEndMin-freeFrom);
     const hotel=active.filter(it=>it.type==='HOTEL').pop()||null;
@@ -317,9 +321,8 @@
       items, completedItems:completed.map(it=>it.id), remainingItems:remaining.map(it=>it.id),
       skippedItems:items.filter(it=>it.status==='SKIPPED').map(it=>it.id),
       fixedCommitments, nextFixed, currentItem:inProgress,
-      // 다음 행동은 '아직 끝나지 않은' 것이다. 여행 중이라면 이미 끝났어야 할 항목(사용자가 완료를
-      // 안 눌렀을 뿐)을 '다음'으로 내밀지 않는다. 전부 지났으면 가장 이른 미완료가 다음이다(밀린 상태).
-      nextItem:(live? (remaining.filter(it=>it.end>nowMin)[0]||remaining[0]||null) : (remaining[0]||null)),
+      // 방문 표시는 그대로 두고 시각으로 고른다. 지난 일정으로 돌아가지 않고 미리보기는 원래 순서를 지킨다.
+      nextItem,
       currentLocation, startLocation, hotelLocation:(hotel&&hotel.location)||startLocation,
       availableMin, freeBefore, delayMin, travelMinToday:travelToday,
       prefs:o.prefs||{},   // {maxTravelMin?, walkAverse?, mealFocus?} — 자연어 요청이 추천 범위를 좁힌다
@@ -1192,6 +1195,7 @@
     const remaining=state.items.filter((/**@type{any}*/it)=>it.status!=='COMPLETED'&&it.status!=='SKIPPED'&&it.status!=='CANCELLED');
     if(!state.items.length) return {code:'NO_PLAN', text:say(state, 'pulse.noPlan'), detail:say(state, 'pulse.noPlanDetail')};
     if(!remaining.length) return {code:'DAY_COMPLETE', text:say(state, 'pulse.complete'), detail:say(state, 'pulse.completeDetail')};
+    if(state.live && !state.nextItem) return {code:'ON_TRACK', text:say(state, 'pulse.elapsed'), detail:say(state, 'pulse.elapsedDetail')};
     // 아직 늦지 않았다 — '밀려서'가 아니라 '이대로면 늦는다'고, 어느 약속인지까지 말한다(2026-10-03)
     if(replan && replan.needed) return {code:'NEEDS_ATTENTION', text:say(state, 'pulse.attention'),
       detail:(replan.lateAt
@@ -1219,10 +1223,12 @@
    */
   function stateVersion(state, extra){
     const parts=[
-      state.tripId||'-', 'd'+state.currentDay, state.todayISO||'',
-      state.items.map((/**@type{any}*/it)=>it.id+':'+it.status+':'+Math.round(it.depart)).join(','),
+      state.tripId||'-', state.tripName||'', 'd'+state.currentDay, state.todayISO||'',
+      JSON.stringify(state.items.map((/**@type{any}*/it)=>[it.id,it.name,it.status,Math.round(it.depart),Math.round(it.end)])),
+      state.currentItem?state.currentItem.id:'', state.nextItem?state.nextItem.id:'',
       'e'+(state.energyLevel||''),
-      (extra&&extra.stage)||'', (extra&&extra.pulse)||''
+      (extra&&extra.stage)||'', (extra&&extra.pulse)||'', (extra&&extra.timeZone)||'',
+      extra&&extra.travelMinutes!=null?Math.round(extra.travelMinutes):''
     ];
     // 표시 말투가 바뀌면 위젯·Live Activity도 갱신한다. 알림 dedupeKey와 제안 키는 그대로다.
     if(state.jTone==='CASUAL'||state.jTone==='POLITE') parts.push('j'+state.jTone);

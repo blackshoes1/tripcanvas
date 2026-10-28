@@ -20,20 +20,31 @@ final class TripPlanViewModel: DayPlanContext {
     private let candidateSource: CollabSource?
     private let documentFreshness: TimeInterval
     var isPresentingEditor = false
+    enum FocusIntent: Equatable { case edit, move }
     var focusActivity: ActivitySummary?
     var focusRevision: Int?
+    private var focusIntent: FocusIntent = .edit
     func requestFocus(_ activity: ActivitySummary, day: Int, revision: Int) {
+        request(activity, day: day, revision: revision, intent: .edit)
+    }
+    func requestMove(_ activity: ActivitySummary, day: Int, revision: Int) {
+        request(activity, day: day, revision: revision, intent: .move)
+    }
+    private func request(_ activity: ActivitySummary, day: Int, revision: Int, intent: FocusIntent) {
         selectedDay = day
         if self.revision != revision { needsRemoteReload = true }
-        focusRevision = revision; focusActivity = activity
+        focusRevision = revision; focusIntent = intent; focusActivity = activity
     }
-    func takeFocusedSpot() -> (index: Int, spot: TripSpot)? {
+    func takeFocusedSpot() -> (index: Int, spot: TripSpot, intent: FocusIntent)? {
         guard let activity = focusActivity, let day else { return nil }
         focusActivity = nil
         guard focusRevision == revision,
               let index = day.spots.indices.first(where: { "d\(selectedDay)s\($0)" == activity.id }),
-              day.spots[index].name == activity.name else { return nil }
-        return (index, day.spots[index])
+              day.spots[index].name == activity.name else {
+            store.report("이 장소의 일정이 바뀌었어요. 최신 일정을 확인한 뒤 다시 선택해 주세요.")
+            return nil
+        }
+        return (index, day.spots[index], focusIntent)
     }
     private(set) var needsRemoteReload = false
 
