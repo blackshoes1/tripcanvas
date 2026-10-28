@@ -113,6 +113,11 @@ import XCTest
                       "구버전 앱이 이미 같은 서버 지문을 저장했어도 새 일정 링크를 반영한다")
         XCTAssertFalse(LiveActivityRecovery.shouldRefresh(current: latest, latest: latest, changed: false),
                        "한 번 반영한 뒤에는 같은 내용으로 반복 갱신하지 않는다")
+        var minuteLater = latest
+        minuteLater.departureText = "출발까지 9분 남았어요"
+        minuteLater.pulseText = "다음 일정까지 9분 여유가 있어요"
+        XCTAssertFalse(LiveActivityRecovery.shouldRefresh(current: latest, latest: minuteLater, changed: false),
+                       "분별 문구만 바뀌면 같은 상태를 다시 발송하지 않는 배터리 정책을 유지한다")
     }
 
     private func service() -> FakeDocumentService {
