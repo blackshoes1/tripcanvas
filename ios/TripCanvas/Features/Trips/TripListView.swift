@@ -178,6 +178,7 @@ struct TripListView: View {
     @State private var path: [TripSummary] = []
     /// 알림·딥링크가 정한 목적 화면. 규칙(`TripHomeTab.initial`)을 이긴다.
     @State private var requestedTab: TripHomeTab?
+    @State private var requestedActivity: TripActivityRequest?
     @State private var requestedPanel: TripPanel?
     @State private var routeNotice: String?
     /// 목록이 아직 안 왔을 때 들어온 딥링크 — 목록을 받은 뒤 다시 시도한다(콜드 스타트).
@@ -206,7 +207,7 @@ struct TripListView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Ink.paper)
             .navigationDestination(for: TripSummary.self) { trip in
-                TripHomeView(trip: trip, requested: requestedTab, panel: $requestedPanel, env: env) {
+                TripHomeView(trip: trip, requested: requestedTab, activity: $requestedActivity, panel: $requestedPanel, env: env) {
                     TripLeaveNavigation.clear(tripId: trip.id, path: &path, requestedPanel: &requestedPanel,
                                               pendingDestination: &pendingDestination)
                 }
@@ -276,14 +277,14 @@ struct TripListView: View {
         // 목록을 새로 받는 것도 여기서다 — 여행 안에서 이름·날짜를 바꾸고 돌아왔는데 옛 이름이 남아 있으면 안 된다.
         .onChange(of: path) { _, current in
             if current.isEmpty {
-                requestedTab = nil; requestedPanel = nil
+                requestedTab = nil; requestedPanel = nil; requestedActivity = nil
                 Task { await model?.load() }
             }
         }
         // 딥링크는 라우터 하나를 지난다 — 앱을 열어 둔 채로 링크를 눌러도 같은 화면이 뜬다.
         .onChange(of: env.router.destination) { _, destination in
             guard let destination else { return }
-            if handle(destination) { env.router.clear() }
+            if handle(destination) { pendingDestination = nil; env.router.clear() }
             else { pendingDestination = destination; env.router.clear() }
         }
         .onChange(of: model?.trips) { _, _ in
@@ -379,6 +380,11 @@ struct TripListView: View {
     /// 출발 알림을 눌렀는데 일정 편집 화면이 뜨면 안 된다.
     private func handle(_ destination: ActionRouter.Destination) -> Bool {
         switch destination {
+        case .activity(let tripId, let target):
+            guard let trip = find(tripId) else { return false }
+            open(trip, tab: .plan)
+            requestedActivity = .init(tripId: tripId, target: target)
+            return true
         case .join(let token):
             joinToken = token
             return true
@@ -389,6 +395,7 @@ struct TripListView: View {
             return true
         case .bookings(let tripId):
             guard let trip = find(tripId) else { return false }
+            requestedActivity = nil
             requestedPanel = .bookings
             requestedTab = nil
             path = [trip]
@@ -413,6 +420,7 @@ struct TripListView: View {
     private func find(_ tripId: String) -> TripSummary? { model?.trips.first { $0.id == tripId } }
 
     private func open(_ trip: TripSummary, tab: TripHomeTab?) {
+        requestedActivity = nil
         requestedPanel = nil
         requestedTab = tab
         path = [trip]

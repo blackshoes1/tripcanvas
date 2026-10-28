@@ -1,5 +1,22 @@
 import Foundation
 
+/// 표시 당시의 위치와 문서 버전을 함께 전달한다. 이전 활동은 `지금` 화면으로 이어진다.
+enum LiveActivityLink {
+    static func url(tripId: String, target: LiveActivityTarget?) -> URL? {
+        var link = URLComponents()
+        link.scheme = "tripcanvas"
+        link.host = "trip"
+        link.path = "/\(tripId)/\(target == nil ? "today" : "activity")"
+        if let target {
+            guard target.spotIndex != nil else { return nil }
+            link.queryItems = [URLQueryItem(name: "day", value: String(target.dayIndex)),
+                               URLQueryItem(name: "focus", value: target.activityId),
+                               URLQueryItem(name: "revision", value: String(target.revision))]
+        }
+        return link.url
+    }
+}
+
 extension ISO8601DateFormatter {
     /// 서버는 소수점 없는 Z 형식을 보낸다. 매번 만들면 비싸서 공유한다.
     ///

@@ -371,7 +371,16 @@ export interface NotificationPlanItem {
 }
 
 /** 잠금화면·Dynamic Island가 그릴 압축 상태. 일정표를 통째로 넣지 않는다(§75.5). */
+export interface LiveActivityTarget {
+  dayIndex: number;
+  activityId: string;
+  /** 위치 기반 id가 다른 장소를 가리키지 않도록 표시 당시 문서 버전을 함께 확인한다. */
+  revision: number;
+}
+
 export interface LiveActivityState {
+  shouldEnd?: boolean;
+  target?: LiveActivityTarget;
   /** 예정 시각은 지났지만 사용자가 방문 완료를 표시하지 않은 일정이 남아 있다. */
   scheduleElapsed?: boolean;
   tripName: string;
@@ -863,7 +872,7 @@ export interface DayPlanResponse {
 export interface PlanPreviewResponse {
   before: DayPlanResponse;
   after: DayPlanResponse;
-  /** sortByTime 요청일 때만 오는 검토·저장할 원문. 정렬은 요청한 dayIndex에만 적용한다. */
+  /** 서버 계산에 사용한 정규화 원문. 정렬은 요청한 dayIndex에만 적용한다. */
   document?: Record<string, unknown>;
 }
 

@@ -60,8 +60,7 @@ export function createPlanEditingHandlers(kit: HandlerKit) {
       const after = buildDayPlanView({ trip: draft, di: dayIndex, summary: summarizeTrip({ ...row, data: draft }, stamp), generatedAt,
         legCache: afterCache, legsPending: 0, fx, todayISO });
       if (!before || !after) return fail('DAY_NOT_FOUND');
-      const response: PlanPreviewResponse = { before, after };
-      if (body.sortByTime === true) response.document = { ...draft };
+      const response: PlanPreviewResponse = { before, after, document: { ...draft } };
       return ok(response);
     });
   }

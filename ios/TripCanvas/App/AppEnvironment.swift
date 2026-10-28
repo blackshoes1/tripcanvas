@@ -61,7 +61,7 @@ final class AppEnvironment {
     /// @Observable은 저장 프로퍼티를 init 접근자로 바꾼다 — lazy와 함께 쓸 수 없다.
     /// 그래서 의존 관계는 여기서 지역 상수로 조립한다. 클로저도 self가 아니라 지역 상수를
     /// 붙잡으므로 순환 참조도, 초기화 순서 문제도 생기지 않는다.
-    init(auth: AuthStore? = nil, service: TripService? = nil, handlesSystemNotifications: Bool = true) {
+    init(auth: AuthStore? = nil, service: TripService? = nil, places: PlaceSearchService? = nil, handlesSystemNotifications: Bool = true) {
         // 로그인도 API와 같은 서버다(`/api/auth/*`) — 웹 `auth.js`와 같은 계약을 쓴다.
         let authStore = auth ?? AuthStore(client: TripCanvasAuthClient(baseURL: AppConfig.apiBaseURL))
         let apiClient = APIClient(baseURL: AppConfig.apiBaseURL, tokens: AuthTokenProvider(store: authStore))
@@ -92,7 +92,7 @@ final class AppEnvironment {
         self.location = locationProvider
         self.liveActivity = liveActivityController
         self.push = pushService
-        self.places = PlaceSearchService(api: apiClient, googleKey: AppConfig.googleMapsKey, bundleId: AppConfig.bundleId)
+        self.places = places ?? PlaceSearchService(api: apiClient, googleKey: AppConfig.googleMapsKey, bundleId: AppConfig.bundleId)
         self.placePhotos = PlacePhotoService(key: AppConfig.googleMapsKey, bundleId: AppConfig.bundleId)
         self.stories = StoryLibrary.shared
         self.storyPlayer = StoryPlayer.shared

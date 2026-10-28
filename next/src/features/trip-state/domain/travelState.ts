@@ -70,7 +70,7 @@ export function buildTravelState(input: TravelStateInput): TravelStateResponse {
   const stateVersion = adapt.stateVersion(state, {
     stage: rawDeparture?.stage ?? '', pulse: rawPulse.code,
     travelMinutes: next ? travelMinutes : null, timeZone
-  });
+  }) + `-r${input.revision}`;
   const expiresMinutes = adapt.suggestionExpiryMin(state);
 
   const rawPlan = adapt.notificationPlan(state, {
@@ -98,7 +98,10 @@ export function buildTravelState(input: TravelStateInput): TravelStateResponse {
   // 예약번호·항공편 같은 민감한 값도 넣지 않는다(§54).
   const fixed = state.nextFixed;
   const scheduleElapsed = state.live && !next && state.remainingItems.length > 0;
+  const shouldEnd = !state.live || !next;
   const liveActivity: LiveActivityState = {
+    ...(shouldEnd ? { shouldEnd: true } : {}),
+    ...(!shouldEnd && next ? { target: { dayIndex: day.index, activityId: next.id, revision: input.revision } } : {}),
     tripName: today.trip.name,
     dayLabel: `Day ${day.index + 1}`,
     status: today.activityState.status,

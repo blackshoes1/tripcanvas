@@ -37,6 +37,15 @@ describe('Live Activity 등록은 로그인 세션에 묶이고 종료·토큰 �
     expect(await repo.register(input())).toBe('ended');
     expect((await row()).pushToken).toBeNull();
   });
+  it('worker가 종료한 활동은 같은 날 늦은 토큰이나 다음 tick으로 부활하지 않는다', async () => {
+    await repo.register(input());
+    const [claimed] = await repo.claimDue(now, 1);
+    const endedAt = new Date('2026-10-27T12:00:00Z');
+    await repo.discard(claimed, endedAt);
+    expect(await row()).toMatchObject({ endedAt, pushToken: null, leaseId: null });
+    expect(await repo.register(input({ now: new Date('2026-10-27T12:01:00Z'), tokenRevision: 2 }))).toBe('ended');
+    expect(await repo.claimDue(new Date('2026-10-27T12:01:00Z'), 10)).toEqual([]);
+  });
   it('기기에서 새 활동을 켜면 이전 활동은 종료되고 늦은 콜백도 거절한다', async () => {
     await repo.register(input());
     await repo.register(input({ activityId: 'new', pushToken: 'cd'.repeat(32), tokenRevision: 2 }));

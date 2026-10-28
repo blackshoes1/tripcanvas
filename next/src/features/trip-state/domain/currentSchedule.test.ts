@@ -89,3 +89,32 @@ describe('지금과 잠금화면은 방문 표시와 독립적으로 현재 시�
     expect(same.stateVersion).toBe(near.stateVersion);
   });
 });
+
+
+describe('잠금화면 종료는 현재·미래 일정 선택과 같은 서버 판정을 쓴다', () => {
+  it('마지막 종료 시각 전에는 유지하고 종료 시각부터 과거 미처리 일정이 남아도 종료한다', () => {
+    expect(buildTravelState(inputOf(day(), 719)).liveActivity.shouldEnd).not.toBe(true);
+    const ended = buildTravelState(inputOf(day(), 720));
+    expect(ended.liveActivity.shouldEnd).toBe(true);
+    expect(ended.today.activities.every(activity => activity.status === 'PLANNED')).toBe(true);
+  });
+  it.each(['COMPLETED', 'SKIPPED', 'CANCELLED'])('모두 %s이면 예정 종료 전에도 종료한다', status => {
+    expect(buildTravelState(inputOf(day().map(spot => ({ ...spot, status })), 570)).liveActivity.shouldEnd).toBe(true);
+  });
+  it('빈 날은 NO_PLAN 상태로 종료한다', () => {
+    const state = buildTravelState(inputOf([], 600));
+    expect(state.liveActivity.status).toBe('NO_PLAN');
+    expect(state.liveActivity.shouldEnd).toBe(true);
+  });
+  it.each([480, 630])('첫 일정 전과 중간 공백에는 다음 일정을 유지한다: %s', now => {
+    expect(buildTravelState(inputOf(day(), now)).liveActivity.shouldEnd).not.toBe(true);
+  });
+  it('여행 기간 밖 미리보기에는 종료하고 다음 날짜의 새 일정에는 안내할 수 있다', () => {
+    const input = inputOf(day(), 480);
+    expect(buildTravelState({ ...input, todayISO: '2026-10-26' }).liveActivity.shouldEnd).toBe(true);
+    input.trip.days!.push({ startAt: '09:00', spots: [{ name: '내일 장소', at: '09:00', stayMin: 60 }] });
+    const nextDay = buildTravelState({ ...input, todayISO: '2026-10-28' });
+    expect(nextDay.liveActivity.shouldEnd).not.toBe(true);
+    expect(nextDay.liveActivity.nextTitle).toBe('내일 장소');
+  });
+});

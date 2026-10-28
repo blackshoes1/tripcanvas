@@ -182,6 +182,7 @@ struct TripCanvasLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TripCanvasActivityAttributes.self) { context in
             LockScreenActivityView(context: context)
+                .widgetURL(LiveActivityLink.url(tripId: context.attributes.tripId, target: context.state.target))
                 .activityBackgroundTint(Color.black.opacity(0.35))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
@@ -224,6 +225,7 @@ struct TripCanvasLiveActivity: Widget {
                 Image(systemName: ActivityPresentation.symbol(for: context.state))
             }
             .keylineTint(.orange)
+            .widgetURL(LiveActivityLink.url(tripId: context.attributes.tripId, target: context.state.target))
         }
     }
 }
