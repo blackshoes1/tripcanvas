@@ -55,7 +55,7 @@ it('keeps legacy issuer values while upgrading a NOT NULL database and signing i
     expect(verificationURL).not.toBe('');
     expect((await auth.handler(new Request(verificationURL))).status).toBeLessThan(400);
     await signIn('new@example.com');
-    expect((await client.query<{ issuer: string | null }>('select issuer from auth_account where user_id=$1', [created.user.id])).rows[0].issuer).toBeNull();
+    expect((await client.query<{ issuer: string | null }>('select issuer from auth_account where user_id=$1', [created.user.id])).rows[0].issuer).toBe('local:credential');
   } finally {
     await client.close();
     await rm(previous, { recursive: true, force: true });
