@@ -53,6 +53,10 @@ final class AppEnvironment {
     let placePhotos: PlacePhotoService
     /// 함께하기 실시간. 붙일지·어디에 붙을지는 서버가 정하고(`/api/v1/me`), 못 붙어도 앱은 그대로 돈다.
     let realtime: RealtimeClient
+    /// With J 이야기 — 웹 주소의 정적 카탈로그와 음성. 계정·API와 무관하다(docs/with-j-stories.md).
+    /// ⚠️ 둘 다 앱 전체에 하나(`shared`)다 — 이 환경은 Siri 동작이 따로 만들기도 한다.
+    let stories: StoryLibrary
+    let storyPlayer: StoryPlayer
 
     /// @Observable은 저장 프로퍼티를 init 접근자로 바꾼다 — lazy와 함께 쓸 수 없다.
     /// 그래서 의존 관계는 여기서 지역 상수로 조립한다. 클로저도 self가 아니라 지역 상수를
@@ -90,6 +94,8 @@ final class AppEnvironment {
         self.push = pushService
         self.places = PlaceSearchService(api: apiClient, googleKey: AppConfig.googleMapsKey, bundleId: AppConfig.bundleId)
         self.placePhotos = PlacePhotoService(key: AppConfig.googleMapsKey, bundleId: AppConfig.bundleId)
+        self.stories = StoryLibrary.shared
+        self.storyPlayer = StoryPlayer.shared
         // 주소는 한 번만 물어보고 들고 있는다 — 화면을 열 때마다 /me를 부르지 않는다.
         self.realtime = RealtimeClient(tokens: AuthTokenProvider(store: authStore)) { [weak tripService] in
             try await tripService?.cachedRealtimeURL()
@@ -113,6 +119,8 @@ final class AppEnvironment {
             self.travelMode.resetForAccountChange()
             self.push.resetForAccountChange()
             self.realtime.disconnect()
+            // 듣던 이야기는 이전 계정의 여행 맥락이다 — 멈춘다. 받아 둔 음성은 공개 콘텐츠라 지우지 않는다.
+            self.storyPlayer.stop()
             self.router.accountChanged(from: previous, to: accountID)
             DeviceIdentity.reset()
         }

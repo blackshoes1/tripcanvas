@@ -203,6 +203,8 @@ struct SpotEditorView: View {
                         if draft.choice?.state != .pending {
                             StaffShowButton(card: StaffShowCard(spot: draft, booking: effectiveBooking))
                         }
+                        // With J 이야기가 붙는 장소면 여기서 듣는다 — 일정 줄을 누르면 이 화면이 열린다.
+                        StoryOpenButton(spot: StorySpot(draft))
                     }
                 }
                 if let contextLabel, !contextLabel.isEmpty {

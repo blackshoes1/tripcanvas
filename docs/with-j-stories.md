@@ -46,7 +46,7 @@ stories/seville/cathedral-01.mp3 … cathedral-14.mp3
 - 음성은 64kbps 모노 MP3로 만든다. 3분짜리가 약 1.4MB, 파일럿 전체는 약 25MB로 예상한다.
 - 서비스 워커의 앱 셸 사전 캐시에는 넣지 않는다(설치할 때마다 25MB를 받게 된다).
   **듣거나 '오프라인 저장'을 누르면** 별도 캐시(`withj-stories-v1`)에 담는다. 비행기 모드에서도 재생된다.
-- iOS는 같은 주소에서 카탈로그와 MP3를 받아 Application Support에 담는다.
+- iOS는 같은 주소에서 카탈로그와 MP3를 받아 `Application Support/WithJStories/`에 **지문(`<sha256>.mp3`) 이름으로** 담는다(아래 '구현 메모 (iOS)').
 
 ### catalog.json 모양
 
@@ -100,11 +100,12 @@ CITY는 장소가 아니라 **날**에 붙는다. 그날 위치 있는 장소 �
 - **지금** 화면: 지금 있거나 다음에 갈 장소에 이야기가 있으면 카드에 🎧 버튼을 둔다.
 - 재생은 기존 공유 플레이어를 그대로 쓴다. 창을 닫아도 계속 듣고, 재생 위치를 기억한다.
 
-**iOS**
+**iOS** (구현은 아래 '구현 메모 (iOS)')
 
-- 장소 상세와 `지금`의 음성 가이드 화면(`AudioGuideView`) 위쪽에 같은 칸을 둔다. 카탈로그는 앱이 받아서 그리기만 하고,
-  매칭 규칙은 `lib`의 픽스처(`story-match.json`)로 파리티를 검사한다(Swift 복사본).
-- 배경 재생과 잠금 화면 명령은 이미 만든 `SharedGuidePlayer`를 쓴다.
+- 일정 줄에는 '🎧 With J 이야기' 표시, 일자 제목 옆에 '세비야 이야기', 장소 편집기·장소 정보·`지금`의 다음 일정 아래에 'With J 이야기 듣기'.
+- 카탈로그는 앱이 직접 받아 붙인다(서버를 거치지 않는 예외 — 정적 콘텐츠라 NAS가 꺼져도 들린다). 매칭 규칙은 `stories.js`의
+  Swift 복사본이고 파리티 픽스처(`story-rules.json`)로 원본과 대조한다.
+- 배경 재생·잠금 화면 조작은 앱 전체에 하나인 `StoryPlayer`가 한다.
 
 ## 콘텐츠 제작 과정 (저장소의 `scripts/stories/`)
 
@@ -143,6 +144,39 @@ CITY는 장소가 아니라 **날**에 붙는다. 그날 위치 있는 장소 �
   그래서 한 번 들은 이야기는 비행기 모드에서도 들린다. SW는 `/stories/`를 건드리지 않는다(Safari는 Range 요청에 통째 응답을 주면 재생하지 못한다).
 - 대성당 '다녀온 지점 표시'는 첫 버전에서 뺐다. 지점 목록에는 번호·찾는 법·스페인어 이름이 있다.
 - 카탈로그는 앱이 열릴 때 한 번 받는다(`no-cache` · Vercel 헤더 `max-age=0`). 못 받으면 지난번 사본을 쓴다.
+
+## 구현 메모 (iOS)
+
+- 코드: `ios/TripCanvas/Features/Stories/` — `StoryRules.swift`(`stories.js` 복사본: 정규화·매칭·표기) · `StoryLibrary.swift`(받기·지문 확인·담기)
+  · `StoryPlayer.swift`(재생·잠금 화면) · `StoryViews.swift`(이야기 창·여는 버튼·탭 바 위 듣기 막대).
+- ⚠️ **규칙은 `stories.js`를 먼저 고친다.** `next`의 `storyRulesParity.test.ts`가 원본으로 `ios/TripCanvasTests/Fixtures/story-rules.json`을
+  다시 쓰고 `StoryRulesParityTests`가 복사본과 대조한다. 카탈로그는 지어낸 것이다 — 배포 카탈로그를 넣으면 음성을 낼 때마다 macOS CI가 돈다.
+  갈라지기 쉬운 곳: 이름 길이·포함은 **UTF-16 코드 단위**(JS `length`·`includes`), 앞뒤 공백은 **JS `trim()` 집합**, 트랙 정렬은 **안정 정렬**,
+  `sizeText`의 반올림은 `toFixed(1)`(딱 반은 올린다 — `String(format: "%.1f")`는 1.25MB를 1.2로 낸다), (0,0) 좌표는 위치 없음,
+  주소 앞머리는 **문자가 아니라 스칼라**(`hasPrefix`는 결합 문자를 앞 글자와 묶는다), 어말 시그마는 양쪽 모두 **σ로 접는다**(JS `toLowerCase`는
+  단어 끝의 Σ만 ς로 바꾸고 Swift `lowercased()`는 늘 σ다).
+- **받는 길은 NAS가 아니라 웹 주소다**(`AppConfig.webBaseURL` + `stories/…`). `APIClient`는 NAS 토큰을 붙이므로 쓰지 않는다 —
+  전용 ephemeral 세션(URLCache 끔·쿠키 끔)이고 토큰 없이 나간다. 로그인 없이 보는 샘플에서도 들린다.
+- **담는 이름은 지문이다.** 웹 캐시는 URL을 열쇠로 써서 같은 경로에 새 음성이 올라오면 옛 것을 튼다 — 앱은 그 문제가 없다.
+  받은 파일은 크기와 sha256이 카탈로그와 같을 때만 담고(`.completeFileProtectionUntilFirstUserAuthentication` — 잠긴 화면에서도 다음 이야기를 연다),
+  폴더는 iCloud 백업에서 뺀다. 새 카탈로그를 받으면 거기 없는 음성은 지운다. 계정과 무관한 공개 콘텐츠라 로그아웃해도 지우지 않는다.
+- **카탈로그는 오래 들고 있지 않는다**(`StoryLibrary.maxAge` 6시간). 음성을 다시 만들면 같은 경로에 새 지문이 올라오는데, 배경 재생 때문에
+  며칠씩 살아 있는 앱이 옛 지문만 들고 있으면 그 트랙은 영영 받지 못한다. 여행 화면이 열리거나 앱이 돌아올 때 오래됐으면 다시 받고,
+  디스크의 지난 사본으로 붙었으면 1분 간격으로 다시 받아 본다. 그래도 지문이 맞지 않으면 카탈로그를 한 번 바로 다시 받아 같은 트랙의
+  새 지문으로 한 번 더 받는다(`file(for:placeID:)`). 못 받는 동안에는 지금 카탈로그를 그대로 쓴다.
+- 재생기와 저장소는 **앱 전체에 하나**(`shared`)다 — `AppEnvironment`는 Siri 동작이 따로 만들기도 해서, 거기서 만들면 잠금 화면 조작이 두 번 붙는다.
+  계정이 바뀌면 재생만 멈춘다. 이어폰을 뽑으면 멈춘다(성당 안에서 스피커로 이어 나오지 않게). 끊김은 `.spokenAudio`라 길 안내(지도 도보 안내)가
+  말할 때마다 생긴다 — 시스템이 이어도 된다고 하고(`shouldResume`) 30초 안에 돌려받았을 때만 이어 튼다. 전화처럼 오래 끊긴 뒤에는 저절로 틀지 않는다.
+  다 들으면 오디오 세션을 놓아(`notifyOthersOnDeactivation`) 끊겼던 음악이 이어지고, 듣기를 끝내면 잠금화면·이어폰 버튼도 받지 않는다.
+- 화면이 꺼져도 들린다 — `UIBackgroundModes: audio`(`project.yml`과 `project-free.yml` **둘 다**). 장면이 `.inactive`·`.background`가 돼도 멈추지 않는다.
+- 일정 줄 안에는 **누르는 버튼을 두지 않았다** — 줄 전체를 UIKit 탭 표면(`PlanSpotTapSurface`)이 덮어 눌리지 않는다. 표시만 하고, 여는 길은
+  길게 누르기 메뉴 · VoiceOver 동작 · 줄을 눌러 열리는 편집기/장소 정보의 버튼이다.
+- 듣기 막대(`StoryListeningBar`)는 탭 바 바로 위에 뜨고 내용은 그만큼 위에서 끝난다. **지도 탭에서는 세우지 않는다** — 지도가 아래 안전 영역을
+  무시해 막대가 Google 로고를 덮는다(약관). 그때도 소리는 계속되고 잠금 화면에서 다룬다.
+  막대와 `지금` 카드에서 여는 창은 `TripHomeView`가 띄운다 — 듣기를 끝내면 막대가, 다음 일정이 바뀌면 카드의 버튼이 계층에서 빠지는데,
+  띄운 뷰가 빠지면 SwiftUI가 창도 내린다. 편집기·장소 정보처럼 그 자체가 창인 곳은 버튼이 직접 띄운다(창 위에는 그 창만 띄울 수 있다).
+- CryptoKit은 SHA-256 해시에만 쓴다 — 수출 규정상 면제(`ITSAppUsesNonExemptEncryption: false`는 그대로).
+- 확인되지 않은 것: 실기기에서의 잠금 화면 재생·이어폰 뽑힘·전화 끼어듦·장시간 재생. CI는 시뮬레이터 빌드와 XCTest만 본다.
 
 ## 제작 명령
 
