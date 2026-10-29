@@ -118,7 +118,13 @@ final class TodayPlaceChangeUITests: XCTestCase {
         let menu = app.buttons["현재 미술관 작업"].firstMatch
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
         reveal(menu, in: app); menu.tap()
-        app.buttons["다른 장소로 바꾸기"].tap()
+        let change = app.buttons["다른 장소로 바꾸기"]
+        XCTAssertTrue(change.waitForExistence(timeout: 5))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            change.isHittable && change.isEnabled
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
+        change.tap()
         XCTAssertTrue(app.navigationBars["다른 장소로 바꾸기"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["도착 14:00 · 같은 시간대의 장소를 바꿔요."].waitForExistence(timeout: 5))
     }
@@ -150,6 +156,7 @@ final class TodayPlaceChangeUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--ios-review-ui", "--review-place-change", "-AppleLanguages", "(ko)", "-AppleLocale", "ko_KR"] + flags
+        addTeardownBlock { app.terminate() }
         app.launch()
         return app
     }
