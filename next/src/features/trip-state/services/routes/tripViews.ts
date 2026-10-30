@@ -129,6 +129,7 @@ export function createTripViewsHandlers(kit: HandlerKit) {
       const arrivedActivityId = await arrivedActivityFor(gateway, row, url, clock);
       const response = buildTravelState({
         tripId, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
+        role: row.role, memberCount: row.member_count,
         todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed,
         generatedAt: now().toISOString(),
         currentLocation: location.point,

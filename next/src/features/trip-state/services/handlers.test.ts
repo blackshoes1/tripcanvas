@@ -607,6 +607,15 @@ describe('GET /travel-state — 여행 중 단 하나의 조회(§57)', () => {
     expect(body.stateVersion).toBe(body.widget.stateVersion);
   });
 
+  it('보기 전용 여행의 역할과 인원 수를 Today와 동일하게 유지한다', async () => {
+    const row = store.rows.get('trip-1')!;
+    store.rows.set('trip-1', { ...row, role: 'VIEWER', member_count: 3 });
+    const body = await state();
+    expect(body.today.trip).toMatchObject({ role: 'VIEWER', memberCount: 3 });
+    const today = await getToday();
+    expect([body.today.trip.role, body.today.trip.memberCount]).toEqual([today.trip.role, today.trip.memberCount]);
+  });
+
   it('같은 상태면 stateVersion이 그대로다 — 분마다 잠금화면을 새로 그리지 않는다', async () => {
     const first = await state('?now=13:00');
     const later = await state('?now=13:07');
