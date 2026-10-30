@@ -91,6 +91,24 @@ import XCTest
         XCTAssertEqual(manager.requests, 1)
     }
 
+    func testArrivalDoesNotUseAStaleOrImpreciseLocationFix() async {
+        let provider = LocationProvider(manager: FollowupLocationManager())
+        let measured = Date(timeIntervalSince1970: 1_800_000_000)
+        for accuracy in [30.0, 1_000.0, -1.0] {
+            let request = Task { await provider.requestOnce() }
+            await until { provider.pendingRequestCount == 1 }
+            provider.locationManager(CLLocationManager(), didUpdateLocations: [CLLocation(
+                coordinate: .init(latitude: 35, longitude: 135), altitude: 0,
+                horizontalAccuracy: accuracy, verticalAccuracy: -1, timestamp: measured)])
+            _ = await request.value
+            XCTAssertEqual(provider.lastUpdatedAt, measured)
+            XCTAssertNil(provider.freshArrivalPoint(at: measured.addingTimeInterval(61)))
+            XCTAssertNil(provider.freshArrivalPoint(at: measured.addingTimeInterval(-10)))
+            XCTAssertEqual(provider.freshArrivalPoint(at: measured.addingTimeInterval(30)),
+                           accuracy == 30 ? GeoPoint(lat: 35, lng: 135) : nil)
+        }
+    }
+
     func testCancellingOneLocationCallerDoesNotCancelTheOther() async {
         let manager = FollowupLocationManager(), provider = LocationProvider(manager: manager)
         let first = Task { await provider.requestOnce() }

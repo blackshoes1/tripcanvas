@@ -43,9 +43,6 @@ export const MODE_SPEED: Record<string, number> = {
   car: 40, taxi: 40, transit: 25, train: 160, walk: 4.5, bike: 15, flight: 700
 };
 
-/** 예약 시각 앞의 '기다리는 중' 구간 — 이보다 이른 시각은 아직 도착으로 보지 않는다. */
-const ARRIVAL_WAIT_MIN = 60;
-
 function dayModeOf(day: DayDoc | undefined): string {
   const m = day?.mode;
   return m && MODE_SPEED[m] ? m : 'car';
@@ -102,6 +99,8 @@ export interface TodayInput {
   intent?: string | null;
   /** 기기가 알려준 현재 위치. 저장하지 않고 이번 계산에만 쓴다 */
   currentLocation?: { lat: number; lng: number } | null;
+  /** 현재 일자·리비전과 일치하는 기기의 구역 도착 관측. 원문 좌표는 저장하지 않는다. */
+  arrivedActivityId?: string | null;
   /** 그날 이미 거절한 제안 키 */
   dismissed?: string[];
   generatedAt?: string;
@@ -112,7 +111,7 @@ export interface TodayInput {
   legCache?: LegCache;
 }
 
-/** 지금 사용자가 놓인 상태 — 시각만으로 결정되는 규칙(§20 deterministic). */
+/** 엔진이 고른 현재 일정과 실제 도착 근거를 화면 상태로 옮긴다. */
 export function travelStatusOf(
   state: ReturnType<typeof adapt.buildTripState>,
   next: ReturnType<typeof adapt.buildTripState>['nextItem'],
@@ -121,17 +120,7 @@ export function travelStatusOf(
   if (!state.items.length) return 'NO_PLAN';
   if (!next) return 'COMPLETED';
   if (next.status === 'IN_PROGRESS') return 'IN_PROGRESS';
-  // ARRIVED(도착해서 예약 시각을 기다리는 중)는 위치 정보 없이는 확인할 수 없다. 도착 '예정' 시각만 보면
-  // 오전에 계산된 eta 때문에 오후 내내 '식당에 도착함'이 된다. 그래서 두 가지 근거를 요구한다:
-  //   (1) 직전 일정을 사용자가 완료 처리했다(계획대로 움직였다는 유일한 증거)
-  //   (2) 예약 시각 직전 대기 구간에 들어와 있다
-  // 실제 위치가 들어오면(§41 확장 지점) 이 추론을 사실로 대체한다.
-  if (state.live && state.nowMin < next.depart) {
-    const at = state.items.findIndex((it) => it.id === next.id);
-    const prevDone = at <= 0 || state.items[at - 1].status === 'COMPLETED';
-    const waitFrom = Math.max(next.eta, next.depart - ARRIVAL_WAIT_MIN);
-    if (prevDone && state.nowMin >= waitFrom) return 'ARRIVED';
-  }
+  if (state.arrivedActivityId === next.id) return 'ARRIVED';
   // '지연'은 다음 일정에 이미 늦은 상태다. 사용자가 완료를 안 누른 과거 항목을 지연으로 세면
   // 아무 문제 없는 오후에도 경고가 뜬다 — 고정 약속을 못 지키는 경우는 replan.needed가 따로 알린다.
   if (departure?.level === 'LATE') return 'DELAYED';
@@ -219,7 +208,7 @@ export function computeToday(input: TodayInput): TodayComputation {
   const state = adapt.buildTripState(trip, {
     dayIndex, todayISO: input.todayISO, nowMin: input.nowMinutes, timeline,
     startAnchor: anchor, legMin, energyLevel: resolved.energyLevel, prefs,
-    currentLocation: input.currentLocation ?? undefined, jTone: input.jTone
+    currentLocation: input.currentLocation ?? undefined, arrivedActivityId: input.arrivedActivityId, jTone: input.jTone
   });
   const built = adapt.buildSuggestions(trip, state, { legMin, dismissed: input.dismissed ?? [] });
 
@@ -251,7 +240,7 @@ export function computeToday(input: TodayInput): TodayComputation {
   const byId = new Map(activities.map((a) => [a.id, a]));
 
   const next = state.nextItem;
-  const travelMinutes = next
+  const travelMinutes = next && state.arrivedActivityId === next.id ? 0 : next
     ? Math.round(legMinutesOf(state.currentLocation, next.location, legModeOf(day, next.spot), true))
     : null;
   const advice = next ? adapt.departureAdvice(state, next, travelMinutes ?? 0) : null;

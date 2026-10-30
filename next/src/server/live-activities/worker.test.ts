@@ -16,7 +16,8 @@ let repo: LiveActivityRepository;
 let send: LiveActivitySender;
 beforeEach(() => {
   repo = { register: vi.fn(), stop: vi.fn(), claimDue: vi.fn().mockResolvedValue([claim]),
-    delivery: vi.fn().mockResolvedValue(delivery), complete: vi.fn(), retry: vi.fn(), discard: vi.fn() };
+    delivery: vi.fn().mockResolvedValue(delivery), complete: vi.fn(), retry: vi.fn(), discard: vi.fn(),
+    recordArrival: vi.fn(), readArrival: vi.fn() };
   send = vi.fn().mockResolvedValue({ ok: true });
 });
 
@@ -213,4 +214,43 @@ it('백그라운드도 기존 도로 캐시로 API와 같은 현재 장소·이�
   await runLiveActivityBatch({ repo, send, now: () => at('10:45'), cachedLegs });
   expect(cachedLegs).toHaveBeenCalledWith(document, 0);
   expect(vi.mocked(send).mock.calls[0][1].state).toEqual(expected.liveActivity);
+});
+
+describe('백그라운드 도착 근거를 시간 계산이 되덮지 않는다', () => {
+  const evidence = () => ({ target: { dayIndex: 0, activityId: 'd0s1', revision: 1 },
+    arrived: true, observedAtISO: at('09:30').toISOString() });
+  it('다음 일정에 조기 도착하면 이전 일정 시간이 남아도 ARRIVED를 보내고 시작 때 IN_PROGRESS로 전환한다', async () => {
+    const copy = structuredClone(delivery);
+    copy.document.days![0].spots![1] = { ...copy.document.days![0].spots![1], lat: 40, lng: -3 };
+    vi.mocked(repo.delivery).mockResolvedValue({ ...copy, arrival: evidence() });
+    await runLiveActivityBatch({ repo, send, now: () => at('09:30') });
+    expect(vi.mocked(send).mock.calls[0][1].state).toMatchObject({ nextTitle: '점심', status: 'ARRIVED', travelMinutes: 0, departureText: null });
+    await runLiveActivityBatch({ repo, send, now: () => at('11:00') });
+    expect(vi.mocked(send).mock.calls[1][1].state).toMatchObject({ nextTitle: '점심', status: 'IN_PROGRESS' });
+    expect(copy.document.days![0].spots!.every(spot => !spot.status)).toBe(true);
+  });
+  it.each(['exit', 'revision', 'completed', 'end'])('이탈·수정·방문종결·종료 경계에서는 근거를 적용하지 않는다: %s', async reason => {
+    const copy = structuredClone(delivery);
+    copy.document.days![0].spots![1] = { ...copy.document.days![0].spots![1], lat: 40, lng: -3 };
+    const arrival = evidence();
+    if (reason === 'exit') arrival.arrived = false;
+    if (reason === 'revision') arrival.target.revision = 2;
+    if (reason === 'completed') copy.document.days![0].spots![1].status = 'COMPLETED';
+    vi.mocked(repo.delivery).mockResolvedValue({ ...copy, arrival });
+    await runLiveActivityBatch({ repo, send, now: () => at(reason === 'end' ? '12:00' : '09:30') });
+    expect(vi.mocked(send).mock.calls[0][1].state.status).not.toBe('ARRIVED');
+  });
+  it('캐시를 기다리는 사이 새 도착이 lease를 무효화하면 이전 APNs를 보내지 않는다', async () => {
+    vi.mocked(repo.delivery).mockResolvedValueOnce(delivery).mockResolvedValueOnce(null);
+    await runLiveActivityBatch({ repo, send, now: () => at('09:30'), cachedLegs: vi.fn().mockResolvedValue({}) });
+    expect(send).not.toHaveBeenCalled();
+    expect(repo.complete).not.toHaveBeenCalled();
+  });
+  it('마지막 권한 재조회가 lease를 넘기면 보내지 않는다', async () => {
+    const clock = vi.fn().mockReturnValueOnce(at('09:30')).mockReturnValueOnce(at('09:30'))
+      .mockReturnValueOnce(at('09:30')).mockReturnValueOnce(at('09:30')).mockReturnValue(new Date('2026-10-27T09:30:31Z'));
+    await runLiveActivityBatch({ repo, send, now: clock });
+    expect(send).not.toHaveBeenCalled();
+    expect(repo.retry).toHaveBeenCalledWith(claim, new Date('2026-10-27T09:30:31Z'), 'LeaseExpired');
+  });
 });

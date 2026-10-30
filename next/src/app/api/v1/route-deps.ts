@@ -51,6 +51,7 @@ import { PgPriceObservationRepository } from '@/server/infrastructure/database/p
 import { PgTripRepository } from '@/server/infrastructure/database/pgTripRepository';
 import { PgTripSnapshotRepository } from '@/server/infrastructure/database/pgTripSnapshotRepository';
 import { PgUserRepository } from '@/server/infrastructure/database/pgUserRepository';
+import { PgLiveActivityRepository } from '@/server/infrastructure/database/pgLiveActivityRepository';
 import { LegacySupabaseCollabService } from '@/server/infrastructure/supabase/legacyCollabService';
 import {
   LegacyMembershipRepository, LegacySupabaseSession, LegacyTripRepository
@@ -226,6 +227,10 @@ async function gatewayFor(token: string): Promise<Gateway | null> {
   const service = await tripServiceFor(ctx, token);
   return {
     ...personal,
+    ...(db && ctx.sessionId && ctx.tokenSource === 'tripcanvas' ? {
+      arrivalEvidence: (tripId: string, deviceId: string) =>
+        new PgLiveActivityRepository(db).readArrival(ctx.userId, deviceId, tripId, new Date(), ctx.sessionId!)
+    } : {}),
     async listTrips() { return (await service.list(ctx)).map(toRow); },
     async getTrip(tripId) {
       try { return toRow(await service.get(ctx, tripId)); } catch (e) { if (e instanceof ApiError && e.code === 'NOT_FOUND') return null; throw e; }

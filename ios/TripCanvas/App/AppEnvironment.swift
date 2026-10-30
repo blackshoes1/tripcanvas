@@ -45,6 +45,7 @@ final class AppEnvironment {
     /// Siri · Push · Widget · Watch · Share가 함께 쓰는 단 하나의 라우터(§41).
     let router = ActionRouter()
     let location: LocationProvider
+    let arrival: ArrivalMonitor
     let liveActivity: LiveActivityController
     let push: PushService
     let travelMode: TravelModeController
@@ -69,6 +70,7 @@ final class AppEnvironment {
         let tripService = service ?? TripService(api: apiClient, cache: TripCache(scope: scope), cacheScope: scope)
         SharedStore.prepare(accountID: authStore.session?.userId)
         let locationProvider = LocationProvider()
+        let arrivalMonitor = ArrivalMonitor()
         let liveActivityController = LiveActivityController(remoteSource: tripService)
         let pushService = PushService(handlesSystemNotifications: handlesSystemNotifications) { token in
             try await tripService.registerDevice(
@@ -90,6 +92,7 @@ final class AppEnvironment {
         self.auth = authStore
         self.service = tripService
         self.location = locationProvider
+        self.arrival = arrivalMonitor
         self.liveActivity = liveActivityController
         self.push = pushService
         self.places = places ?? PlaceSearchService(api: apiClient, googleKey: AppConfig.googleMapsKey, bundleId: AppConfig.bundleId)
@@ -102,7 +105,10 @@ final class AppEnvironment {
         }
         self.travelMode = TravelModeController(
             service: tripService, location: locationProvider,
-            push: pushService, liveActivity: liveActivityController)
+            push: pushService, liveActivity: liveActivityController,
+            arrivalMonitor: arrivalMonitor,
+            arrivalContext: { tripId in liveActivityController.arrivalContext(for: tripId, accountID: authStore.session?.userId) })
+        if handlesSystemNotifications { self.travelMode.restoreArrivalMonitoring() }
         let actionRouter = router
         pushService.onOpenLink = { [weak actionRouter] url in actionRouter?.open(url: url) }
         if handlesSystemNotifications {

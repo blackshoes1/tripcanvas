@@ -238,7 +238,7 @@
    * timeline은 app이 실제 이동시간으로 계산한 computeTimeline 결과를 그대로 넘긴다(출발 기준점 단일 진실 공유).
    * @param {any} trip
    * @param {{dayIndex?:number, todayISO?:string, nowMin?:number, live?:boolean, timeline?:any[], startAnchor?:any,
-   *          currentLocation?:any, planningMode?:PlanningMode, energyLevel?:EnergyLevel, legMin?:any, cfg?:any, prefs?:any, jTone?:string}=} opts
+   *          currentLocation?:any, arrivedActivityId?:string|null, planningMode?:PlanningMode, energyLevel?:EnergyLevel, legMin?:any, cfg?:any, prefs?:any, jTone?:string}=} opts
    * @returns {any}
    */
   function buildTripState(trip, opts){
@@ -291,7 +291,17 @@
     const lastDone=completed.length? completed[completed.length-1] : null;
     const inProgress=remaining.filter(it=>it.status==='IN_PROGRESS').sort((a,b)=>b.depart-a.depart)[0]||null;
     const future=remaining.filter(it=>it.depart>=nowMin).sort((a,b)=>a.depart-b.depart);
-    const nextItem=live? (inProgress||future[0]||null) : (remaining[0]||null);
+    const scheduled=live? (inProgress||future[0]||null) : (remaining[0]||null);
+    // 실제 위치와 구역 관측만 도착 근거다. 일정에서 추정한 currentLocation은 사용하지 않는다.
+    const observedLocation=locOf(o.currentLocation);
+    const arrivalCandidates=live? remaining.filter(it=>it.location && (it.end>nowMin || it.depart>=nowMin)
+      && (!it.spot.choice || it.spot.choice.state!=='PENDING')) : [];
+    const arrived=arrivalCandidates.find(it=>it.id===o.arrivedActivityId) || (observedLocation
+      ? arrivalCandidates.filter(it=>LIB.haversine(observedLocation,it.location)<=0.1).sort((a,b)=>
+        LIB.haversine(observedLocation,a.location)-LIB.haversine(observedLocation,b.location)
+        || Number(b===scheduled)-Number(a===scheduled) || a.depart-b.depart || a.si-b.si)[0]
+      : null) || null;
+    const nextItem=arrived||scheduled;
     /** @type {LatLng|null} */
     let passedLoc=null;
     if(live) for(let i=0;i<items.length;i++){ const it=items[i]; if(it.location && it.end<=nowMin) passedLoc=it.location; }
@@ -299,7 +309,7 @@
     let firstLoc=null;
     for(let i=0;i<items.length && !firstLoc;i++) firstLoc=items[i].location;
     // 우선순위: 주입된 위치 → 진행 중인 곳 → 마지막 완료 → 지금쯤 지나왔을 곳 → 이월 앵커 → 오늘 첫 장소
-    const currentLocation=locOf(o.currentLocation) || (inProgress&&inProgress.location) || (lastDone&&lastDone.location) || passedLoc || startLocation || firstLoc;
+    const currentLocation=observedLocation || (arrived&&arrived.location) || (inProgress&&inProgress.location) || (lastDone&&lastDone.location) || passedLoc || startLocation || firstLoc;
     // 지연: 이미 지났어야 할 활동이 아직 남아 있으면 그 차이 (계획 대비 밀린 분)
     let delayMin=0;
     if(live) remaining.forEach(it=>{ if(nowMin>it.eta) delayMin=Math.max(delayMin, Math.round(nowMin-it.eta)); });
@@ -320,9 +330,9 @@
       live, nowMin, dayStartMin, dayEndMin, day,
       items, completedItems:completed.map(it=>it.id), remainingItems:remaining.map(it=>it.id),
       skippedItems:items.filter(it=>it.status==='SKIPPED').map(it=>it.id),
-      fixedCommitments, nextFixed, currentItem:inProgress,
+      fixedCommitments, nextFixed, currentItem:arrived||inProgress,
       // 방문 표시는 그대로 두고 시각으로 고른다. 지난 일정으로 돌아가지 않고 미리보기는 원래 순서를 지킨다.
-      nextItem,
+      nextItem, arrivedActivityId:arrived?arrived.id:null,
       currentLocation, startLocation, hotelLocation:(hotel&&hotel.location)||startLocation,
       availableMin, freeBefore, delayMin, travelMinToday:travelToday,
       prefs:o.prefs||{},   // {maxTravelMin?, walkAverse?, mealFocus?} — 자연어 요청이 추천 범위를 좁힌다
@@ -618,7 +628,7 @@
     /** @type {{id:string,name:string,atMin:number,lateBy:number}|null} */
     let first=null;
     list.forEach((/**@type{TripItem}*/it)=>{
-      if(state.live && it.status==='IN_PROGRESS'){
+      if(state.live && (it.status==='IN_PROGRESS' || state.arrivedActivityId===it.id)){
         clock=Math.max(clock, it.end);
         timings.push({id:it.id,start:it.depart,end:clock});
         if(it.location) prev=it.location;
@@ -664,7 +674,8 @@
    */
   function generateReplan(state, opts){
     const pending=state.items.filter((/**@type{TripItem}*/it)=>it.status!=='COMPLETED'&&it.status!=='SKIPPED'&&it.status!=='CANCELLED'
-      && (!state.live || it.end>state.nowMin || it.depart>=state.nowMin));
+      && (!state.live || it.end>state.nowMin || it.depart>=state.nowMin)
+      && (!state.arrivedActivityId || it.id===state.arrivedActivityId || it.depart>=state.nextItem.depart));
     const base=simulate(state, pending, opts);
     let keep=pending.slice();
     /** @type {TripItem[]} */
@@ -1014,7 +1025,7 @@
     const target=(item.fixedAt!=null? item.fixedAt : item.eta);
     const leaveMin=Math.round(target-travel);
     if(!state.live) return {leaveMin, slackMin:0, level:'EARLY', text:say(state, 'departure.planned', {time:LIB.hm(leaveMin)})};
-    if(item.status==='IN_PROGRESS') return null;
+    if(item.status==='IN_PROGRESS' || state.arrivedActivityId===item.id) return null;
     if(!fixed){
       // 하루를 아직 시작하지 않았으면 계획을 말한다 — 아침 8시에 "지금 출발하면"이라고 재촉하지 않는다
       if(!state.completedItems.length && state.nowMin<leaveMin)
@@ -1159,7 +1170,7 @@
       return {leaveMin, slackMin:0, bufferMin, travelMin:travel, level:'EARLY', stage:'UPCOMING', lateByMin:0, targetMin,
         text:say(state, 'departure.planned', {time:LIB.hm(leaveMin)})};
     }
-    if(item.status==='IN_PROGRESS') return null;
+    if(item.status==='IN_PROGRESS' || state.arrivedActivityId===item.id) return null;
     if(item.fixedAt==null){
       const plain=departureAdvice(state, item, travel);
       return {leaveMin:plain? plain.leaveMin : state.nowMin, slackMin:plain? plain.slackMin : 0, bufferMin, travelMin:travel,
@@ -1230,6 +1241,7 @@
       (extra&&extra.stage)||'', (extra&&extra.pulse)||'', (extra&&extra.timeZone)||'',
       extra&&extra.travelMinutes!=null?Math.round(extra.travelMinutes):''
     ];
+    if(state.arrivedActivityId) parts.push('arrived:'+state.arrivedActivityId);
     // 표시 말투가 바뀌면 위젯·Live Activity도 갱신한다. 알림 dedupeKey와 제안 키는 그대로다.
     if(state.jTone==='CASUAL'||state.jTone==='POLITE') parts.push('j'+state.jTone);
     let h=5381;

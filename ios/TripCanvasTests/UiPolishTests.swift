@@ -70,4 +70,12 @@ final class UiPolishTests: XCTestCase {
         }
         for mode in TravelMode.allCases { XCTAssertTrue(mode.symbol.allSatisfy { $0.isASCII }) }
     }
+
+    func testEarlyArrivalFactsDoNotDescribeAnotherDepartureOrFutureArrival() {
+        let arrived = NextAction(activityId: "d0s1", title: "점심 예약", status: .arrived,
+            travelMinutes: 0, etaMinutes: 720, startMinutes: 720, stayMinutes: 60, departure: nil,
+            location: nil, type: .restaurant, flexibility: .fixed, reasons: [])
+        XCTAssertEqual(NextActionCard.facts(arrived, isEstimate: true).map(\.text),
+                       ["도착했어요", "시작 12:00", "1시간 머무름"])
+    }
 }

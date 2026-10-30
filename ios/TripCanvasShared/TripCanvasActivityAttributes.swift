@@ -83,11 +83,12 @@ enum ActivityPresentation {
 
     static func heading(_ state: TripCanvasActivityAttributes.ContentState) -> String {
         if state.scheduleElapsed == true { return "오늘" }
-        return state.status == .inProgress ? "지금" : "다음"
+        return state.status == .inProgress || state.status == .arrived ? "지금" : "다음"
     }
 
     /// 잠금화면 한 줄 요약. 출발 안내가 있으면 그것이 가장 쓸모 있다.
     static func headline(_ state: TripCanvasActivityAttributes.ContentState) -> String {
+        if state.status == .arrived { return "도착했어요" }
         if let text = state.departureText, !text.isEmpty { return text }
         return state.pulseText
     }

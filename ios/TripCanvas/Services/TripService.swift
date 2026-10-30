@@ -125,6 +125,7 @@ final class TripService: TripDataSource {
                intent: String? = nil, energy: EnergyLevel? = nil) async throws -> Fetched<TodayResponse> {
         let request = try await tripRequest(tripId), scope = request.scope
         var query: [URLQueryItem] = []
+        query.append(URLQueryItem(name: "arrivalDeviceId", value: DeviceIdentity.current))
         if let dayIndex { query.append(URLQueryItem(name: "day", value: String(dayIndex))) }
         let said = (intent ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if !said.isEmpty { query.append(URLQueryItem(name: "intent", value: said)) }
@@ -306,6 +307,7 @@ extension TripService: TravelStateSource {
             query.append(URLQueryItem(name: "lng", value: String(location.lng)))
             if let locationUpdatedAt { query.append(URLQueryItem(name: "locUpdatedAt", value: locationUpdatedAt)) }
         }
+        query.append(URLQueryItem(name: "arrivalDeviceId", value: DeviceIdentity.current))
         if travelMode { query.append(URLQueryItem(name: "travelMode", value: "1")) }
         if let suppressUntil { query.append(URLQueryItem(name: "suppressUntil", value: suppressUntil)) }
         if markSent { query.append(URLQueryItem(name: "markSent", value: "1")) }
@@ -323,6 +325,17 @@ extension TripService: TravelStateSource {
         }
     }
 
+    func reportArrival(_ observation: LiveActivityArrivalRequest) async throws {
+        let request = try await tripRequest(observation.tripId)
+        let token = try await api.tokens.accessToken()
+        guard request.scope == cacheScope, request.scope?.accountID != nil else { throw APIError.unauthorized }
+        let client = APIClient(baseURL: api.baseURL, tokens: ArrivalObservationToken(token: token), session: api.session)
+        struct Ack: Decodable { let recorded: Bool }
+        let result: Ack = try await client.post("/api/v1/live-activities/arrival", jsonBody: JSONEncoder().encode(observation))
+        try await checkTripRequest(observation.tripId, request)
+        guard result.recorded else { throw APIError.stale("도착 확인을 연결하지 못했어요. 다시 확인해 주세요.") }
+    }
+
     /// 로그인한 기기를 등록한다. 토큰이 바뀌면 다시 부르면 되고, 같은 기기는 한 행으로 유지된다(§45).
     func registerDevice(deviceId: String, pushToken: String, preferences: [String: Bool], appVersion: String?) async throws {
         struct Ack: Codable { let registered: Bool }
@@ -337,6 +350,12 @@ extension TripService: TravelStateSource {
         struct Ack: Codable { let registered: Bool }
         let _: Ack = try await api.delete("/api/v1/devices", query: [URLQueryItem(name: "deviceId", value: deviceId)])
     }
+}
+
+@MainActor private struct ArrivalObservationToken: TokenProviding {
+    let token: String
+    func accessToken() async throws -> String { token }
+    func refreshToken() async throws -> String { throw APIError.unauthorized }
 }
 
 // MARK: - 여행 문서 (편집)

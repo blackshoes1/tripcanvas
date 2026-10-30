@@ -1,5 +1,5 @@
 // Trip Canvas Service Worker
-const VER = 'tc-v291';
+const VER = 'tc-v292';
 const SHELL_CACHE = VER + '-shell';
 // With J 이야기 — 사람이 듣거나 '오프라인 저장'을 눌러 페이지가 직접 담는 음성 캐시. 앱 버전이 바뀌어도 지우지 않는다
 // (25MB를 버전마다 다시 받게 된다). 이름은 app.js의 STORY_CACHE와 같아야 한다 — test/sw.test.js가 대조한다.

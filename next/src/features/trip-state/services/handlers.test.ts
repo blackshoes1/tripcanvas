@@ -634,6 +634,42 @@ describe('GET /travel-state — 여행 중 단 하나의 조회(§57)', () => {
     expect(store.rows.get('trip-1')!.revision).toBe(3);
   });
 
+  it('도착 구독을 명시한 같은 기기는 Today와 잠금화면이 같은 ARRIVED를 받는다', async () => {
+    const calls: string[][] = [];
+    const gateway = gatewayOf(store);
+    gateway.arrivalEvidence = async (tripId, deviceId) => {
+      calls.push([tripId, deviceId]);
+      return { target: { dayIndex: 0, activityId: 'd0s1', revision: 3 }, arrived: true, observedAtISO: NOW.toISOString() };
+    };
+    const arrivalAPI = createHandlers({ gatewayFor: () => gateway, now: () => NOW });
+    const travel = await arrivalAPI.travelState(new Request('http://localhost/api/v1/trips/trip-1/travel-state?arrivalDeviceId=d', auth()), 'trip-1');
+    const arrived = await travel.json() as TravelStateResponse;
+    expect(arrived.liveActivity).toMatchObject({ nextTitle: '저녁 예약', status: 'ARRIVED', travelMinutes: 0, departureText: null });
+    const today = await arrivalAPI.today(new Request('http://localhost/api/v1/trips/trip-1/today?arrivalDeviceId=d', auth()), 'trip-1');
+    expect((await today.json() as TodayResponse).nextAction).toMatchObject({ title: '저녁 예약', status: 'ARRIVED' });
+    expect(calls).toEqual([['trip-1', 'd'], ['trip-1', 'd']]);
+    expect(store.rows.get('trip-1')!.revision).toBe(3);
+  });
+
+  it('기기 미지정·다른 리비전·조회 실패는 도착했다고 추정하지 않는다', async () => {
+    const gateway = gatewayOf(store);
+    let reads = 0;
+    gateway.arrivalEvidence = async () => {
+      reads++;
+      return { target: { dayIndex: 0, activityId: 'd0s1', revision: 2 }, arrived: true, observedAtISO: NOW.toISOString() };
+    };
+    const arrivalAPI = createHandlers({ gatewayFor: () => gateway, now: () => NOW });
+    const plain = await arrivalAPI.travelState(new Request('http://localhost/api/v1/trips/trip-1/travel-state', auth()), 'trip-1');
+    expect((await plain.json() as TravelStateResponse).liveActivity.status).not.toBe('ARRIVED');
+    expect(reads).toBe(0);
+    const stale = await arrivalAPI.travelState(new Request('http://localhost/api/v1/trips/trip-1/travel-state?arrivalDeviceId=d', auth()), 'trip-1');
+    expect((await stale.json() as TravelStateResponse).liveActivity.status).not.toBe('ARRIVED');
+    gateway.arrivalEvidence = async () => { throw new Error('database unavailable'); };
+    const failed = await arrivalAPI.travelState(new Request('http://localhost/api/v1/trips/trip-1/travel-state?arrivalDeviceId=d', auth()), 'trip-1');
+    expect(failed.status).toBe(200);
+    expect((await failed.json() as TravelStateResponse).liveActivity.status).not.toBe('ARRIVED');
+  });
+
   it('출발할 때가 되면 알림 계획이 생기고, 그 전에는 조용하다', async () => {
     const calm = await state('?now=13:00');
     expect(calm.notifications.filter((n) => n.kind === 'departureReminder')).toHaveLength(0);

@@ -209,6 +209,26 @@ final class LiveActivityPushRegistrationTests: XCTestCase {
         XCTAssertNil(requests.last?.httpBody)
     }
 
+    func testArrivalObservationUsesTheRegisteredActivityAndContainsNoCoordinates() async throws {
+        let (service, _, _, _) = transport()
+        defer { PushRegistrationProtocol.handle = nil }
+        var received: URLRequest?, body: [String: JSONValue]?
+        PushRegistrationProtocol.handle = { operation in
+            received = operation.request; body = try? operation.body(); operation.finish()
+        }
+        let observation = LiveActivityArrivalRequest(deviceId: request.deviceId, activityId: request.activityId,
+            tripId: "trip", target: .init(dayIndex: 0, activityId: "d0s1", revision: 7),
+            arrived: true, observedAtISO: "2027-01-15T10:30:00Z", eventRevision: 42)
+        try await service.reportArrival(observation)
+        XCTAssertEqual(received?.httpMethod, "POST")
+        XCTAssertEqual(received?.url?.path, "/api/v1/live-activities/arrival")
+        XCTAssertEqual(received?.value(forHTTPHeaderField: "Authorization"), "Bearer account-a-token")
+        XCTAssertNil(received?.url?.query)
+        XCTAssertEqual(body, ["deviceId": .string(request.deviceId), "activityId": .string(request.activityId),
+            "tripId": .string("trip"), "target": .object(["dayIndex": .number(0), "activityId": .string("d0s1"), "revision": .number(7)]),
+            "arrived": .bool(true), "observedAtISO": .string("2027-01-15T10:30:00Z"), "eventRevision": .number(42)])
+    }
+
     func testLateSuccessOr401NeverRetriesOldActivityUsingNewAccountToken() async throws {
         for removing in [false, true] {
             for status in [200, 401] {
@@ -306,7 +326,7 @@ private final class PushRegistrationProtocol: URLProtocol {
     override func startLoading() { Task { @MainActor in Self.handle?(self) } }
     override func stopLoading() {}
     func finish(status: Int = 200) {
-        let body = status == 200 ? #"{"registered":true,"expiresAtISO":"2027-01-15T20:00:00Z","removed":true}"# : #"{"error":"UNAUTHORIZED"}"#
+        let body = status == 200 ? #"{"registered":true,"recorded":true,"expiresAtISO":"2027-01-15T20:00:00Z","removed":true}"# : #"{"error":"UNAUTHORIZED"}"#
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)

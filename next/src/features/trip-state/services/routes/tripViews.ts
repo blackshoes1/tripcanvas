@@ -15,7 +15,7 @@ import lib from '@legacy/lib.js';
 import { LEG_WAIT_MS, fail, ok, readDayIndex, readLocation, readMinutes, resolveClock, type HandlerKit, type TripRow } from '../handlerKit';
 
 export function createTripViewsHandlers(kit: HandlerKit) {
-  const { deps, now, auth, withTrip, todayFor, fxFor, legCacheFor, readBody } = kit;
+  const { deps, now, auth, withTrip, todayFor, arrivedActivityFor, fxFor, legCacheFor, readBody } = kit;
 
   /** GET /api/v1/trips — 여행 목록. 삭제(tombstone)된 여행은 빼고, 최근 수정 순. */
   async function trips(request: Request): Promise<Response> {
@@ -126,11 +126,13 @@ export function createTripViewsHandlers(kit: HandlerKit) {
       ]);
 
       const location = readLocation(url);
+      const arrivedActivityId = await arrivedActivityFor(gateway, row, url, clock);
       const response = buildTravelState({
         tripId, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
         todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed,
         generatedAt: now().toISOString(),
         currentLocation: location.point,
+        arrivedActivityId,
         locationUpdatedAt: location.updatedAt,
         travelMode: url.searchParams.get('travelMode') === '1',
         suppressUntilMinutes: readMinutes(url.searchParams.get('suppressUntil')),

@@ -144,6 +144,7 @@ declare module '@legacy/lib.js' {
     encodePolyline(points: { lat: number; lng: number }[]): string;
     ringPts(p: { lat: number; lng: number }, r: number): { lat: number; lng: number }[];
     zonedMinutesToISOString(isoDate: string, minutes: number, timeZone: string): string | null;
+    zonedClock(ms: number, timeZone: string): { todayISO: string; nowMin: number } | null;
     inKorea(p: { lat: number; lng: number } | null | undefined): boolean;
     dayLodgings(trip: unknown, di: number): { id: string; name: string; state: 'CHECK_IN' | 'STAY' | 'CHECK_OUT' | 'CONFLICT'; night: number | null; nights: number | null }[];
     stayNights(s: unknown): number;
@@ -408,6 +409,7 @@ declare module '@legacy/adaptive.js' {
     completedItems: string[]; remainingItems: string[]; skippedItems: string[];
     fixedCommitments: FixedCommitment[]; nextFixed: FixedCommitment | null;
     currentItem: TripItem | null; nextItem: TripItem | null;
+    arrivedActivityId: string | null;
     currentLocation: LatLng | null; startLocation: LatLng | null; hotelLocation: LatLng | null;
     /** 다음 남은 일정 — 쉴 여유(availableMin)는 다음 고정 일정이 아니라 여기까지다 */
     freeBefore: TripItem | null;

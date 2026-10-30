@@ -76,6 +76,7 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         # 첫 실행에 권한을 몰아 요청하지 않는다 — 쓸모를 설명할 수 있을 때 묻는다(§6·§42).
         NSLocationWhenInUseUsageDescription: 다음 장소까지 걸리는 시간과 나서기 좋은 시간을 알려드리기 위해 사용합니다. 위치는 그때 계산에만 쓰고 저장하지 않습니다.
+        NSLocationAlwaysAndWhenInUseUsageDescription: 여행 중 안내를 켜 둔 동안 앱을 닫거나 화면을 잠가도 일정 장소에 도착한 것을 확인해 잠금화면 안내를 바꿉니다. 이동 경로와 위치 기록은 저장하지 않습니다.
         # 비용에 붙인 영수증·품목 사진을 **다시 보여 줄 때만** 필요하다. 고르는 것(PhotosPicker)에는
         # 권한이 없어도 되고, 거절해도 붙이기는 그대로 된다 — 그림 대신 몇 장인지만 말한다(§6·§42).
         NSPhotoLibraryUsageDescription: 비용에 붙여 둔 영수증·품목 사진을 보여드리기 위해 사용합니다. 사진은 이 기기에만 있고 어디에도 올리지 않습니다.
