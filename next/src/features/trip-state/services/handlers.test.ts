@@ -660,6 +660,38 @@ describe('GET /travel-state — 여행 중 단 하나의 조회(§57)', () => {
     expect(store.rows.get('trip-1')!.revision).toBe(3);
   });
 
+  it('도착 관측보다 새로운 실제 위치는 구역 밖으로 이동한 현재 상태를 보여준다', async () => {
+    const gateway = gatewayOf(store);
+    gateway.arrivalEvidence = async () => ({ target: { dayIndex: 0, activityId: 'd0s1', revision: 3 },
+      arrived: true, observedAtISO: new Date(NOW.getTime() - 1000).toISOString() });
+    const arrivalAPI = createHandlers({ gatewayFor: () => gateway, now: () => NOW });
+    const response = await arrivalAPI.travelState(new Request(`http://localhost/api/v1/trips/trip-1/travel-state?arrivalDeviceId=d&lat=40.59&lng=-3.7&locUpdatedAt=${NOW.toISOString()}`, auth()), 'trip-1');
+    const result = await response.json() as TravelStateResponse;
+    expect(result.liveActivity.status).not.toBe('ARRIVED');
+    expect(result.liveActivity.travelMinutes).toBeGreaterThan(0);
+    expect(result.liveActivity.departureText).not.toBeNull();
+    expect(result.locationUsed).toEqual({ lat: 40.59, lng: -3.7 });
+    expect(result.locationUpdatedAt).toBe(NOW.toISOString());
+  });
+
+  it('도착 관측과 동시각이거나 오래되거나 측정 시각이 불명확한 위치는 최신 도착을 취소하지 않는다', async () => {
+    const gateway = gatewayOf(store);
+    gateway.arrivalEvidence = async () => ({ target: { dayIndex: 0, activityId: 'd0s1', revision: 3 },
+      arrived: true, observedAtISO: NOW.toISOString() });
+    const arrivalAPI = createHandlers({ gatewayFor: () => gateway, now: () => NOW });
+    for (const stamp of [NOW.toISOString(), '2026-09-01T03:59:59Z', 'invalid', null]) {
+      const query = new URLSearchParams({ arrivalDeviceId: 'd', lat: '40.59', lng: '-3.7' });
+      if (stamp != null) query.set('locUpdatedAt', stamp);
+      const response = await arrivalAPI.travelState(new Request(`http://localhost/api/v1/trips/trip-1/travel-state?${query}`, auth()), 'trip-1');
+      const result = await response.json() as TravelStateResponse;
+      expect(result.liveActivity).toMatchObject({ status: 'ARRIVED', travelMinutes: 0, departureText: null });
+      expect(result.locationUsed).toEqual({ lat: 40.41, lng: -3.7 });
+      expect(result.locationUpdatedAt).toBeNull();
+    }
+    const noEvidence = await arrivalAPI.travelState(new Request('http://localhost/api/v1/trips/trip-1/travel-state?lat=40.59&lng=-3.7', auth()), 'trip-1');
+    expect((await noEvidence.json() as TravelStateResponse).locationUsed).toEqual({ lat: 40.59, lng: -3.7 });
+  });
+
   it('기기 미지정·다른 리비전·조회 실패는 도착했다고 추정하지 않는다', async () => {
     const gateway = gatewayOf(store);
     let reads = 0;

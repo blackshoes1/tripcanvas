@@ -288,6 +288,80 @@ import XCTest
         XCTAssertEqual(events[2].target.activityId, "d0s1")
     }
 
+    func testNewerGPSOutsideClearsTheRecordedArrivalWithoutStoringCoordinates() async throws {
+        let manager = ArrivalManager(), store = defaults(), monitor = monitor(manager, store: store)
+        var events: [LiveActivityArrivalRequest] = []
+        monitor.onObservation = { _, event in events.append(event); return .recorded }
+        monitor.update(try response(), context: context)
+        monitor.locationManager(CLLocationManager(), didEnterRegion: try XCTUnwrap(manager.started.first))
+        await settle { events.count == 1 }; await monitor.retryPending()
+        let updated = try response { raw in
+            raw["locationUsed"] = ["lat": 37.6, "lng": 127.0]
+            raw["locationUpdatedAt"] = "2026-10-30T10:00:01Z"
+        }
+        monitor.update(updated, context: context)
+        await settle { events.count == 2 }; await monitor.retryPending()
+        XCTAssertEqual(events.map(\.arrived), [true, false])
+        XCTAssertEqual(events[1].target, events[0].target)
+        XCTAssertEqual(events[1].observedAtISO, "2026-10-30T10:00:01Z")
+        XCTAssertGreaterThan(events[1].eventRevision, events[0].eventRevision)
+        let saved = try XCTUnwrap(store.data(forKey: "withj.arrival.plan.v1"))
+        XCTAssertFalse(String(decoding: saved, as: UTF8.self).contains("37.6"), "실제 GPS는 목적지 감시 메타에 보관하지 않는다")
+        monitor.update(updated, context: context)
+        await monitor.retryPending(); XCTAssertEqual(events.count, 2, "같은 외부 위치로 이탈을 중복 보고하지 않는다")
+    }
+
+    func testOlderGPSDoesNotInvalidateAPendingOrRecordedNewerEntry() async throws {
+        let manager = ArrivalManager(), monitor = monitor(manager)
+        var events: [LiveActivityArrivalRequest] = [], release: CheckedContinuation<ArrivalReportResult, Never>?
+        monitor.onObservation = { _, event in
+            events.append(event)
+            if events.count == 1 { return await withCheckedContinuation { release = $0 } }
+            return .recorded
+        }
+        monitor.update(try response(), context: context)
+        monitor.locationManager(CLLocationManager(), didEnterRegion: try XCTUnwrap(manager.started.first))
+        await settle { release != nil }
+        let stale = try response { raw in
+            raw["locationUsed"] = ["lat": 37.6, "lng": 127.0]
+            raw["locationUpdatedAt"] = "2026-10-30T09:59:59Z"
+        }
+        monitor.update(stale, context: context)
+        release?.resume(returning: .recorded); await monitor.retryPending()
+        XCTAssertEqual(events.count, 1, "새 pending 진입보다 과거인 GPS는 무시한다")
+        monitor.update(stale, context: context); await monitor.retryPending()
+        XCTAssertEqual(events.count, 1, "ACK된 진입의 실제 관측 시각도 유지한다")
+    }
+
+    func testLosingAlwaysOrPrecisePermissionClearsArrivalAndStillSendsExit() async throws {
+        for reducedAccuracy in [false, true] {
+            let manager = ArrivalManager(), monitor = monitor(manager)
+            var events: [LiveActivityArrivalRequest] = []
+            var release: CheckedContinuation<ArrivalReportResult, Never>?
+            monitor.onObservation = { _, event in
+                events.append(event)
+                if reducedAccuracy, events.count == 1 { return await withCheckedContinuation { release = $0 } }
+                return .recorded
+            }
+            monitor.update(try response(), context: context)
+            let region = try XCTUnwrap(manager.started.first)
+            monitor.locationManager(CLLocationManager(), didEnterRegion: region)
+            await settle { events.count == 1 }
+            if !reducedAccuracy { await monitor.retryPending() }
+            if reducedAccuracy { manager.accuracyAuthorization = .reducedAccuracy }
+            else { manager.authorizationStatus = .authorizedWhenInUse }
+            monitor.refreshAuthorization()
+            release?.resume(returning: .recorded)
+            await settle { events.count == 2 }; await monitor.retryPending()
+            XCTAssertFalse(monitor.canMonitor)
+            XCTAssertTrue(manager.monitoredRegions.isEmpty)
+            XCTAssertEqual(events.map(\.arrived), [true, false], "권한이 없어도 기존 도착의 이탈 해제는 전송한다")
+            monitor.locationManager(CLLocationManager(), didEnterRegion: region)
+            await Task.yield(); await monitor.retryPending()
+            XCTAssertEqual(events.count, 2, "권한 해제 뒤 새 진입은 전송하지 않는다")
+        }
+    }
+
     func testAcceptedArrivalRefreshesWithoutAskingForGPSAndStopsWithTheMode() async throws {
         SharedStore.clear(); defer { SharedStore.clear() }
         let source = ArrivalTravelSource(try response()), monitor = ArrivalMonitorFake(), location = ArrivalNoGPS()

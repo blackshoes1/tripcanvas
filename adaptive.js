@@ -296,11 +296,11 @@
     const observedLocation=locOf(o.currentLocation);
     const arrivalCandidates=live? remaining.filter(it=>it.location && (it.end>nowMin || it.depart>=nowMin)
       && (!it.spot.choice || it.spot.choice.state!=='PENDING')) : [];
-    const arrived=arrivalCandidates.find(it=>it.id===o.arrivedActivityId) || (observedLocation
+    const arrived=(observedLocation
       ? arrivalCandidates.filter(it=>LIB.haversine(observedLocation,it.location)<=0.1).sort((a,b)=>
         LIB.haversine(observedLocation,a.location)-LIB.haversine(observedLocation,b.location)
         || Number(b===scheduled)-Number(a===scheduled) || a.depart-b.depart || a.si-b.si)[0]
-      : null) || null;
+      : arrivalCandidates.find(it=>it.id===o.arrivedActivityId)) || null;
     const nextItem=arrived||scheduled;
     /** @type {LatLng|null} */
     let passedLoc=null;

@@ -60,6 +60,7 @@ final class ArrivalMonitor: NSObject, ArrivalMonitoring, CLLocationManagerDelega
         let tripID: String
         var destinations: [Destination]
         var reportedRegionID: String?
+        var reportedAtISO: String?
         var pending: [LiveActivityArrivalRequest]
     }
     private static let prefix = "withj.arrival."
@@ -102,7 +103,14 @@ final class ArrivalMonitor: NSObject, ArrivalMonitoring, CLLocationManagerDelega
     func refreshAuthorization() {
         authorizationStatus = manager.authorizationStatus
         hasFullAccuracy = manager.accuracyAuthorization == .fullAccuracy
+        if isRestored, !canMonitor {
+            let arrived = lastArrival?.destination
+            plan?.pending.removeAll { $0.arrived }
+            if let arrived { invalidateArrival(arrived, observedAt: now()) }
+            save()
+        }
         reconcileRegions()
+        scheduleDelivery()
     }
 
     func restore(context: ArrivalMonitoringContext?, activeTripID: String?) {
@@ -146,10 +154,12 @@ final class ArrivalMonitor: NSObject, ArrivalMonitoring, CLLocationManagerDelega
             plan?.pending.removeAll { !targets.contains($0.target) }
             if let reported = plan?.reportedRegionID, !destinations.contains(where: { $0.regionID == reported }) {
                 plan?.reportedRegionID = nil
+                plan?.reportedAtISO = nil
             }
         }
         preferred = response.liveActivity.target
         isRestored = true
+        reconcileFreshLocation(response)
         save()
         refreshAuthorization()
         scheduleDelivery()
@@ -212,25 +222,58 @@ final class ArrivalMonitor: NSObject, ArrivalMonitoring, CLLocationManagerDelega
         scheduleDelivery()
     }
 
-    private func enqueue(_ target: LiveActivityTarget, arrived: Bool) {
+    private var lastArrival: (destination: Destination, observedAtISO: String?)? {
+        guard let plan else { return nil }
+        if let last = plan.pending.last {
+            guard last.arrived, let destination = plan.destinations.first(where: { $0.target == last.target }) else { return nil }
+            return (destination, last.observedAtISO)
+        }
+        guard let reported = plan.reportedRegionID,
+              let destination = plan.destinations.first(where: { $0.regionID == reported }) else { return nil }
+        return (destination, plan.reportedAtISO)
+    }
+
+    private func reconcileFreshLocation(_ response: TravelStateResponse) {
+        guard let point = response.locationUsed, let timestamp = response.locationUpdatedAt,
+              let observedAt = ISO8601DateFormatter.tripCanvas.date(from: timestamp),
+              abs(now().timeIntervalSince(observedAt)) <= 60, let arrived = lastArrival,
+              point.lat.isFinite, point.lng.isFinite, abs(point.lat) <= 90, abs(point.lng) <= 180 else { return }
+        if let timestamp = arrived.observedAtISO,
+           let recordedAt = ISO8601DateFormatter.tripCanvas.date(from: timestamp), observedAt <= recordedAt { return }
+        let region = CLCircularRegion(center: .init(latitude: arrived.destination.point.lat, longitude: arrived.destination.point.lng),
+                                      radius: min(100, manager.maximumRegionMonitoringDistance), identifier: arrived.destination.regionID)
+        if !region.contains(.init(latitude: point.lat, longitude: point.lng)) {
+            invalidateArrival(arrived.destination, observedAt: observedAt)
+        }
+    }
+
+    private func invalidateArrival(_ destination: Destination, observedAt: Date) {
+        inside[destination.regionID] = false
+        needsConfirmation.remove(destination.regionID)
+        plan?.pending.removeAll { $0.arrived && $0.target == destination.target }
+        enqueue(destination.target, arrived: false, observedAt: observedAt)
+    }
+
+    private func enqueue(_ target: LiveActivityTarget, arrived: Bool, observedAt: Date? = nil) {
         guard let context = plan?.context, let tripID = plan?.tripID else { return }
         let revision = max(Int(now().timeIntervalSince1970 * 1000), defaults.integer(forKey: Self.revisionKey) + 1)
         defaults.set(revision, forKey: Self.revisionKey)
         plan?.pending.append(.init(deviceId: context.deviceId, activityId: context.activityId, tripId: tripID,
                                   target: target, arrived: arrived,
-                                  observedAtISO: ISO8601DateFormatter.tripCanvas.string(from: now()), eventRevision: revision))
+                                  observedAtISO: ISO8601DateFormatter.tripCanvas.string(from: observedAt ?? now()), eventRevision: revision))
         save()
     }
 
     private func scheduleDelivery() {
-        guard deliveryTask == nil, plan?.pending.isEmpty == false else { return }
+        guard isRestored, deliveryTask == nil, plan?.pending.isEmpty == false else { return }
         Task { [weak self] in await self?.retryPending() }
     }
 
     func retryPending() async {
+        guard isRestored else { return }
         if let deliveryTask { await deliveryTask.value; return }
         discardStalePending()
-        guard isRestored, canMonitor, plan?.pending.isEmpty == false, onObservation != nil else { return }
+        guard isRestored, plan?.pending.isEmpty == false, onObservation != nil else { return }
         let task = Task { [weak self] in
             guard let self else { return }
             await self.deliverPending()
@@ -252,6 +295,7 @@ final class ArrivalMonitor: NSObject, ArrivalMonitoring, CLLocationManagerDelega
             if request == generation { deliveryTask = nil }
         }
         while !Task.isCancelled, request == generation, plan?.context == context, let event = plan?.pending.first {
+            if event.arrived, !canMonitor { plan?.pending.removeFirst(); save(); continue }
             let result = await onObservation(context, event)
             guard !Task.isCancelled, request == generation, plan?.context == context else { return }
             // 서버 확인 중 새 응답이 revision/목표를 바꿔 대기열을 정리할 수 있다.
@@ -261,6 +305,7 @@ final class ArrivalMonitor: NSObject, ArrivalMonitoring, CLLocationManagerDelega
             if result == .recorded {
                 let reportedID = event.arrived ? plan?.destinations.first { $0.target == event.target }?.regionID : nil
                 plan?.reportedRegionID = reportedID
+                plan?.reportedAtISO = event.arrived ? event.observedAtISO : nil
             }
             save()
         }
@@ -277,7 +322,8 @@ final class ArrivalMonitor: NSObject, ArrivalMonitoring, CLLocationManagerDelega
         for destination in plan?.destinations ?? [] where destination.expiresAt > now() && stale.contains(where: { $0.target == destination.target }) {
             inside.removeValue(forKey: destination.regionID)
             needsConfirmation.insert(destination.regionID)
-            if let region = ownedRegions.first(where: { $0.identifier == destination.regionID }) { manager.requestState(for: region) }
+            if !canMonitor { invalidateArrival(destination, observedAt: now()) }
+            else if let region = ownedRegions.first(where: { $0.identifier == destination.regionID }) { manager.requestState(for: region) }
         }
         save()
     }

@@ -190,7 +190,7 @@ final class TravelModeController {
             let fetched = try await service.travelState(
                 tripId: tripId,
                 location: point,
-                locationUpdatedAt: point == nil ? nil : ISO8601DateFormatter.tripCanvas.string(from: Date()),
+                locationUpdatedAt: point == nil ? nil : location.lastUpdatedAt.map { ISO8601DateFormatter.tripCanvas.string(from: $0) },
                 travelMode: isActive,
                 suppressUntil: suppressUntilMinutes(),
                 markSent: false            // 조회는 계획만 받는다. 시스템 등록에 성공한 항목만 별도로 확인한다.

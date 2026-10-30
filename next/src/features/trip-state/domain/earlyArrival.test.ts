@@ -33,6 +33,13 @@ describe('실제 도착은 예정 시각보다 먼저 반영한다', () => {
     expect(background.stateVersion).not.toBe(buildTravelState(source).stateVersion);
   });
 
+  it('새 실제 위치가 목적지 밖이면 저장된 도착 근거보다 우선한다', () => {
+    const result = buildTravelState({ ...input(), arrivedActivityId: 'd0s1', currentLocation: { lat: 40.5, lng: -3.7 } });
+    expect(result.today.nextAction?.activityId).toBe('d0s0');
+    expect(result.liveActivity.status).not.toBe('ARRIVED');
+    expect(result.liveActivity.travelMinutes).toBeGreaterThan(0);
+  });
+
   it('계획에서 추정한 현재 위치나 예약 전 대기 시간만으로 도착했다고 말하지 않는다', () => {
     const source = input();
     source.trip.days![0].spots![0].status = 'COMPLETED';

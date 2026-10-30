@@ -262,6 +262,12 @@ export async function readPlanPreviewBody(request: Request): Promise<Record<stri
   return read.ok ? asObject(read.value) : null;
 }
 
+interface ArrivalContext {
+  arrivedActivityId: string | null;
+  currentLocation: { lat: number; lng: number } | null;
+  locationUpdatedAt: string | null;
+}
+
 /** 모든 라우트가 함께 쓰는 장비 한 벌. **인증·조회·CAS·오류 응답은 여기 하나뿐이다.** */
 export interface HandlerKit {
   deps: HandlerDeps;
@@ -273,7 +279,7 @@ export interface HandlerKit {
     run: (ctx: { gateway: Gateway; row: TripRow }) => Promise<Response>
   ) => Promise<Response>;
   todayFor: (gateway: Gateway, row: TripRow, url: URL, extra?: Partial<TodayInput>) => Promise<TodayResponse>;
-  arrivedActivityFor: (gateway: Gateway, row: TripRow, url: URL, clock: { todayISO: string; nowMinutes: number }, legCache?: LegCache) => Promise<string | null>;
+  arrivedActivityFor: (gateway: Gateway, row: TripRow, url: URL, clock: { todayISO: string; nowMinutes: number }, legCache?: LegCache) => Promise<ArrivalContext>;
   fxFor: () => Promise<FxSnapshot>;
   legCacheFor: (trip: TripDoc, dayIndex: number, userId?: string) => Promise<{ cache: LegCache; pending: number }>;
   /** 본문(JSON 객체). 너무 크면 거절 응답이다 — 받은 쪽은 `instanceof Response`면 그대로 돌려준다 */
@@ -327,7 +333,7 @@ export function createKit(deps: HandlerDeps): HandlerKit {
     const legs = await legCacheFor(row.data, resolveDayIndex(row.data, clock.todayISO, dayIndex), gateway.userId);
     // 자연어 요청·컨디션은 쿼리로만 온다 — 해석은 `computeToday` 안의 엔진이 한다(여기서 판정하지 않는다).
     const said = readIntent(url);
-    const arrivedActivityId = await arrivedActivityFor(gateway, row, url, clock, legs.cache);
+    const { arrivedActivityId } = await arrivedActivityFor(gateway, row, url, clock, legs.cache);
     return computeToday({
       tripId: row.client_id, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
       role: row.role, memberCount: row.member_count,
@@ -338,11 +344,20 @@ export function createKit(deps: HandlerDeps): HandlerKit {
   }
 
   async function arrivedActivityFor(gateway: Gateway, row: TripRow, url: URL,
-    clock: { todayISO: string; nowMinutes: number }, legCache?: LegCache): Promise<string | null> {
+    clock: { todayISO: string; nowMinutes: number }, legCache?: LegCache): Promise<ArrivalContext> {
+    const location = readLocation(url);
+    const context: ArrivalContext = { arrivedActivityId: null, currentLocation: location.point, locationUpdatedAt: location.updatedAt };
     const deviceId = url.searchParams.get('arrivalDeviceId');
-    if (!deviceId || !/^[A-Za-z0-9_-]{1,128}$/.test(deviceId) || !gateway.arrivalEvidence) return null;
+    if (!deviceId || !/^[A-Za-z0-9_-]{1,128}$/.test(deviceId) || !gateway.arrivalEvidence) return context;
     const arrival = await gateway.arrivalEvidence(row.client_id, deviceId).catch(() => null);
-    return resolveArrivedActivityId({ trip: row.data, revision: row.revision, ...clock, arrival, legCache });
+    context.arrivedActivityId = resolveArrivedActivityId({ trip: row.data, revision: row.revision, ...clock, arrival, legCache });
+    // 구역 관측보다 새 GPS만 사용한다. 동시각·시각 미상은 선후를 추측하지 않는다.
+    const sampledAt = Date.parse(location.updatedAt ?? '');
+    if (context.arrivedActivityId && (!Number.isFinite(sampledAt) || sampledAt <= Date.parse(arrival!.observedAtISO))) {
+      context.currentLocation = null;
+      context.locationUpdatedAt = null;
+    }
+    return context;
   }
 
   /** 오늘 환율. 못 받으면 근사값 — 환율 하나 때문에 비용·일자 화면이 실패하지 않는다 */
