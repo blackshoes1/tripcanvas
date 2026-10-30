@@ -156,6 +156,20 @@ final class LiveActivityController: LiveActivityControlling {
 
     func dismissNotice() { setNoticeDismissed(true) }
 
+    /// 잠금 중 재실행 때도 시스템에 남아 있는 이 여행의 안내만 사용한다.
+    func arrivalContext(for tripId: String, accountID: String?) -> ArrivalMonitoringContext? {
+        guard let accountID, authorization.areActivitiesEnabled,
+              remoteSource?.liveActivityRegistrationScope?.accountID == accountID else { return nil }
+        #if canImport(ActivityKit)
+        guard let current = Activity<TripCanvasActivityAttributes>.activities.first(where: {
+            $0.attributes.tripId == tripId && ($0.activityState == .active || $0.activityState == .stale)
+        }) else { return nil }
+        return ArrivalMonitoringContext(accountID: accountID, deviceId: DeviceIdentity.current, activityId: current.id)
+        #else
+        return nil
+        #endif
+    }
+
     /// 꺼짐·켜짐이 바뀌면 접어 둔 것은 잊는다 — 어느 길로 알게 됐든(스트림·복귀·`sync`) 같은 규칙이다.
     private func setDisabled(_ disabled: Bool) {
         if disabled != isDisabledInSettings { setNoticeDismissed(false) }

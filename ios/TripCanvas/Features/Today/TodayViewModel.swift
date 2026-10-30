@@ -87,6 +87,22 @@ final class TodayViewModel {
     /// 이동시간이 추정치면 화면이 그렇게 말해야 한다 — 실제 경로 시간인 척하지 않는다.
     var travelTimeIsEstimate: Bool { today?.travelTimeSource != .routed }
 
+    /// 구역 도착으로 받은 응답을 지금 화면에도 이어 쓴다. 입력 중인 요청과 진행 중인 저장은 덮지 않는다.
+    @discardableResult
+    func acceptTravelState(_ response: TravelStateResponse) -> Bool {
+        guard response.today.trip.id == trip.id, response.today.trip.revision >= max(revision, minimumRevision),
+              pending.isEmpty, !isRetrying, intentText.isEmpty, energy == .normal else { return false }
+        contentGeneration += 1
+        isLoading = false
+        today = response.today
+        cachedAt = nil
+        loadedAt = Date()
+        loadErrorMessage = nil
+        needsReloadAfterCancelledRead = false
+        reloadRequestedWhileLoading = false
+        return true
+    }
+
     func invalidate(revision: Int) {
         minimumRevision = max(minimumRevision, revision)
         loadedAt = nil

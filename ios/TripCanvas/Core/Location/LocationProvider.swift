@@ -12,7 +12,7 @@ protocol LocationManaging: AnyObject {
 extension CLLocationManager: LocationManaging {}
 
 /// 위치는 **필요할 때 한 번만** 묻는다(§41·§42).
-/// 연속 추적·백그라운드 지오펜싱은 이번 단계에서 만들지 않는다 — 앱 첫 실행에 권한을 몰아 요청하지도 않는다.
+/// 잠금 중 일정 장소 감시는 `ArrivalMonitor`가 맡는다. 앱 첫 실행에 권한을 몰아 요청하지 않는다.
 /// 지도에서 현재 위치가 필요할 때 그 자리에서 요청한다.
 ///
 /// 받은 좌표는 서버에 영구 저장하지 않는다(§43). 필요해지면 `TodayResponse`의 currentLocation을
@@ -25,6 +25,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     private(set) var permission: Permission = .unknown
     private(set) var lastPoint: GeoPoint?
     private(set) var lastUpdatedAt: Date?
+    private(set) var lastHorizontalAccuracy: Double?
 
     private let manager: any LocationManaging
     private var continuations: [UUID: CheckedContinuation<GeoPoint?, Never>] = [:]
@@ -72,10 +73,18 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    private func finish(_ point: GeoPoint?) {
+    /// 도착 판정에는 오래됐거나 대략적인 좌표를 재사용하지 않는다.
+    func freshArrivalPoint(at now: Date = Date()) -> GeoPoint? {
+        guard let measured = lastUpdatedAt, let accuracy = lastHorizontalAccuracy,
+              accuracy >= 0, accuracy <= 100, (-5...60).contains(now.timeIntervalSince(measured)) else { return nil }
+        return lastPoint
+    }
+
+    private func finish(_ point: GeoPoint?, measuredAt: Date? = nil, accuracy: Double? = nil) {
         if let point {
             lastPoint = point
-            lastUpdatedAt = Date()
+            lastUpdatedAt = measuredAt
+            lastHorizontalAccuracy = accuracy
         }
         let pending = Array(continuations.values)
         continuations.removeAll()
@@ -91,8 +100,9 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         let coordinate = locations.last?.coordinate
+        let measuredAt = locations.last?.timestamp, accuracy = locations.last?.horizontalAccuracy
         Task { @MainActor in
-            finish(coordinate.map { GeoPoint(lat: $0.latitude, lng: $0.longitude) })
+            finish(coordinate.map { GeoPoint(lat: $0.latitude, lng: $0.longitude) }, measuredAt: measuredAt, accuracy: accuracy)
         }
     }
 

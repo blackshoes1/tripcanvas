@@ -173,6 +173,10 @@ final class TravelStateTests: XCTestCase {
         XCTAssertEqual(ActivityPresentation.headline(content), content.departureText)
         content.departureText = nil
         XCTAssertEqual(ActivityPresentation.headline(content), content.pulseText)
+        content.status = .arrived
+        content.departureText = "곧 출발해 주세요"
+        XCTAssertEqual(ActivityPresentation.heading(content), "지금")
+        XCTAssertEqual(ActivityPresentation.headline(content), "도착했어요")
     }
 }
 

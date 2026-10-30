@@ -91,6 +91,24 @@ final class TodayViewModelTests: XCTestCase {
         TodayViewModel(trip: today.trip, service: stub)
     }
 
+    func testArrivalResponseUpdatesTodayWithoutAnotherReadAndPreservesAnAppliedIntent() async throws {
+        let original = try fixture()
+        let stub = StubDataSource(todayResponse: original)
+        let model = makeModel(stub, from: original)
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "travel-state", withExtension: "json"))
+        var raw = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        var today = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+        var next = try XCTUnwrap(today["nextAction"] as? [String: Any])
+        next["status"] = "ARRIVED"; today["nextAction"] = next; raw["today"] = today
+        let response = try JSONDecoder().decode(TravelStateResponse.self, from: JSONSerialization.data(withJSONObject: raw))
+        XCTAssertTrue(model.acceptTravelState(response))
+        XCTAssertEqual(model.status, .arrived)
+        XCTAssertEqual(stub.todayCallCount, 0)
+        await model.applyIntent("오늘은 천천히")
+        XCTAssertFalse(model.acceptTravelState(response))
+        XCTAssertEqual(model.intentText, "오늘은 천천히")
+    }
+
     func testCostSaveInvalidatesOlderTodayIncludingDiskFallback() async throws {
         let old = try fixture()
         let stub = StubDataSource(todayResponse: old)

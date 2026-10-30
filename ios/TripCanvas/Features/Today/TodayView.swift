@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import CoreLocation
 
 /// iOS의 중심 화면. 전체 일정표가 아니라 "지금 무엇을 하면 되는가"에 먼저 답한다(§11·§21).
 struct TodayView: View {
@@ -273,6 +274,11 @@ struct TodayView: View {
         .onChange(of: model.revision) { old, new in
             if old != new { Task { await refreshTravelMode(reason: .userAction) } }
         }
+        .onChange(of: env.travelMode.responseSequence) { _, _ in
+            guard env.travelMode.responseCachedAt == nil,
+                  let state = env.travelMode.travelState, state.today.trip.id == trip.id else { return }
+            if !model.acceptTravelState(state), model.pending.isEmpty, !model.isRetrying { Task { await model.load() } }
+        }
         .onChange(of: env.service.cacheScope) { _, _ in stayExtension = nil; quickChoice = nil; placeChange = nil }
         .sheet(item: $quickChoice) { choice in
             QuickChoiceView(model: choice, onRefresh: { Task { await model.load() } })
@@ -382,6 +388,9 @@ struct TodayView: View {
     /// 여행 중 안내를 켰는데 잠금화면 실시간 현황이 꺼져 있다 — 이 여행의 안내가 켜져 있을 때만 말한다.
     @ViewBuilder
     private var liveActivityNoticeSection: some View {
+        if env.travelMode.isActive, env.travelMode.snapshot.tripId == trip.id {
+            arrivalNotice
+        }
         if env.travelMode.isActive, env.travelMode.snapshot.tripId == trip.id,
            let error = env.liveActivity.remoteUpdatesError {
             InlineErrorBanner(message: "잠금화면 자동 갱신을 연결하지 못했어요", detail: error) {
@@ -393,6 +402,25 @@ struct TodayView: View {
                                               disabledInSettings: env.liveActivity.isDisabledInSettings,
                                               dismissed: env.liveActivity.isNoticeDismissed) {
             LiveActivitySettingsNotice { env.liveActivity.dismissNotice() }
+        }
+    }
+
+    @ViewBuilder private var arrivalNotice: some View {
+        if !env.arrival.canMonitor || UIApplication.shared.backgroundRefreshStatus != .available {
+            VStack(alignment: .leading, spacing: Space.s) {
+                Label("잠금 중 도착 자동 인식", systemImage: "mappin.and.ellipse")
+                    .font(.subheadline.weight(.semibold))
+                Text("일정 장소에 먼저 도착해도 잠금화면 안내를 바꿔요. 위치 접근을 ‘항상’으로, ‘정확한 위치’와 ‘백그라운드 앱 새로 고침’을 켜 주세요. 이동 경로는 저장하지 않아요.")
+                    .font(.caption).foregroundStyle(Ink.soft)
+                if env.arrival.authorizationStatus == .notDetermined || env.arrival.authorizationStatus == .authorizedWhenInUse {
+                    Button("도착 자동 인식 켜기") { env.arrival.enable() }.frame(minHeight: 44)
+                }
+                if env.arrival.authorizationStatus != .notDetermined {
+                    Button("With J 설정 열기") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                    }.frame(minHeight: 44)
+                }
+            }.card().accessibilityIdentifier("arrivalPermissionNotice")
         }
     }
 
@@ -730,6 +758,14 @@ extension NextActionCard {
 
     static func facts(_ next: NextAction, isEstimate: Bool) -> [Fact] {
         var out: [Fact] = []
+        if next.status == .arrived {
+            out.append(Fact(symbol: "mappin.circle.fill", text: "도착했어요"))
+            if let start = next.startMinutes { out.append(Fact(symbol: "clock", text: "시작 \(TimeFormat.clock(start))")) }
+            if let stay = next.stayMinutes, stay > 0 {
+                out.append(Fact(symbol: "hourglass", text: "\(TimeFormat.duration(stay)) 머무름"))
+            }
+            return out
+        }
         if let departure = next.departure {
             out.append(Fact(symbol: "figure.walk.departure", text: "출발 \(TimeFormat.clock(departure.leaveMinutes))"))
         }

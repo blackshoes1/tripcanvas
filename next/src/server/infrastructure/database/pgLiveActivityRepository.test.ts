@@ -121,3 +121,78 @@ describe('다중 worker lease와 발송 직전 권한 확인', () => {
     expect(await repo.delivery(claim, now)).toBeNull();
   });
 });
+
+describe('구독별 도착 근거는 좌표 없이 순서·세션·종료 경계를 지킨다', () => {
+  const target = { dayIndex: 0, activityId: 'd0s0', revision: 1 };
+  const arrival = (extra = {}) => ({ userId: U, deviceId: 'd', activityId: 'a', sessionId: 'session', tripId,
+    arrival: { target, arrived: true, observedAtISO: now.toISOString() }, eventRevision: 1, now, ...extra });
+  it('등록 전에는 기록하지 않고 다른 세션·여행도 바꿀 수 없다', async () => {
+    expect(await repo.recordArrival(arrival())).toBe('missing');
+    await repo.register(input());
+    expect(await repo.recordArrival(arrival({ sessionId: 'other' }))).toBe('unauthorized');
+    expect(await repo.recordArrival(arrival({ tripId: V }))).toBe('stale');
+    expect(await repo.readArrival(U, 'd', 'trip', now, 'session')).toBeNull();
+  });
+  it('enter→exit 뒤 늦은 enter와 같은 sequence의 다른 payload는 표시를 되돌리지 못한다', async () => {
+    await repo.register(input());
+    expect(await repo.recordArrival(arrival())).toBe('recorded');
+    expect(await repo.recordArrival(arrival())).toBe('recorded');
+    const exit = { target, arrived: false, observedAtISO: now.toISOString() };
+    expect(await repo.recordArrival(arrival({ arrival: exit, eventRevision: 2 }))).toBe('recorded');
+    expect(await repo.recordArrival(arrival())).toBe('stale');
+    expect(await repo.recordArrival(arrival({ eventRevision: 2 }))).toBe('stale');
+    expect(await repo.readArrival(U, 'd', 'trip', now, 'session')).toMatchObject(exit);
+  });
+  it('새 장소 enter 뒤 옛 장소 exit는 새 도착을 지우지 않는다', async () => {
+    await repo.register(input());
+    await repo.recordArrival(arrival());
+    const newer = { target: { ...target, activityId: 'd0s1' }, arrived: true, observedAtISO: now.toISOString() };
+    await repo.recordArrival(arrival({ arrival: newer, eventRevision: 2 }));
+    expect(await repo.recordArrival(arrival({ arrival: { ...arrival().arrival, arrived: false }, eventRevision: 3 }))).toBe('stale');
+    expect(await repo.readArrival(U, 'd', 'trip', now, 'session')).toMatchObject(newer);
+  });
+  it('도착 기록은 토큰 교체로 사라지지 않고 이전 worker의 완료를 무효화한다', async () => {
+    await repo.register(input());
+    const [old] = await repo.claimDue(now, 1);
+    await repo.recordArrival(arrival());
+    await repo.complete(old, later, 'old');
+    expect(await repo.delivery(old, now)).toBeNull();
+    expect((await row()).nextUpdateAt).toEqual(now);
+    await repo.register(input({ tokenRevision: 2, pushToken: 'cd'.repeat(32) }));
+    expect(await repo.readArrival(U, 'd', 'trip', now, 'session')).toMatchObject(arrival().arrival);
+    const [fresh] = await repo.claimDue(now, 1);
+    expect(await repo.delivery(fresh, now)).toMatchObject({ arrival: arrival().arrival });
+  });
+  it('현재 여행 revision 변경·종료·다른 계정에는 근거를 돌려주지 않는다', async () => {
+    await repo.register(input());
+    await repo.recordArrival(arrival());
+    expect(await repo.readArrival(V, 'd', 'trip', now, 'session')).toBeNull();
+    expect(await repo.readArrival(U, 'd', 'trip', now, 'other')).toBeNull();
+    await new PgTripRepository(db.db).updateCas(tripId, { name: '바뀜' }, 1);
+    expect(await repo.recordArrival(arrival({ eventRevision: 2 }))).toBe('stale');
+    expect(await repo.readArrival(U, 'd', 'trip', now, 'session')).toBeNull();
+    await repo.stop({ userId: U, deviceId: 'd', activityId: 'a', sessionId: 'session', now });
+    expect(await repo.recordArrival(arrival({ eventRevision: 3 }))).toBe('ended');
+    expect(await repo.readArrival(U, 'd', 'trip', now, 'session')).toBeNull();
+  });
+  it('세션 만료·로그아웃 뒤에는 새 근거도 기록하지 않고 기존 근거도 노출하지 않는다', async () => {
+    await repo.register(input());
+    await repo.recordArrival(arrival());
+    await db.db.update(authSession).set({ expiresAt: now }).where(eq(authSession.id, 'session'));
+    expect(await repo.recordArrival(arrival({ eventRevision: 2 }))).toBe('unauthorized');
+    expect(await repo.readArrival(U, 'd', 'trip', now, 'session')).toBeNull();
+    await db.db.delete(authSession).where(eq(authSession.id, 'session'));
+    expect(await repo.recordArrival(arrival({ eventRevision: 3 }))).toBe('missing');
+    expect(await db.db.select().from(liveActivitySubscriptions)).toEqual([]);
+  });
+  it('공유 여행의 VIEWER도 자기 도착만 기록하고 나간 뒤에는 읽거나 기록할 수 없다', async () => {
+    const shared = await new PgTripRepository(db.db).create({ ownerId: V, clientId: 'shared', data: { name: '공유 여행' } });
+    await db.db.insert(tripMembers).values({ tripId: shared.id, userId: U, role: 'VIEWER', status: 'ACTIVE' });
+    await repo.register(input({ tripId: shared.id }));
+    expect(await repo.recordArrival(arrival({ tripId: shared.id }))).toBe('recorded');
+    expect(await repo.readArrival(U, 'd', 'shared', now, 'session')).toMatchObject(arrival().arrival);
+    await db.db.update(tripMembers).set({ status: 'LEFT' }).where(eq(tripMembers.userId, U));
+    expect(await repo.recordArrival(arrival({ tripId: shared.id, eventRevision: 2 }))).toBe('unauthorized');
+    expect(await repo.readArrival(U, 'd', 'shared', now, 'session')).toBeNull();
+  });
+});

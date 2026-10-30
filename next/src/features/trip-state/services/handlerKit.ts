@@ -19,6 +19,7 @@ import { computeToday, resolveDayIndex, summarizeTrip } from '../domain/todayVie
 import type { LegCache } from '@/features/itinerary/domain/types';
 import collab from '@legacy/collab.js';
 import lib from '@legacy/lib.js';
+import { resolveArrivedActivityId, type ArrivalEvidence } from '../domain/arrivalEvidence';
 
 export interface TripRow {
   client_id: string;
@@ -35,6 +36,8 @@ export interface Gateway {
   jTone?: 'FRIENDLY' | 'CASUAL' | 'POLITE';
   /** 요청한 사람. 서버 비용(경로 조회)의 하루 예산을 사람마다 세는 데 쓴다 — 없으면 서버 전체 예산만 본다 */
   userId?: string;
+  /** 같은 로그인 세션·기기의 활성 잠금화면 안내가 확인한 도착 근거만 읽는다. */
+  arrivalEvidence?(tripId: string, deviceId: string): Promise<ArrivalEvidence | null>;
   listTrips(): Promise<TripRow[]>;
   getTrip(tripId: string): Promise<TripRow | null>;
   /**
@@ -259,6 +262,12 @@ export async function readPlanPreviewBody(request: Request): Promise<Record<stri
   return read.ok ? asObject(read.value) : null;
 }
 
+interface ArrivalContext {
+  arrivedActivityId: string | null;
+  currentLocation: { lat: number; lng: number } | null;
+  locationUpdatedAt: string | null;
+}
+
 /** 모든 라우트가 함께 쓰는 장비 한 벌. **인증·조회·CAS·오류 응답은 여기 하나뿐이다.** */
 export interface HandlerKit {
   deps: HandlerDeps;
@@ -270,6 +279,7 @@ export interface HandlerKit {
     run: (ctx: { gateway: Gateway; row: TripRow }) => Promise<Response>
   ) => Promise<Response>;
   todayFor: (gateway: Gateway, row: TripRow, url: URL, extra?: Partial<TodayInput>) => Promise<TodayResponse>;
+  arrivedActivityFor: (gateway: Gateway, row: TripRow, url: URL, clock: { todayISO: string; nowMinutes: number }, legCache?: LegCache) => Promise<ArrivalContext>;
   fxFor: () => Promise<FxSnapshot>;
   legCacheFor: (trip: TripDoc, dayIndex: number, userId?: string) => Promise<{ cache: LegCache; pending: number }>;
   /** 본문(JSON 객체). 너무 크면 거절 응답이다 — 받은 쪽은 `instanceof Response`면 그대로 돌려준다 */
@@ -323,13 +333,31 @@ export function createKit(deps: HandlerDeps): HandlerKit {
     const legs = await legCacheFor(row.data, resolveDayIndex(row.data, clock.todayISO, dayIndex), gateway.userId);
     // 자연어 요청·컨디션은 쿼리로만 온다 — 해석은 `computeToday` 안의 엔진이 한다(여기서 판정하지 않는다).
     const said = readIntent(url);
+    const { arrivedActivityId } = await arrivedActivityFor(gateway, row, url, clock, legs.cache);
     return computeToday({
       tripId: row.client_id, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
       role: row.role, memberCount: row.member_count,
       todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed, legCache: legs.cache,
       intent: said.intent, energyLevel: said.energyLevel, jTone: gateway.jTone,
-      generatedAt: now().toISOString(), ...extra
+      generatedAt: now().toISOString(), arrivedActivityId, ...extra
     }).response;
+  }
+
+  async function arrivedActivityFor(gateway: Gateway, row: TripRow, url: URL,
+    clock: { todayISO: string; nowMinutes: number }, legCache?: LegCache): Promise<ArrivalContext> {
+    const location = readLocation(url);
+    const context: ArrivalContext = { arrivedActivityId: null, currentLocation: location.point, locationUpdatedAt: location.updatedAt };
+    const deviceId = url.searchParams.get('arrivalDeviceId');
+    if (!deviceId || !/^[A-Za-z0-9_-]{1,128}$/.test(deviceId) || !gateway.arrivalEvidence) return context;
+    const arrival = await gateway.arrivalEvidence(row.client_id, deviceId).catch(() => null);
+    context.arrivedActivityId = resolveArrivedActivityId({ trip: row.data, revision: row.revision, ...clock, arrival, legCache });
+    // 구역 관측보다 새 GPS만 사용한다. 동시각·시각 미상은 선후를 추측하지 않는다.
+    const sampledAt = Date.parse(location.updatedAt ?? '');
+    if (context.arrivedActivityId && (!Number.isFinite(sampledAt) || sampledAt <= Date.parse(arrival!.observedAtISO))) {
+      context.currentLocation = null;
+      context.locationUpdatedAt = null;
+    }
+    return context;
   }
 
   /** 오늘 환율. 못 받으면 근사값 — 환율 하나 때문에 비용·일자 화면이 실패하지 않는다 */
@@ -381,5 +409,5 @@ export function createKit(deps: HandlerDeps): HandlerKit {
     return ok(body);
   }
 
-  return { deps, now, auth, loadTrip, withTrip, todayFor, fxFor, legCacheFor, readBody, persist };
+  return { deps, now, auth, loadTrip, withTrip, todayFor, arrivedActivityFor, fxFor, legCacheFor, readBody, persist };
 }

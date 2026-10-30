@@ -2,6 +2,7 @@ import lib from '@legacy/lib.js';
 import type { TravelStateResponse } from '@/features/trip-state/domain/contract';
 import { buildTravelState } from '@/features/trip-state/domain/travelState';
 import { resolveDayIndex, type TripDoc } from '@/features/trip-state/domain/todayView';
+import { resolveArrivedActivityId } from '@/features/trip-state/domain/arrivalEvidence';
 import type { LegCache } from '@/features/itinerary/domain/types';
 import { resolveClock } from '@/features/trip-state/services/handlerKit';
 import { LIVE_ACTIVITY_LEASE_MS, type LiveActivityRepository, type LiveActivitySender } from './types';
@@ -42,7 +43,7 @@ export async function runLiveActivityBatch(deps: {
       if (now.getTime() >= leaseDeadline) {
         await deps.repo.retry(claim, now, 'LeaseExpired'); return;
       }
-      const delivery = await deps.repo.delivery(claim, now);
+      let delivery = await deps.repo.delivery(claim, now);
       if (!delivery) { await deps.repo.discard(claim, now); return; }
       now = deps.now?.() ?? new Date();
       if (now.getTime() >= leaseDeadline) {
@@ -55,13 +56,26 @@ export async function runLiveActivityBatch(deps: {
       if (now.getTime() >= leaseDeadline) {
         await deps.repo.retry(claim, now, 'LeaseExpired'); return;
       }
+      // 캐시를 기다리는 사이 도착/이탈·종료·토큰 회전이 lease를 바꿨으면 옛 상태를 보내지 않는다.
+      const latest = await deps.repo.delivery(claim, now);
+      if (!latest) { await deps.repo.discard(claim, now); return; }
+      now = deps.now?.() ?? new Date();
+      if (now.getTime() >= leaseDeadline || claim.expiresAt <= now) {
+        await deps.repo.retry(claim, now, 'LeaseExpired'); return;
+      }
+      if (latest.revision !== delivery.revision) {
+        await deps.repo.complete(claim, now, claim.lastStateVersion); return;
+      }
+      delivery = latest;
       clock = resolveClock(delivery.document, null, new URL('http://worker.invalid'), now);
       if (cacheDay !== resolveDayIndex(delivery.document, clock.todayISO)) {
         // 조회 중 자정을 넘었으면 새 날의 캐시로 다음 tick에 계산한다.
         await deps.repo.complete(claim, now, claim.lastStateVersion); return;
       }
       const state = buildTravelState({ tripId: delivery.tripId, trip: delivery.document, revision: delivery.revision,
-        updatedAt: delivery.updatedAt, ...clock, generatedAt: now.toISOString(), jTone: delivery.jTone, travelMode: true, legCache });
+        updatedAt: delivery.updatedAt, ...clock, generatedAt: now.toISOString(), jTone: delivery.jTone, travelMode: true, legCache,
+        arrivedActivityId: resolveArrivedActivityId({ trip: delivery.document, revision: delivery.revision,
+          ...clock, arrival: delivery.arrival ?? null, legCache }) });
       const shouldEnd = state.liveActivity.shouldEnd === true;
       const boundary = shouldEnd ? null : nextLiveActivityBoundary(state, now);
       // 시간 경계에는 즉시, 다른 기기의 일정 수정은 최대 1분 뒤 확인한다. 외부 경로 제공자는 호출하지 않는다.

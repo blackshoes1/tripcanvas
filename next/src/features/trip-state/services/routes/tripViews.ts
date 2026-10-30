@@ -12,10 +12,10 @@ import { buildTripRoutes } from '../../domain/tripRoutesView';
 import { computeToday, resolveDayIndex, summarizeTrip } from '../../domain/todayView';
 import type { LegCache } from '@/features/itinerary/domain/types';
 import lib from '@legacy/lib.js';
-import { LEG_WAIT_MS, fail, ok, readDayIndex, readLocation, readMinutes, resolveClock, type HandlerKit, type TripRow } from '../handlerKit';
+import { LEG_WAIT_MS, fail, ok, readDayIndex, readMinutes, resolveClock, type HandlerKit, type TripRow } from '../handlerKit';
 
 export function createTripViewsHandlers(kit: HandlerKit) {
-  const { deps, now, auth, withTrip, todayFor, fxFor, legCacheFor, readBody } = kit;
+  const { deps, now, auth, withTrip, todayFor, arrivedActivityFor, fxFor, legCacheFor, readBody } = kit;
 
   /** GET /api/v1/trips — 여행 목록. 삭제(tombstone)된 여행은 빼고, 최근 수정 순. */
   async function trips(request: Request): Promise<Response> {
@@ -125,13 +125,13 @@ export function createTripViewsHandlers(kit: HandlerKit) {
         gateway.listSentNotificationKeys(tripId, clock.todayISO).catch((): string[] => [])
       ]);
 
-      const location = readLocation(url);
+      const arrival = await arrivedActivityFor(gateway, row, url, clock);
       const response = buildTravelState({
         tripId, trip: row.data, revision: row.revision, updatedAt: row.updated_at,
+        role: row.role, memberCount: row.member_count,
         todayISO: clock.todayISO, nowMinutes: clock.nowMinutes, dayIndex, dismissed,
         generatedAt: now().toISOString(),
-        currentLocation: location.point,
-        locationUpdatedAt: location.updatedAt,
+        ...arrival,
         travelMode: url.searchParams.get('travelMode') === '1',
         suppressUntilMinutes: readMinutes(url.searchParams.get('suppressUntil')),
         sentNotificationKeys: sentKeys, jTone: gateway.jTone

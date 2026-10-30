@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
-import { LIVE_ACTIVITY_LEASE_MS, type LiveActivityClaim, type LiveActivityDelivery, type LiveActivityKey, type LiveActivityRepository } from '../../live-activities/types';
+import { LIVE_ACTIVITY_LEASE_MS, type LiveActivityArrivalEvidence, type LiveActivityClaim, type LiveActivityDelivery, type LiveActivityKey, type LiveActivityRepository } from '../../live-activities/types';
 import { LIVE_ACTIVITY_LIFETIME_MS } from '../../live-activities/service';
 import type { Db } from './db';
 import { liveActivitySubscriptions as subscriptions, users } from './schema';
@@ -8,6 +8,8 @@ import { liveActivitySubscriptions as subscriptions, users } from './schema';
 const keyOf = (key: LiveActivityKey) => and(eq(subscriptions.userId, key.userId),
   eq(subscriptions.deviceId, key.deviceId), eq(subscriptions.activityId, key.activityId));
 const leaseOf = (claim: LiveActivityClaim) => and(keyOf(claim), eq(subscriptions.leaseId, claim.leaseId));
+const sameTarget = (a: LiveActivityArrivalEvidence['target'] | null, b: LiveActivityArrivalEvidence['target']) =>
+  a?.dayIndex === b.dayIndex && a.activityId === b.activityId && a.revision === b.revision;
 
 export class PgLiveActivityRepository implements LiveActivityRepository {
   constructor(private readonly db: Db) {}
@@ -45,7 +47,10 @@ export class PgLiveActivityRepository implements LiveActivityRepository {
         environment: input.environment, tokenRevision: input.tokenRevision,
         startedAt: input.startedAt, expiresAt: input.expiresAt, nextUpdateAt: input.now,
         endedAt: null, leaseId: null, leaseUntil: null, failures: 0, lastError: null,
-        lastStateVersion: null, updatedAt: input.now
+        lastStateVersion: null, updatedAt: input.now,
+        // 같은 구독의 토큰 회전은 이미 확인한 도착 근거를 지우지 않는다. 로그인 세션·여행 교체는 별개다.
+        ...(existing && (existing.sessionId !== input.sessionId || existing.tripId !== input.tripId)
+          ? { arrivalTarget: null, arrivalArrived: false, arrivalObservedAt: null, arrivalEventRevision: 0 } : {})
       };
       await tx.insert(subscriptions).values(values).onConflictDoUpdate({
         target: [subscriptions.userId, subscriptions.deviceId, subscriptions.activityId], set: values
@@ -67,6 +72,62 @@ export class PgLiveActivityRepository implements LiveActivityRepository {
       set: { endedAt: input.now, pushToken: null, leaseId: null, leaseUntil: null, updatedAt: input.now }
       });
     });
+  }
+
+  async recordArrival(input: Parameters<LiveActivityRepository['recordArrival']>[0]) {
+    return this.db.transaction(async tx => {
+      // register/stop과 같은 잠금으로 종료 기록·로그인 세대·토큰 회전을 함께 지킨다.
+      await tx.select({ id: users.id }).from(users).where(eq(users.id, input.userId)).for('update');
+      const [existing] = await tx.select().from(subscriptions).where(keyOf(input)).for('update').limit(1);
+      if (!existing) return 'missing' as const;
+      if (existing.endedAt || existing.expiresAt <= input.now) return 'ended' as const;
+      if (existing.sessionId !== input.sessionId) return 'unauthorized' as const;
+      const session = await tx.execute(sql`select 1 from auth_session s
+        join users u on u.auth_user_id = s.user_id join auth_user a on a.id = s.user_id
+        where s.id = ${input.sessionId} and u.id = ${input.userId}
+          and s.expires_at > ${input.now} and a.email_verified = true`) as { rows: unknown[] };
+      if (!session.rows.length) return 'unauthorized' as const;
+      if (existing.tripId !== input.tripId) return 'stale' as const;
+      const trip = await tx.execute(sql`select t.revision from trips t where t.id = ${input.tripId}
+        and t.deleted_at is null and (t.user_id = ${input.userId} or exists (
+          select 1 from trip_members m where m.trip_id = t.id and m.user_id = ${input.userId}
+            and m.status = 'ACTIVE' and m.role in ('OWNER','EDITOR','VIEWER'))) for share of t`) as { rows: { revision: number }[] };
+      if (!trip.rows.length) return 'unauthorized' as const;
+      if (Number(trip.rows[0].revision) !== input.arrival.target.revision) return 'stale' as const;
+      const matches = sameTarget(existing.arrivalTarget, input.arrival.target);
+      if (existing.arrivalEventRevision >= input.eventRevision) {
+        return existing.arrivalEventRevision === input.eventRevision && matches
+          && existing.arrivalArrived === input.arrival.arrived
+          && existing.arrivalObservedAt?.getTime() === Date.parse(input.arrival.observedAtISO)
+          ? 'recorded' as const : 'stale' as const;
+      }
+      // A의 늦은 이탈 콜백으로 B의 새 도착을 지우지 않는다.
+      if (!input.arrival.arrived && !matches) return 'stale' as const;
+      await tx.update(subscriptions).set({ arrivalTarget: input.arrival.target,
+        arrivalArrived: input.arrival.arrived, arrivalObservedAt: new Date(input.arrival.observedAtISO),
+        arrivalEventRevision: input.eventRevision, nextUpdateAt: input.now,
+        leaseId: null, leaseUntil: null, updatedAt: input.now }).where(keyOf(input));
+      return 'recorded' as const;
+    });
+  }
+
+  async readArrival(userId: string, deviceId: string, tripClientId: string, now: Date, sessionId: string) {
+    const result = await this.db.execute(sql`select s.arrival_target, s.arrival_arrived, s.arrival_observed_at, t.revision
+      from live_activity_subscriptions s join trips t on t.id = s.trip_id
+      join users u on u.id = s.user_id join auth_session a on a.id = s.session_id
+      join auth_user au on au.id = a.user_id
+      where s.user_id = ${userId} and s.device_id = ${deviceId} and t.client_id = ${tripClientId}
+        and s.session_id = ${sessionId} and s.ended_at is null and s.expires_at > ${now}
+        and a.expires_at > ${now} and au.email_verified = true and u.auth_user_id = a.user_id
+        and t.deleted_at is null and (t.user_id = s.user_id or exists (
+          select 1 from trip_members m where m.trip_id = t.id and m.user_id = s.user_id
+            and m.status = 'ACTIVE' and m.role in ('OWNER','EDITOR','VIEWER')))
+      limit 1`) as { rows: { arrival_target: LiveActivityArrivalEvidence['target'] | null;
+        arrival_arrived: boolean; arrival_observed_at: Date | string | null; revision: number }[] };
+    const row = result.rows[0];
+    if (!row?.arrival_target || !row.arrival_observed_at || row.arrival_target.revision !== Number(row.revision)) return null;
+    return { target: row.arrival_target, arrived: row.arrival_arrived,
+      observedAtISO: new Date(row.arrival_observed_at).toISOString() };
   }
 
   async claimDue(now: Date, limit: number): Promise<LiveActivityClaim[]> {
@@ -92,7 +153,7 @@ export class PgLiveActivityRepository implements LiveActivityRepository {
   async delivery(claim: LiveActivityClaim, now: Date): Promise<LiveActivityDelivery | null> {
     // 발송 직전에 세션·현재 여행 권한을 다시 본다. 로그아웃은 FK cascade로 등록 자체도 지운다.
     const result = await this.db.execute(sql`select s.push_token, s.environment, t.client_id,
-      t.data, t.revision, t.updated_at, u.j_tone
+      t.data, t.revision, t.updated_at, u.j_tone, s.arrival_target, s.arrival_arrived, s.arrival_observed_at
       from live_activity_subscriptions s join trips t on t.id = s.trip_id
       join users u on u.id = s.user_id join auth_session a on a.id = s.session_id
       join auth_user au on au.id = a.user_id
@@ -103,11 +164,15 @@ export class PgLiveActivityRepository implements LiveActivityRepository {
           select 1 from trip_members m where m.trip_id = t.id and m.user_id = s.user_id
             and m.status = 'ACTIVE' and m.role in ('OWNER','EDITOR','VIEWER')))`);
     const row = (result as { rows: unknown[] }).rows[0] as { push_token: string; environment: 'sandbox' | 'production'; client_id: string;
-      data: LiveActivityDelivery['document']; revision: number; updated_at: Date | string; j_tone: string } | undefined;
+      data: LiveActivityDelivery['document']; revision: number; updated_at: Date | string; j_tone: string;
+      arrival_target: LiveActivityArrivalEvidence['target'] | null; arrival_arrived: boolean;
+      arrival_observed_at: Date | string | null } | undefined;
     if (!row) return null;
     return { pushToken: row.push_token, environment: row.environment, tripId: row.client_id,
       document: row.data, revision: Number(row.revision), updatedAt: new Date(row.updated_at).toISOString(),
-      jTone: row.j_tone === 'CASUAL' || row.j_tone === 'POLITE' ? row.j_tone : 'FRIENDLY' };
+      jTone: row.j_tone === 'CASUAL' || row.j_tone === 'POLITE' ? row.j_tone : 'FRIENDLY',
+      arrival: row.arrival_target && row.arrival_observed_at ? { target: row.arrival_target,
+        arrived: row.arrival_arrived, observedAtISO: new Date(row.arrival_observed_at).toISOString() } : null };
   }
 
   async complete(claim: LiveActivityClaim, nextAt: Date, stateVersion: string | null, error?: string) {

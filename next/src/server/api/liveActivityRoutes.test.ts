@@ -20,7 +20,7 @@ let configured: boolean;
 beforeEach(() => {
   configured = true;
   repo = { register: vi.fn().mockResolvedValue('registered'), stop: vi.fn(), claimDue: vi.fn(),
-    delivery: vi.fn(), complete: vi.fn(), retry: vi.fn(), discard: vi.fn() };
+    delivery: vi.fn(), complete: vi.fn(), retry: vi.fn(), discard: vi.fn(), recordArrival: vi.fn(), readArrival: vi.fn() };
   tripFor = vi.fn().mockResolvedValue({ record: { id: 'trip-row-uuid' } } as TripView);
   routes = createLiveActivityRoutes({ verifier: { verify: async token => token === 'bad' ? null : ctx },
     serviceFor: async () => new LiveActivityService({ repo, tripFor, configured, now: () => now }) });
@@ -74,4 +74,48 @@ describe('Live Activity 등록 API', () => {
     vi.mocked(repo.register).mockResolvedValue(result);
     expect((await routes.register(request())).status).toBe(status);
   });
+});
+
+describe('Live Activity 도착 근거 API', () => {
+  const arrival = { deviceId: 'd', activityId: 'a', tripId: 'trip',
+    target: { dayIndex: 0, activityId: 'd0s0', revision: 1 }, arrived: true,
+    observedAtISO: now.toISOString(), eventRevision: 1 };
+  beforeEach(() => {
+    repo.recordArrival = vi.fn().mockResolvedValue('recorded');
+    repo.readArrival = vi.fn();
+    tripFor.mockResolvedValue({ record: { id: 'trip-row-uuid', clientId: 'trip', revision: 1,
+      updatedAt: now.toISOString(), data: { start: '2026-10-27', timeZone: 'UTC',
+        days: [{ startAt: '09:00', spots: [{ name: '조기 도착', at: '12:00', stayMin: 60, lat: 40, lng: -3 }] }] } } } as TripView);
+  });
+  it('읽기 권한과 정확한 일정 근거를 확인하고 좌표·bearer 없이 기록한다', async () => {
+    const result = await routes.arrival(request(arrival));
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual({ recorded: true });
+    expect(repo.recordArrival).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u', sessionId: 'session',
+      tripId: 'trip-row-uuid', eventRevision: 1, arrival: { target: arrival.target, arrived: true, observedAtISO: arrival.observedAtISO } }));
+    expect(JSON.stringify(vi.mocked(repo.recordArrival).mock.calls)).not.toMatch(/bearer-not-stored|"lat"|"lng"/);
+  });
+  it('인증·여행 읽기 권한이 없으면 저장하지 않는다', async () => {
+    expect((await routes.arrival(request(arrival, 'bad'))).status).toBe(401);
+    tripFor.mockRejectedValue(new ApiError('NOT_FOUND'));
+    expect((await routes.arrival(request(arrival))).status).toBe(404);
+    expect(repo.recordArrival).not.toHaveBeenCalled();
+  });
+  it.each([
+    { target: { ...arrival.target, revision: 2 } },
+    { target: { ...arrival.target, dayIndex: 1 } },
+    { target: { ...arrival.target, activityId: 'd0s9' } },
+    { observedAtISO: '2026-10-27T09:05:00Z' },
+    { observedAtISO: '2026-10-27T08:44:59Z' },
+    { lat: 40, lng: -3 },
+    { eventRevision: 0 }, { eventRevision: 1.5 }
+  ])('낡거나 다른 일정·미래 시각·잘못된 순서는 거절한다: %j', async extra => {
+    expect((await routes.arrival(request({ ...arrival, ...extra }))).status).not.toBe(200);
+    expect(repo.recordArrival).not.toHaveBeenCalled();
+  });
+  it.each([['missing', 409], ['ended', 409], ['stale', 409], ['unauthorized', 401]] as const)(
+    '활성 등록 검사 결과 %s를 성공으로 숨기지 않는다', async (result, status) => {
+      vi.mocked(repo.recordArrival).mockResolvedValue(result);
+      expect((await routes.arrival(request(arrival))).status).toBe(status);
+    });
 });
