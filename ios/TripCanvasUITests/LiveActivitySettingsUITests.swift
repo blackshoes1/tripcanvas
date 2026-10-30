@@ -38,8 +38,9 @@ final class LiveActivitySettingsUITests: XCTestCase {
         captureTravelUX(app, "live-activity-disabled-notice")
 
         open.tap()
-        XCTAssertTrue(waitUntil(15) { [settings] in settings.state == .runningForeground && app.state != .runningForeground },
-                      "'설정에서 켜기'는 설정 앱을 열어야 한다")
+        // CI에서 설정의 첫 실행·백그라운드 상태 관측이 19초 걸렸다. 두 앱의 전환을 함께 기다린다.
+        XCTAssertTrue(waitUntil(30) { [settings] in settings.state == .runningForeground && app.state != .runningForeground },
+                      "'설정에서 켜기'는 설정 앱을 열어야 한다 (Settings: \(settings.state.rawValue), With J: \(app.state.rawValue))")
 
         app.activate()
         XCTAssertTrue(app.staticTexts["다시 시작 1번"].waitForExistence(timeout: 15), "돌아오면 다시 읽어 시작해야 한다")
