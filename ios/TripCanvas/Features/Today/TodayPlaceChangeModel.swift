@@ -10,6 +10,7 @@ final class TodayPlaceChangeModel: Identifiable {
     let activity: ActivitySummary
     private(set) var revision: Int
     private let source: TripDocumentSource & TripDataSource
+    private let currentToday: (() async throws -> TripService.Fetched<TodayResponse>)?
     private let isCurrent: () -> Bool
     private var original: TripDocumentSnapshot?
     private var saved: TripDocumentSnapshot?
@@ -25,9 +26,12 @@ final class TodayPlaceChangeModel: Identifiable {
     private(set) var requiresRefresh = false
 
     init(tripID: String, day: Int, activity: ActivitySummary, revision: Int,
-         source: TripDocumentSource & TripDataSource, isCurrent: @escaping () -> Bool = { true }) {
+         source: TripDocumentSource & TripDataSource,
+         currentToday: (() async throws -> TripService.Fetched<TodayResponse>)? = nil,
+         isCurrent: @escaping () -> Bool = { true }) {
         self.tripID = tripID; self.day = day; self.activity = activity; self.revision = revision
         self.source = source; self.isCurrent = isCurrent
+        self.currentToday = currentToday
     }
 
     var alternative: TripSpot? { spot?.choice?.alternative }
@@ -188,12 +192,14 @@ final class TodayPlaceChangeModel: Identifiable {
     }
     private func checkCurrentTarget() async throws {
         try checkScope()
-        let fetched = try await source.today(tripId: tripID, dayIndex: nil, intent: nil, energy: nil)
+        let fetched: TripService.Fetched<TodayResponse>
+        if let currentToday { fetched = try await currentToday() }
+        else { fetched = try await source.today(tripId: tripID, dayIndex: nil, intent: nil, energy: nil) }
         try checkScope()
         let today = fetched.value
         guard fetched.cachedAt == nil, today.trip.id == tripID, today.trip.revision == revision, today.trip.canEdit,
               today.trip.isLive, today.currentState.live, today.day.index == day,
-              today.nextAction?.activityId == activity.id,
+              today.displayedNextAction?.activityId == activity.id,
               let current = today.activities.first(where: { $0.id == activity.id }),
               current.name == activity.name, !current.status.isDone, current.status != .unknown else { throw stale() }
     }

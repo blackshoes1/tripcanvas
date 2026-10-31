@@ -203,6 +203,8 @@ export interface TravelActivityState {
 export type TravelTimeSource = 'STRAIGHT_LINE_ESTIMATE' | 'ROUTED';
 
 export interface TodayResponse {
+  /** 현재 머무름·여유 시간·다음 출발의 표시 우선순위. 기존 nextAction의 의미는 유지한다. */
+  nowFocus?: NowFocus | null;
   calmMoment?: { state: 'RELAX' | 'CHECK'; text: string; expiresAt: string } | null;
   tomorrowBrief?: TomorrowBrief | null;
   schemaVersion: number;
@@ -378,7 +380,29 @@ export interface LiveActivityTarget {
   revision: number;
 }
 
+/** 지금 화면과 잠금화면이 함께 쓰는 표시 계약. 실제 좌표·예약 정보는 넣지 않는다. */
+export interface NowFocus {
+  kind: 'CURRENT_STAY' | 'FREE_TIME' | 'DEPARTURE' | 'SCHEDULE';
+  currentStay: {
+    target: LiveActivityTarget;
+    title: string;
+    status: 'ARRIVED' | 'IN_PROGRESS';
+    expiresAtISO: string | null;
+  } | null;
+  next: {
+    target: LiveActivityTarget;
+    title: string;
+    startAtISO: string | null;
+    leaveAtISO: string | null;
+    travelMinutes: number;
+    departureText: string | null;
+  } | null;
+  /** 이동과 준비 여유를 뺀 출발 권장 시각의 준비 구간 시작. */
+  switchAtISO: string | null;
+}
+
 export interface LiveActivityState {
+  nowFocus?: NowFocus | null;
   shouldEnd?: boolean;
   target?: LiveActivityTarget;
   /** 예정 시각은 지났지만 사용자가 방문 완료를 표시하지 않은 일정이 남아 있다. */

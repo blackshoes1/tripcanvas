@@ -124,6 +124,7 @@ describe('다음 경계 시각', () => {
     expect(nextLiveActivityBoundary(response(), at('09:59'))).toEqual(at('10:00'));
     const completed = response();
     completed.today.activities[0].status = 'COMPLETED';
+    completed.liveActivity.nowFocus = undefined; // 기존 응답의 활동 경계도 그대로 지원한다.
     expect(nextLiveActivityBoundary(completed, at('09:59'))).toEqual(at('11:00'));
   });
   it('활동 중에는 현지 자정을 다음 날 계산의 경계로 둔다', () => {
@@ -135,6 +136,29 @@ describe('다음 경계 시각', () => {
     result.today.day.date = '2026-10-25';
     result.today.day.timeZone = 'Europe/Madrid';
     expect(nextLiveActivityBoundary(result, new Date('2026-10-25T22:30:00Z'))).toEqual(new Date('2026-10-25T23:00:00Z'));
+  });
+  it.each([
+    ['09:59', '10:00'], ['10:00', '10:12'], ['10:12', '10:30']
+  ])('현재 장소 안내의 전환·출발·근거 만료 시각에 깨어난다: %s → %s', (now, expected) => {
+    const result = response();
+    result.today.activities = [];
+    result.departure = null;
+    result.liveActivity.nowFocus = { kind: 'CURRENT_STAY',
+      currentStay: { target: { dayIndex: 0, activityId: 'd0s0', revision: 1 }, title: '머무는 곳',
+        status: 'IN_PROGRESS', expiresAtISO: at('10:30').toISOString() },
+      next: { target: { dayIndex: 0, activityId: 'd0s1', revision: 1 }, title: '다음 예약',
+        startAtISO: at('10:45').toISOString(), leaveAtISO: at('10:12').toISOString(),
+        travelMinutes: 23, departureText: null }, switchAtISO: at('10:00').toISOString() };
+    expect(nextLiveActivityBoundary(result, at(now))).toEqual(at(expected));
+  });
+  it('지난 전환 시각과 잘못된 날짜는 즉시 재갱신 경계로 삼지 않는다', () => {
+    const result = response();
+    result.today.activities = [];
+    result.departure = null;
+    result.liveActivity.nowFocus = { kind: 'FREE_TIME', currentStay: null, next: null, switchAtISO: 'invalid' };
+    expect(nextLiveActivityBoundary(result, at('10:00'))).toEqual(new Date('2026-10-28T00:00:00Z'));
+    result.liveActivity.nowFocus.switchAtISO = at('10:00').toISOString();
+    expect(nextLiveActivityBoundary(result, at('10:00'))).toEqual(new Date('2026-10-28T00:00:00Z'));
   });
 });
 
@@ -252,5 +276,64 @@ describe('백그라운드 도착 근거를 시간 계산이 되덮지 않는다'
     await runLiveActivityBatch({ repo, send, now: clock });
     expect(send).not.toHaveBeenCalled();
     expect(repo.retry).toHaveBeenCalledWith(claim, new Date('2026-10-27T09:30:31Z'), 'LeaseExpired');
+  });
+  it('예정 체류가 지나도 머무는 곳을 보존하고 준비 구간에 다음 출발로 전환한다', async () => {
+    const copy = structuredClone(delivery);
+    copy.document.days![0].spots = [
+      { name: '머무는 곳', at: '09:00', stayMin: 60, lat: 40, lng: -3 },
+      { name: '다음 예약', bookAt: '13:00', stayMin: 60, bufferMin: 10, lat: 40, lng: -3 }
+    ];
+    const arrival = { ...evidence(), target: { dayIndex: 0, activityId: 'd0s0', revision: 1 } };
+    vi.mocked(repo.delivery).mockResolvedValue({ ...copy, arrival });
+    await runLiveActivityBatch({ repo, send, now: () => at('12:36') });
+    const current = vi.mocked(send).mock.calls[0][1];
+    expect(current).toMatchObject({ event: 'update', staleAt: at('12:38'), state: {
+      nextTitle: '다음 예약', nowFocus: { kind: 'CURRENT_STAY',
+        currentStay: { title: '머무는 곳', status: 'IN_PROGRESS', target: arrival.target },
+        next: { title: '다음 예약', leaveAtISO: '2026-10-27T12:50:00Z' }, switchAtISO: '2026-10-27T12:38:00Z' }
+    } });
+    expect(repo.complete).toHaveBeenLastCalledWith(claim, at('12:37'), current.state.stateVersion);
+    vi.mocked(repo.claimDue).mockResolvedValue([{ ...claim, lastStateVersion: current.state.stateVersion }]);
+    await runLiveActivityBatch({ repo, send, now: () => at('12:37') });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(repo.complete).toHaveBeenLastCalledWith(expect.anything(), at('12:38'), current.state.stateVersion);
+    await runLiveActivityBatch({ repo, send, now: () => at('12:38') });
+    const departing = vi.mocked(send).mock.calls[1][1];
+    expect(departing.state.nowFocus).toMatchObject({ kind: 'DEPARTURE', currentStay: { title: '머무는 곳' } });
+    expect(departing.state.stateVersion).not.toBe(current.state.stateVersion);
+    expect(copy.document.days![0].spots!.every(spot => !spot.status)).toBe(true);
+  });
+  it('현재 장소 근거가 남아도 마지막 예정 종료에는 end를 보내고 새 안내는 지운다', async () => {
+    const copy = structuredClone(delivery);
+    copy.document.days![0].spots![0] = { ...copy.document.days![0].spots![0], lat: 40, lng: -3 };
+    vi.mocked(repo.delivery).mockResolvedValue({ ...copy,
+      arrival: { ...evidence(), target: { dayIndex: 0, activityId: 'd0s0', revision: 1 } } });
+    await runLiveActivityBatch({ repo, send, now: () => at('13:00') });
+    expect(vi.mocked(send).mock.calls[0][1]).toMatchObject({ event: 'end', state: { shouldEnd: true } });
+    expect(vi.mocked(send).mock.calls[0][1].state.nowFocus).toBeUndefined();
+    expect(repo.discard).toHaveBeenCalledWith(claim, at('13:00'));
+  });
+  it('기존 카드가 아직 A여도 B의 준비·출발·실제 늦음만 새 APNs로 보낸다', async () => {
+    const copy = structuredClone(delivery);
+    copy.document.days![0].spots = [
+      { name: '카페', at: '09:00', stayMin: 360, lat: 40.4, lng: -3.7 },
+      { name: '예약', bookAt: '15:00', stayMin: 60, lat: 40.5, lng: -3.7 }
+    ];
+    const key = legRequestsFor(copy.document as unknown as Trip, 0)[0].key;
+    const cachedLegs = vi.fn().mockResolvedValue({ [key]: { sec: 1800, est: false } });
+    vi.mocked(repo.delivery).mockResolvedValue({ ...copy,
+      arrival: { ...evidence(), target: { dayIndex: 0, activityId: 'd0s0', revision: 1 } } });
+    let lastStateVersion: string | null = null;
+    for (const time of ['14:03', '14:04', '14:15', '14:31']) {
+      vi.mocked(repo.claimDue).mockResolvedValue([{ ...claim, lastStateVersion }]);
+      await runLiveActivityBatch({ repo, send, now: () => at(time), cachedLegs });
+      lastStateVersion = vi.mocked(send).mock.lastCall?.[1].state.stateVersion ?? null;
+    }
+    expect(send).toHaveBeenCalledTimes(3);
+    const updates = vi.mocked(send).mock.calls.map(call => call[1]);
+    expect(updates.map(update => update.at)).toEqual(['14:03', '14:15', '14:31'].map(at));
+    expect(updates.every(update => update.state.nextTitle === '카페' && update.state.departureText === null
+      && update.state.nowFocus?.kind === 'DEPARTURE' && update.state.nowFocus.next?.title === '예약')).toBe(true);
+    expect(new Set(updates.map(update => update.state.stateVersion)).size).toBe(3);
   });
 });

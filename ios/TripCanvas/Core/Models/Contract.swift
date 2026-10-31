@@ -303,6 +303,7 @@ struct TravelActivityState: Codable, Hashable, Sendable {
 }
 
 struct TodayResponse: Codable, Hashable, Sendable {
+    var nowFocus: NowFocus? = nil
     var calmMoment: CalmMoment? = nil
     var tomorrowBrief: TomorrowBrief? = nil
     let schemaVersion: Int
@@ -522,6 +523,7 @@ struct LiveActivityTarget: Codable, Hashable, Sendable {
 }
 
 struct LiveActivityState: Codable, Hashable, Sendable {
+    var nowFocus: NowFocus? = nil
     var shouldEnd: Bool? = nil
     var target: LiveActivityTarget? = nil
     let scheduleElapsed: Bool?
@@ -536,6 +538,32 @@ struct LiveActivityState: Codable, Hashable, Sendable {
     let fixedStartISO: String?
     let pulseText: String
     let stateVersion: String
+}
+
+/// 지금 화면과 잠금화면의 주역은 서버가 선택한다. 옛 서버 응답에는 없다.
+struct NowFocus: Codable, Hashable, Sendable {
+    enum Kind: String, UnknownCodable, Sendable {
+        case currentStay = "CURRENT_STAY", freeTime = "FREE_TIME", departure = "DEPARTURE", schedule = "SCHEDULE", unknown
+        static var unknownCase: Kind { .unknown }
+    }
+    struct CurrentStay: Codable, Hashable, Sendable {
+        let target: LiveActivityTarget
+        let title: String
+        let status: TravelStatus
+        let expiresAtISO: String?
+    }
+    struct Next: Codable, Hashable, Sendable {
+        let target: LiveActivityTarget
+        let title: String
+        let startAtISO: String?
+        let leaveAtISO: String?
+        let travelMinutes: Int
+        let departureText: String?
+    }
+    let kind: Kind
+    let currentStay: CurrentStay?
+    let next: Next?
+    let switchAtISO: String?
 }
 
 struct WidgetActivity: Codable, Hashable, Sendable, Identifiable {

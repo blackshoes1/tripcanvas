@@ -1,7 +1,24 @@
 {
   "schemaVersion": 1,
-  "stateVersion": "vyq5s4m-r2",
+  "stateVersion": "v17o90xs-r2",
   "today": {
+    "nowFocus": {
+      "kind": "DEPARTURE",
+      "currentStay": null,
+      "next": {
+        "target": {
+          "dayIndex": 0,
+          "activityId": "d0s1",
+          "revision": 2
+        },
+        "title": "저녁 예약",
+        "startAtISO": "2026-09-01T10:00:00Z",
+        "leaveAtISO": "2026-09-01T09:48:00Z",
+        "travelMinutes": 2,
+        "departureText": "지금 움직이면 19:00까지 딱 맞아요"
+      },
+      "switchAtISO": "2026-09-01T09:36:00Z"
+    },
     "schemaVersion": 1,
     "generatedAt": "2026-09-01T09:55:00Z",
     "travelTimeSource": "STRAIGHT_LINE_ESTIMATE",
@@ -343,6 +360,23 @@
     }
   ],
   "liveActivity": {
+    "nowFocus": {
+      "kind": "DEPARTURE",
+      "currentStay": null,
+      "next": {
+        "target": {
+          "dayIndex": 0,
+          "activityId": "d0s1",
+          "revision": 2
+        },
+        "title": "저녁 예약",
+        "startAtISO": "2026-09-01T10:00:00Z",
+        "leaveAtISO": "2026-09-01T09:48:00Z",
+        "travelMinutes": 2,
+        "departureText": "지금 움직이면 19:00까지 딱 맞아요"
+      },
+      "switchAtISO": "2026-09-01T09:36:00Z"
+    },
     "target": {
       "dayIndex": 0,
       "activityId": "d0s1",
@@ -358,7 +392,7 @@
     "fixedTitle": "저녁 예약",
     "fixedStartISO": "2026-09-01T10:00:00Z",
     "pulseText": "일정대로 잘 가고 있어요",
-    "stateVersion": "vyq5s4m-r2"
+    "stateVersion": "v17o90xs-r2"
   },
   "widget": {
     "tripId": "parity",
@@ -394,7 +428,7 @@
       }
     ],
     "updatedAtISO": "2026-09-01T09:55:00Z",
-    "stateVersion": "vyq5s4m-r2"
+    "stateVersion": "v17o90xs-r2"
   },
   "suggestionsExpireAtISO": "2026-09-01T10:00:00Z",
   "suggestionsExpireMinutes": 1140,

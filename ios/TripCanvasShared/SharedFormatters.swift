@@ -18,6 +18,16 @@ enum LiveActivityLink {
 }
 
 extension ISO8601DateFormatter {
+    static func tripCanvasDate(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        return tripCanvas.date(from: value) ?? tripCanvasFractional.date(from: value)
+    }
+
+    private static let tripCanvasFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
     /// 서버는 소수점 없는 Z 형식을 보낸다. 매번 만들면 비싸서 공유한다.
     ///
     /// ActivityKit이 없는 플랫폼(watchOS)도 이 포맷터를 쓰므로 Live Activity 정의와 **같은 파일에 두지 않는다**.
@@ -27,4 +37,16 @@ extension ISO8601DateFormatter {
         f.formatOptions = [.withInternetDateTime]
         return f
     }()
+}
+
+extension NowFocus {
+    var focusedTarget: LiveActivityTarget? {
+        switch kind {
+        case .currentStay: currentStay?.target
+        case .departure: next?.target
+        case .schedule, .freeTime, .unknown: nil
+        }
+    }
+    var leaveAt: Date? { ISO8601DateFormatter.tripCanvasDate(next?.leaveAtISO) }
+    var switchAt: Date? { ISO8601DateFormatter.tripCanvasDate(switchAtISO) }
 }

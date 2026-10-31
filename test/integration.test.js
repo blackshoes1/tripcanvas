@@ -2350,8 +2350,15 @@ test('통합: 기존 장소 편집은 제자리를 지킨다 (삽입 위치 로�
 });
 
 // ── Golden: P0-1 다객실 예약 — 1실 기준 시세로 절약을 단정하지 않는다 (배선 검증) ──
-test('통합: 2객실 예약은 1실 시세로 🔴 절약을 만들지 않고, 1객실이면 기존대로 만든다', { skip: noJsdom }, async () => {
+test('통합: 2객실 예약은 1실 시세로 🔴 절약을 만들지 않고, 1객실이면 기존대로 만든다', { skip: noJsdom }, async (t) => {
   const w=boot();
+  t.after(() => w.close());
+  // 응답 관측일에 고정한다 — 실행 날짜가 체크인을 지나도 객실 수 비교를 계속 검증한다.
+  const NativeDate=w.Date, now=NativeDate.parse('2026-08-30T00:00:00Z');
+  w.Date=class extends NativeDate {
+    constructor(...args){ super(...(args.length?args:[now])); }
+    static now(){ return now; }
+  };
   withTrip(w, `[{title:'D1',drive:'',note:'',mode:'car',spots:[{name:'Cap Rocat',city:'P',desc:'',lat:39.47,lng:2.72}]}]`);
   const resp={status:'OK', property:{name:'Cap Rocat', token:'tok1', confidence:0.95},
     offers:[{seller:'Expedia', price:700000, total:700000, cur:'KRW', refundable:true}],
@@ -2375,7 +2382,6 @@ test('통합: 2객실 예약은 1실 시세로 🔴 절약을 만들지 않고, 
   w.eval(`window.fetch=async()=>({ok:true,status:200,json:async()=>(${JSON.stringify(resp1)})})`);
   await w.eval(`checkBookingPrice('hb1',{force:true})`);
   assert.match(w.eval(`bookingBadgeHtml(bookingOf('hb1'))`), /절약 가능/, '기준이 맞으면 기존 판단 유지');
-  w.close();
 });
 
 // ── Golden: 예약 삭제 — 일정에 남은 참조(bookingId·carPickupId·carReturnId)를 깨끗이 정리한다 ──
