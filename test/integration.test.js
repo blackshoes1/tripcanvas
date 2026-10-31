@@ -2358,7 +2358,7 @@ test('통합: 2객실 예약은 1실 시세로 🔴 절약을 만들지 않고, 
     basis:{rooms:1, adults:2, requestedRooms:2}, checkedAt:'2026-08-30T00:00:00Z'};
   w.eval(`window.fetch=async()=>({ok:true,status:200,json:async()=>(${JSON.stringify(resp)})})`);
   w.eval(`trip().bookings=[{id:'hb2', type:'hotel', title:'Cap Rocat', price:1400000, cur:'KRW',
-    rooms:2, refundable:true, track:true, start:'2026-10-30', end:'2026-11-01'}]`);
+    rooms:2, refundable:true, track:true, start:'2099-10-30', end:'2099-11-01'}]`);
   await w.eval(`checkBookingPrice('hb2',{force:true})`);
   assert.equal(w.eval(`priceStore.hb2.offers[0].quality`), 'UNSUPPORTED_BASIS', '기준 불일치 → 등급 강등');
   assert.equal(w.eval(`priceStore.hb2.basis.rooms`), 1, '응답 basis를 기록');
@@ -2370,7 +2370,7 @@ test('통합: 2객실 예약은 1실 시세로 🔴 절약을 만들지 않고, 
 
   // 대조군: 1객실 예약이면 같은 응답으로 확정 절약이 뜬다 (회귀 방지)
   w.eval(`trip().bookings=[{id:'hb1', type:'hotel', title:'Cap Rocat', price:1400000, cur:'KRW',
-    rooms:1, refundable:true, track:true, start:'2026-10-30', end:'2026-11-01'}]`);
+    rooms:1, refundable:true, track:true, start:'2099-10-30', end:'2099-11-01'}]`);
   const resp1={...resp, basis:{rooms:1, adults:2, requestedRooms:1}};
   w.eval(`window.fetch=async()=>({ok:true,status:200,json:async()=>(${JSON.stringify(resp1)})})`);
   await w.eval(`checkBookingPrice('hb1',{force:true})`);
