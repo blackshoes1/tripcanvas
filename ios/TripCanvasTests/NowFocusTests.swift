@@ -132,7 +132,7 @@ final class NowFocusTests: XCTestCase {
 
     func testFocusLeaveAndProofExpiryAreRefreshBoundariesWithoutALegacyDeparture() throws {
         for (generated, focus, expected) in [
-            ("2026-10-31T13:20:00.000Z", self.focus(.departure), "2026-10-31T13:30:00Z"),
+            ("2026-10-31T13:20:00.000Z", self.focus(.currentStay), "2026-10-31T13:30:00Z"),
             ("2026-10-31T13:20:00.000Z", NowFocus(kind: .currentStay,
                 currentStay: .init(target: a, title: "머무는 카페", status: .inProgress, expiresAtISO: "2026-10-31T15:00:00Z"),
                 next: nil, switchAtISO: nil), "2026-10-31T15:00:00Z")
@@ -143,5 +143,30 @@ final class NowFocusTests: XCTestCase {
             let today = try JSONDecoder().decode(TodayResponse.self, from: JSONSerialization.data(withJSONObject: raw))
             XCTAssertEqual(TodayRefreshTiming.nextBoundary(for: today), ISO8601DateFormatter.tripCanvasDate(expected))
         }
+    }
+
+    func testDepartureRefreshesAfterLeavingTimeWithoutPollingOtherFocusKinds() throws {
+        var raw = try JSONSerialization.jsonObject(with: JSONEncoder().encode(today(focus(.departure)))) as! [String: Any]
+        raw["generatedAt"] = "2026-10-31T14:15:00.500Z"; raw["activities"] = []; raw["nextAction"] = NSNull()
+        var day = raw["day"] as! [String: Any]; day["date"] = "2026-10-31"; day["timeZone"] = "UTC"; raw["day"] = day
+        var state = raw["currentState"] as! [String: Any]; state["live"] = true; raw["currentState"] = state
+        var focus = raw["nowFocus"] as! [String: Any]
+        var current = focus["currentStay"] as! [String: Any]; current["expiresAtISO"] = "2026-10-31T15:00:00Z"
+        focus["currentStay"] = current; focus["switchAtISO"] = "2026-10-31T14:03:00Z"
+        var next = focus["next"] as! [String: Any]
+        next["startAtISO"] = "2026-10-31T15:00:00Z"; next["leaveAtISO"] = "2026-10-31T14:15:00Z"; focus["next"] = next
+        for (kind, expected) in [(NowFocus.Kind.departure, "2026-10-31T14:16:00.500Z"),
+                                 (.currentStay, "2026-10-31T15:00:00Z"), (.schedule, "2026-10-31T15:00:00Z")] {
+            focus["kind"] = kind.rawValue; raw["nowFocus"] = focus
+            let today = try JSONDecoder().decode(TodayResponse.self, from: JSONSerialization.data(withJSONObject: raw))
+            XCTAssertEqual(TodayRefreshTiming.nextBoundary(for: today), ISO8601DateFormatter.tripCanvasDate(expected), kind.rawValue)
+        }
+        focus["kind"] = NowFocus.Kind.departure.rawValue
+        current["expiresAtISO"] = "2026-10-31T14:15:30Z"; focus["currentStay"] = current; raw["nowFocus"] = focus
+        let nearer = try JSONDecoder().decode(TodayResponse.self, from: JSONSerialization.data(withJSONObject: raw))
+        XCTAssertEqual(TodayRefreshTiming.nextBoundary(for: nearer), ISO8601DateFormatter.tripCanvasDate("2026-10-31T14:15:30Z"))
+        state["live"] = false; raw["currentState"] = state
+        let preview = try JSONDecoder().decode(TodayResponse.self, from: JSONSerialization.data(withJSONObject: raw))
+        XCTAssertNil(TodayRefreshTiming.nextBoundary(for: preview))
     }
 }

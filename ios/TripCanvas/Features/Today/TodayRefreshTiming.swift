@@ -24,6 +24,8 @@ enum TodayRefreshTiming {
         if let switchAt = today.nowFocus?.switchAt { dates.append(switchAt) }
         if let leaveAt = today.nowFocus?.leaveAt { dates.append(leaveAt) }
         if let expiresAt = ISO8601DateFormatter.tripCanvasDate(today.nowFocus?.currentStay?.expiresAtISO) { dates.append(expiresAt) }
+        // 출발 안내 중에는 서버에 매분 다시 묻는다. 출발·지각 판정은 서버에 남긴다.
+        if today.nowFocus?.kind == .departure { dates.append(generated.addingTimeInterval(60)) }
         // 자정은 24시간 뒤가 아니다 — 여행지의 일광절약시간 전환을 따른다.
         if let midnight = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: generated)) { dates.append(midnight) }
         return dates.filter { $0 > generated }.min()
