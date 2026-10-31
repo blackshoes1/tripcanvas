@@ -1,6 +1,7 @@
 #if DEBUG
 import SwiftUI
 import Observation
+import ActivityKit
 
 /// 오늘이 여행 중인 합성 여행으로 **실제 `지금` 화면**(`TodayView`)을 띄운다 — 계정에 로그인하지 않고
 /// '여행 중 안내' 띠가 어디에 어떻게 나오는지 본다. 내용은 테스트 픽스처 `today.json`과 같다(`todayIndex` 0 = 여행 중).
@@ -8,6 +9,8 @@ import Observation
     @State private var model: TodayViewModel?
     @State private var source: TodayLiveReviewSource?
     @State private var movedActivity: String?
+    @State private var openedActivity: String?
+    @State private var liveReviewStatus = ""
     private let response: TodayResponse?
 
     init(response: TodayResponse? = nil) {
@@ -17,13 +20,17 @@ import Observation
     var body: some View {
         NavigationStack {
             if let response, let model {
-                TodayView(trip: response.trip, model: model, onOpenPlan: {}, onMoveActivity: { day, activity, revision in
+                TodayView(trip: response.trip, model: model, onOpenPlan: {}, onOpenActivity: { day, activity in
+                    openedActivity = "Day \(day + 1) · \(activity.name)"
+                }, onMoveActivity: { day, activity, revision in
                     movedActivity = "Day \(day + 1) · \(activity.name) · 변경 기준 \(revision)"
                 })
                     .navigationTitle(response.trip.name)
                     .navigationBarTitleDisplayMode(.inline)
                     .safeAreaInset(edge: .bottom) {
                         if let movedActivity { Text(movedActivity).accessibilityIdentifier("todayMoveRequested") }
+                        if let openedActivity { Text(openedActivity).accessibilityIdentifier("todayOpenRequested") }
+                        if !liveReviewStatus.isEmpty { Text(liveReviewStatus).accessibilityIdentifier("nowLiveReviewStatus") }
                         if ProcessInfo.processInfo.arguments.contains("--review-today-scroll"), let source {
                             Text("오늘 조회 \(source.loads)회").accessibilityIdentifier("todayReviewLoads")
                         }
@@ -37,12 +44,51 @@ import Observation
             let source = TodayLiveReviewSource(response: response)
             self.source = source
             model = TodayViewModel(trip: response.trip, service: source)
+            if ProcessInfo.processInfo.arguments.contains("--review-now-lockscreen") {
+                try? await Task.sleep(for: .milliseconds(500))
+                for old in Activity<TripCanvasActivityAttributes>.activities where old.attributes.tripId == "synthetic-now-focus-review" {
+                    await old.end(nil, dismissalPolicy: .immediate)
+                }
+                let state = LiveActivityState(nowFocus: response.nowFocus, shouldEnd: false, target: response.nowFocus?.focusedTarget,
+                    scheduleElapsed: false, tripName: "합성 지금 안내", dayLabel: "Day 1", status: response.nextAction?.status ?? .upcoming,
+                    nextTitle: response.nextAction?.title ?? "", nextStartISO: nil, travelMinutes: 20, departureText: nil,
+                    fixedTitle: nil, fixedStartISO: nil, pulseText: "합성 자료 · 실제 여행 아님", stateVersion: UUID().uuidString)
+                do {
+                    _ = try Activity.request(attributes: TripCanvasActivityAttributes(tripId: "synthetic-now-focus-review",
+                        tripName: "합성 지금 안내", dayLabel: "Day 1"), content: ActivityContent(state: .init(from: state),
+                        staleDate: TodayRefreshTiming.nextBoundary(for: response)?.addingTimeInterval(30)), pushType: nil)
+                    liveReviewStatus = "합성 잠금화면 안내 생성 완료"
+                } catch { liveReviewStatus = "합성 잠금화면 안내 생성 실패" }
+            }
         }
     }
 
     private static func makeResponse() -> TodayResponse? {
         guard var raw = try? JSONSerialization.jsonObject(with: Data(fixture.utf8)) as? [String: Any] else { return nil }
         raw["generatedAt"] = ISO8601DateFormatter().string(from: Date())
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--review-now-stay") || arguments.contains("--review-now-departure") || arguments.contains("--review-now-free") {
+            let kind = arguments.contains("--review-now-free") ? "FREE_TIME" : (arguments.contains("--review-now-departure") ? "DEPARTURE" : "CURRENT_STAY")
+            let formatter = ISO8601DateFormatter(), now = Date()
+            let focus: [String: Any] = ["kind": kind,
+                "currentStay": kind == "FREE_TIME" ? NSNull() : ["target": ["dayIndex": 0, "activityId": "d0s0", "revision": 2],
+                    "title": "머무는 카페", "status": "ARRIVED", "expiresAtISO": formatter.string(from: now.addingTimeInterval(6 * 3600))],
+                "next": ["target": ["dayIndex": 0, "activityId": "d0s1", "revision": 2], "title": "다음 미술관",
+                    "startAtISO": formatter.string(from: now.addingTimeInterval(90 * 60)),
+                    "leaveAtISO": formatter.string(from: now.addingTimeInterval(kind == "DEPARTURE" ? 5 * 60 : 60 * 60)), "travelMinutes": 20,
+                    "departureText": "이제 다음 미술관으로 출발하면 여유 있게 도착해요"],
+                "switchAtISO": formatter.string(from: now.addingTimeInterval(kind == "DEPARTURE" ? -7 * 60 : 48 * 60))]
+            raw["nowFocus"] = focus; raw["calmMoment"] = NSNull()
+            for key in ["activities", "remainingActivities"] {
+                var activities = raw[key] as? [[String: Any]] ?? []
+                activities[0]["name"] = "머무는 카페"; activities[0]["status"] = "IN_PROGRESS"
+                activities[1]["name"] = "다음 미술관"; raw[key] = activities
+            }
+            var next = raw["nextAction"] as? [String: Any] ?? [:]
+            next["activityId"] = kind == "DEPARTURE" ? "d0s0" : "d0s1"
+            next["title"] = kind == "DEPARTURE" ? "머무는 카페" : "다음 미술관"
+            raw["nextAction"] = next
+        }
         if ProcessInfo.processInfo.arguments.contains("--review-time-current") {
             var next = raw["nextAction"] as? [String: Any] ?? [:]
             next["status"] = "IN_PROGRESS"
@@ -86,7 +132,7 @@ import Observation
     init(response: TodayResponse) { self.response = response }
     func today(tripId: String, dayIndex: Int?, intent: String?, energy: EnergyLevel?) async throws -> TripService.Fetched<TodayResponse> {
         loads += 1
-        return .init(value: response, cachedAt: nil)
+        return .init(value: response, cachedAt: ProcessInfo.processInfo.arguments.contains("--review-now-offline") ? Date().addingTimeInterval(-600) : nil)
     }
     func trips() async throws -> TripService.Fetched<[TripSummary]> { .init(value: [response.trip], cachedAt: nil) }
     func bookings(tripId: String) async throws -> TripService.Fetched<[BookingSummary]> { throw APIError.offline }

@@ -50,6 +50,83 @@ import XCTest
         XCTFail("비동기 도착 이벤트가 완료되지 않았다")
     }
 
+    private func expiredStayResponse(kind: String = "CURRENT_STAY", shouldEnd: Bool = false) throws -> TravelStateResponse {
+        try response(count: 2) { raw in
+            var today = raw["today"] as! [String: Any], activities = today["activities"] as! [[String: Any]]
+            activities[0]["endMinutes"] = 599; today["activities"] = activities
+            let focus: [String: Any] = ["kind": kind,
+                "currentStay": kind == "FREE_TIME" ? NSNull() : ["target": ["dayIndex": 0, "activityId": "d0s0", "revision": 7],
+                    "title": "목표 0", "status": "IN_PROGRESS", "expiresAtISO": "2026-10-31T00:00:00.000Z"],
+                "next": ["target": ["dayIndex": 0, "activityId": "d0s1", "revision": 7], "title": "목표 1", "travelMinutes": 10],
+                "switchAtISO": NSNull()]
+            today["nowFocus"] = focus; raw["today"] = today
+            var live = raw["liveActivity"] as! [String: Any]
+            live["shouldEnd"] = shouldEnd; live["nowFocus"] = focus; raw["liveActivity"] = live
+        }
+    }
+
+    func testExitAfterPlannedEndStillClearsEvidenceWhileTheAppWasClosed() async throws {
+        let manager = ArrivalManager(), store = defaults()
+        var clock = now, events: [LiveActivityArrivalRequest] = []
+        let monitor = ArrivalMonitor(manager: manager, defaults: store, available: true, now: { clock },
+            beginBackground: { _ in .invalid }, endBackground: { _ in })
+        monitor.onObservation = { _, event in events.append(event); return .recorded }
+        monitor.update(try response(count: 2), context: context)
+        let region = try XCTUnwrap(manager.started.first)
+        monitor.locationManager(CLLocationManager(), didEnterRegion: region)
+        await settle { events.count == 1 }; await monitor.retryPending()
+        clock = clock.addingTimeInterval(120 * 60)
+        monitor.locationManager(CLLocationManager(), didExitRegion: region)
+        await settle { events.count == 2 }
+        XCTAssertEqual(events.map(\.arrived), [true, false], "예정 머무름이 끝나도 실제 나감을 보고한다")
+    }
+
+    func testUnacknowledgedExitSurvivesAReentrantFreeTimeResponseAfterPlannedEnd() async throws {
+        let manager = ArrivalManager(), monitor = monitor(manager)
+        var events: [LiveActivityArrivalRequest] = [], release: CheckedContinuation<ArrivalReportResult, Never>?
+        monitor.onObservation = { _, event in
+            events.append(event)
+            if events.count == 2 { return await withCheckedContinuation { release = $0 } }
+            return .recorded
+        }
+        monitor.update(try response(count: 2), context: context)
+        let region = try XCTUnwrap(manager.started.first)
+        monitor.locationManager(CLLocationManager(), didEnterRegion: region)
+        await settle { events.count == 1 }; await monitor.retryPending()
+        monitor.update(try expiredStayResponse(), context: context)
+        XCTAssertTrue(manager.monitoredRegions.contains(where: { $0.identifier == region.identifier }))
+        monitor.locationManager(CLLocationManager(), didExitRegion: region)
+        await settle { release != nil }
+        monitor.update(try expiredStayResponse(kind: "FREE_TIME"), context: context)
+        release?.resume(returning: .retry)
+        await monitor.retryPending(); await monitor.retryPending()
+        XCTAssertEqual(events.count, 3)
+        XCTAssertEqual(events[1], events[2], "미전송 출발은 같은 sequence로 유지해 worker의 과거 도착 근거를 지운다")
+        XCTAssertFalse(events[2].arrived)
+    }
+
+    func testScheduleEndStopsRegionsEvenIfAStayProofWasRetained() async throws {
+        let manager = ArrivalManager(), monitor = monitor(manager)
+        monitor.update(try expiredStayResponse(), context: context)
+        XCTAssertFalse(manager.monitoredRegions.isEmpty)
+        monitor.update(try expiredStayResponse(shouldEnd: true), context: context)
+        XCTAssertTrue(manager.monitoredRegions.isEmpty)
+    }
+
+    func testVerifiedPlaceBeyondTheFirstTwentyKeepsItsExitRegion() throws {
+        let manager = ArrivalManager(), monitor = monitor(manager)
+        let value = try response(count: 25) { raw in
+            var today = raw["today"] as! [String: Any]
+            today["nowFocus"] = ["kind": "CURRENT_STAY", "currentStay": [
+                "target": ["dayIndex": 0, "activityId": "d0s24", "revision": 7],
+                "title": "먼저 도착한 장소", "status": "ARRIVED", "expiresAtISO": "2026-10-31T00:00:00Z"]]
+            raw["today"] = today
+        }
+        monitor.update(value, context: context)
+        XCTAssertEqual(manager.started.count, 20)
+        XCTAssertEqual(manager.started.first?.center.latitude, 37.74)
+    }
+
     func testOnlyAlwaysAndPreciseAuthorizationArmsDestinationsWithoutRequestingPermission() throws {
         let manager = ArrivalManager(); manager.authorizationStatus = .authorizedWhenInUse
         let monitor = monitor(manager)

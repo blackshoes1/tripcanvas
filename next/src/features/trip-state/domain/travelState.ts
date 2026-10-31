@@ -69,7 +69,9 @@ export function buildTravelState(input: TravelStateInput): TravelStateResponse {
 
   const stateVersion = adapt.stateVersion(state, {
     stage: rawDeparture?.stage ?? '', pulse: rawPulse.code,
-    travelMinutes: next ? travelMinutes : null, timeZone
+    travelMinutes: next ? travelMinutes : null, timeZone,
+    nowFocus: JSON.stringify(today.nowFocus, (key, value) => key === 'departureText' ? undefined : value)
+      + (computed.focusDeparturePhase ?? '')
   }) + `-r${input.revision}`;
   const expiresMinutes = adapt.suggestionExpiryMin(state);
 
@@ -100,6 +102,7 @@ export function buildTravelState(input: TravelStateInput): TravelStateResponse {
   const scheduleElapsed = state.live && !next && state.remainingItems.length > 0;
   const shouldEnd = !state.live || !next;
   const liveActivity: LiveActivityState = {
+    nowFocus: today.nowFocus,
     ...(shouldEnd ? { shouldEnd: true } : {}),
     ...(!shouldEnd && next ? { target: { dayIndex: day.index, activityId: next.id, revision: input.revision } } : {}),
     tripName: today.trip.name,

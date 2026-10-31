@@ -9,6 +9,32 @@
           "activityId": "d1s1",
           "revision": 7
         },
+        "nowFocus": {
+          "kind": "CURRENT_STAY",
+          "currentStay": {
+            "target": {
+              "dayIndex": 1,
+              "activityId": "d1s0",
+              "revision": 7
+            },
+            "title": "머무는 미술관",
+            "status": "IN_PROGRESS",
+            "expiresAtISO": "2026-10-28T00:00:00Z"
+          },
+          "next": {
+            "target": {
+              "dayIndex": 1,
+              "activityId": "d1s1",
+              "revision": 7
+            },
+            "title": "점심",
+            "startAtISO": "2026-10-27T12:30:00.250Z",
+            "leaveAtISO": "2026-10-27T12:10:00Z",
+            "travelMinutes": 12,
+            "departureText": "12:10에 나서면 돼요"
+          },
+          "switchAtISO": "2026-10-27T11:58:00Z"
+        },
         "tripName": "잠금화면 정합성",
         "dayLabel": "Day 2",
         "nextTitle": "점심",

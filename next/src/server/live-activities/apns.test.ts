@@ -24,6 +24,14 @@ const update: LiveActivityUpdate = {
   state, event: 'update', at, staleAt: new Date('2026-10-27T12:30:00Z'),
   expiresAt: new Date('2026-10-27T20:00:00Z')
 };
+const nowFocus: NonNullable<LiveActivityState['nowFocus']> = {
+  kind: 'CURRENT_STAY',
+  currentStay: { target: { dayIndex: 1, activityId: 'd1s0', revision: 7 }, title: '머무는 미술관',
+    status: 'IN_PROGRESS', expiresAtISO: '2026-10-28T00:00:00Z' },
+  next: { target: state.target!, title: '점심', startAtISO: '2026-10-27T12:30:00.250Z',
+    leaveAtISO: '2026-10-27T12:10:00Z', travelMinutes: 12, departureText: '12:10에 나서면 돼요' },
+  switchAtISO: '2026-10-27T11:58:00Z'
+};
 function setup(response: ApnsResponse = { status: 200, body: '', headers: {} }) {
   const requests: ApnsRequest[] = [];
   const transport = vi.fn(async (request: ApnsRequest) => { requests.push(request); return response; });
@@ -35,7 +43,7 @@ describe('ActivityKit APNs 전송', () => {
   it('실제 sender의 body만 Swift 기본 decoder 공용 픽스처로 쓴다', async () => {
     const { send, requests } = setup();
     await send(target, { ...update, state: { ...state, tripName: '잠금화면 정합성', dayLabel: 'Day 2',
-      departureText: null, fixedTitle: '미술관 예약', fixedStartISO: '2026-10-27T13:00:00Z' } });
+      departureText: null, fixedTitle: '미술관 예약', fixedStartISO: '2026-10-27T13:00:00Z', nowFocus } });
     await send(target, { ...update, at: new Date('2026-10-27T14:00:00Z'), staleAt: null,
       state: { ...state, tripName: '잠금화면 정합성', dayLabel: 'Day 2', status: 'COMPLETED',
         nextTitle: '예정 시간 지남', nextStartISO: null, travelMinutes: null, departureText: null,
@@ -46,11 +54,33 @@ describe('ActivityKit APNs 전송', () => {
     expect(payloads[0].aps['content-state'].nextStartAt).toBe(814797000.25);
     expect(payloads[1].aps['content-state'].nextStartAt).toBeUndefined();
     expect(payloads[0].aps['content-state'].target).toEqual(state.target);
+    expect(payloads[0].aps['content-state'].nowFocus).toEqual(nowFocus);
     expect(payloads[1].aps['content-state'].target).toBeUndefined();
     expect(payloads[1].aps['content-state'].shouldEnd).toBe(true);
+    expect(payloads[1].aps['content-state'].nowFocus).toBeUndefined();
     // P256 키는 테스트마다 새로 만들지만 JWT·header는 파일에 넣지 않는다. body는 결정적이다.
     writeFixture(path.join(__dirname, '../../../../ios/TripCanvasTests/Fixtures/live-activity-push.json'),
       JSON.stringify(payloads, null, 2) + '\n');
+  });
+
+  it('현재 장소 안내는 ISO 날짜 그대로 추가하고 구앱이 읽는 값은 바꾸지 않는다', async () => {
+    const { send, requests } = setup();
+    await send(target, update);
+    expect(await send(target, { ...update, state: { ...state, nowFocus } })).toEqual({ ok: true });
+    const legacy = JSON.parse(requests[0].body).aps['content-state'];
+    const current = JSON.parse(requests[1].body).aps['content-state'];
+    expect(current).toEqual({ ...legacy, nowFocus });
+    expect(current.nowFocus.currentStay.expiresAtISO).toBe(nowFocus.currentStay!.expiresAtISO);
+    expect(Buffer.byteLength(requests[1].body)).toBeLessThanOrEqual(4096);
+    expect(requests[1].body).not.toMatch(/"lat"|"lng"|"placeId"|"bookingId"/);
+  });
+
+  it('추가된 현재 장소 안내도 APNs 4KB 상한을 넘으면 전송하지 않는다', async () => {
+    const { send, transport } = setup();
+    expect(await send(target, { ...update, state: { ...state, nowFocus: { ...nowFocus,
+      currentStay: { ...nowFocus.currentStay!, title: '긴 장소명'.repeat(1000) } } } }))
+      .toEqual({ ok: false, permanent: true, reason: 'PayloadTooLarge' });
+    expect(transport).not.toHaveBeenCalled();
   });
 
   it('정확한 topic·환경·headers와 Swift 기본 Date 형식을 보낸다', async () => {

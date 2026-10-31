@@ -88,10 +88,14 @@ struct TodayView: View {
                         if let calm = today.calmMoment {
                             CalmMomentCard(moment: calm, offline: model.isOffline) { Task { await model.load() } }
                         }
-                        if let next = today.nextAction, let activity = model.activity(id: next.activityId) {
+                        if let next = today.displayedNextAction, let activity = model.activity(id: next.activityId) {
                             NextActionCard(next: next, activity: activity, isEstimate: model.travelTimeIsEstimate,
                                            isBusy: !model.pending.isEmpty || model.isRetrying,
                                            canEdit: model.canAct && activity.choiceState != "PENDING",
+                                           nowFocus: today.nowFocus,
+                                           focusIsStale: model.isOffline || model.loadErrorMessage != nil,
+                                           onOpen: { openActivity(activity, day: today.day.index) },
+                                           onOpenNext: { if let target = today.nowFocus?.next?.target { openFocusTarget(target, today: today) } },
                                            onComplete: { Task { await model.complete(activity) } },
                                            onSkip: { Task { await model.skip(activity) } },
                                            onMove: moveAction(for: activity, day: today.day.index, revision: model.revision),
@@ -126,6 +130,10 @@ struct TodayView: View {
                                 .frame(minHeight: 44)
                                 .disabled(!model.pending.isEmpty || model.isRetrying)
                                 .accessibilityIdentifier("openStayExtension")
+                            }
+                        } else if let focus = today.nowFocus, focus.kind == .freeTime {
+                            FreeTimeCard(focus: focus, isStale: model.isOffline || model.loadErrorMessage != nil) {
+                                if let target = today.nowFocus?.next?.target { openFocusTarget(target, today: today) }
                             }
                         } else if today.activities.isEmpty {
                             EmptyStateView(
@@ -175,9 +183,9 @@ struct TodayView: View {
 
                         // 하루 전체를 한 장에 — 다녀온 곳은 흐리게, 다음 일정은 표시만(할 일은 위 카드에 있다).
                         // 2026-09-27 전에는 '남은 일정'과 '마무리한 일정'이 따로였고 줄마다 카드라 하루의 흐름이 안 보였다.
-                        if today.activities.contains(where: { $0.id != today.nextAction?.activityId }) {
+                        if today.activities.contains(where: { $0.id != today.displayedNextAction?.activityId }) {
                             SectionHeader(title: "오늘 일정", actionTitle: "일정 전체", action: onOpenPlan)
-                            TodayTimelineCard(activities: today.activities, nextId: today.nextAction?.activityId,
+                            TodayTimelineCard(activities: today.activities, nextId: today.displayedNextAction?.activityId,
                                               isBusy: !model.pending.isEmpty || model.isRetrying, canEdit: model.canAct,
                                               onComplete: { activity in Task { await model.complete(activity) } },
                                               onSkip: { activity in Task { await model.skip(activity) } },
@@ -215,7 +223,7 @@ struct TodayView: View {
                                 onPrepareOffline: { onOpenOffline?() })
                         }
 
-                        TodayMapCard(activities: today.activities, next: today.nextAction)
+                        TodayMapCard(activities: today.activities, next: today.displayedNextAction)
 
                         NavigationLink {
                             BookingListView(trip: trip)
@@ -330,6 +338,16 @@ struct TodayView: View {
         return model.today?.generatedAt
     }
 
+    private func openActivity(_ activity: ActivitySummary, day: Int) {
+        if let onOpenActivity { onOpenActivity(day, activity) } else { onOpenPlan() }
+    }
+
+    private func openFocusTarget(_ target: LiveActivityTarget, today: TodayResponse) {
+        guard target.dayIndex == today.day.index, target.revision == model.revision,
+              target.spotIndex != nil, let activity = model.activity(id: target.activityId) else { return }
+        openActivity(activity, day: target.dayIndex)
+    }
+
     private func moveAction(for activity: ActivitySummary, day: Int, revision: Int) -> (() -> Void)? {
         guard let move = timelineMoveAction(day: day, revision: revision), activity.choiceState != "PENDING" else { return nil }
         return { move(activity) }
@@ -340,6 +358,17 @@ struct TodayView: View {
         return {
             placeChange = TodayPlaceChangeModel(tripID: trip.id, day: day, activity: activity,
                 revision: model.revision, source: env.service,
+                currentToday: {
+                    // 단순 today 조회에는 GPS가 없다. 화면을 고른 때와 같은 신선한 관측으로 서버가 다시 판정한다.
+                    var point: GeoPoint?
+                    let active = env.travelMode.isActive && env.travelMode.snapshot.tripId == trip.id
+                    if active, env.location.permission == .granted,
+                       await env.location.requestOnce() != nil { point = env.location.freshArrivalPoint() }
+                    let fetched = try await env.service.travelState(tripId: trip.id, location: point,
+                        locationUpdatedAt: point == nil ? nil : env.location.lastUpdatedAt.map { ISO8601DateFormatter.tripCanvas.string(from: $0) },
+                        travelMode: active, suppressUntil: nil, markSent: false)
+                    return .init(value: fetched.value.today, cachedAt: fetched.cachedAt)
+                },
                 isCurrent: { [account = env.auth.session?.userId, scope = env.service.cacheScope] in
                     env.auth.session?.userId == account && env.service.cacheScope == scope
                 })
@@ -513,7 +542,16 @@ struct TodayView: View {
                 Spacer()
                 // 아직 받지 못했으면 상태를 말하지 않는다 — '일정 없음'은 받아 본 뒤에만 할 수 있는 말이다.
                 if model.today != nil, !model.isOutsideTrip {
-                    if model.hasUnrecordedPastSchedule {
+                    if model.today?.nowFocus?.kind == .currentStay, let stay = model.today?.nowFocus?.currentStay {
+                        StatusChip(text: StatusPalette.label(for: stay.status), symbol: StatusPalette.symbol(for: stay.status), tint: StatusPalette.tint(for: stay.status))
+                            .accessibilityIdentifier("nowHeaderStatus")
+                    } else if model.today?.nowFocus?.kind == .departure {
+                        StatusChip(text: "출발 안내", symbol: "figure.walk.departure", tint: Ink.accent)
+                            .accessibilityIdentifier("nowHeaderStatus")
+                    } else if model.today?.nowFocus?.kind == .freeTime {
+                        StatusChip(text: StatusPalette.label(for: .upcoming), symbol: StatusPalette.symbol(for: .upcoming), tint: StatusPalette.tint(for: .upcoming))
+                            .accessibilityIdentifier("nowHeaderStatus")
+                    } else if model.hasUnrecordedPastSchedule {
                         StatusChip(text: "예정 시간 지남", symbol: "clock", tint: Ink.soft)
                     } else {
                         StatusChip(text: StatusPalette.label(for: model.status),
@@ -615,11 +653,19 @@ struct NextActionCard: View {
     let isEstimate: Bool
     let isBusy: Bool
     var canEdit = true
+    var nowFocus: NowFocus? = nil
+    var focusIsStale = false
+    var onOpen: (() -> Void)? = nil
+    var onOpenNext: (() -> Void)? = nil
     let onComplete: () -> Void
     var onSkip: () -> Void = {}
     var onMove: (() -> Void)? = nil
     var onChangePlace: (() -> Void)? = nil
-    private var heading: String { next.status == .inProgress ? "지금 일정" : "다음 일정" }
+    private var heading: String { nowFocus?.kind == .currentStay ? "지금 머무는 곳" : (next.status == .inProgress ? "지금 일정" : "다음 일정") }
+    private var titleText: some View {
+        Text(next.title).font(Typeface.editorial(.title2)).foregroundStyle(Ink.ink)
+            .fixedSize(horizontal: false, vertical: true)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.l) {
@@ -645,10 +691,10 @@ struct NextActionCard: View {
                 .foregroundStyle(Ink.accent)
 
                 HStack(alignment: .firstTextBaseline, spacing: Space.s) {
-                    Text(next.title)
-                        .font(Typeface.editorial(.title2))
-                        .foregroundStyle(Ink.ink)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if let onOpen {
+                        Button(action: onOpen) { titleText }
+                            .buttonStyle(.plain).accessibilityLabel("장소 정보: \(next.title)")
+                    } else { titleText }
                     Spacer(minLength: 0)
                     Image(systemName: next.type.symbol)
                         .foregroundStyle(Ink.soft)
@@ -662,7 +708,12 @@ struct NextActionCard: View {
                 }
             }
 
-            if let departure = next.departure {
+            if nowFocus?.kind == .currentStay {
+                Text(focusIsStale ? "최근 안내예요 · 연결 후 다시 확인해 주세요" : (nowFocus?.currentStay?.status == .arrived ? "도착했어요" : "여기서 머무는 중이에요")).font(.headline)
+                if let focus = nowFocus { NowNextSummary(focus: focus, isStale: focusIsStale, onOpen: onOpenNext) }
+            } else if nowFocus?.kind == .departure, let text = nowFocus?.next?.departureText {
+                Text(text).font(.headline).fixedSize(horizontal: false, vertical: true)
+            } else if let departure = next.departure {
                 // 명령하지 않는다 — 서버가 만든 문장을 그대로 쓴다(§38). 이 카드에서 **가장 크게** 읽히는 줄이다.
                 Text(departure.text)
                     .font(.headline)
@@ -674,7 +725,7 @@ struct NextActionCard: View {
             }
 
             // 실행에 필요한 사실만 — 출발 · 도착 · 이동 · 머무름. 두 알씩 줄을 바꿔 좁은 화면에서도 넘치지 않는다.
-            let facts = NextActionCard.facts(next, isEstimate: isEstimate)
+            let facts = nowFocus?.kind == .currentStay ? [] : NextActionCard.facts(next, isEstimate: isEstimate)
             if !facts.isEmpty {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     ForEach(Array(stride(from: 0, to: facts.count, by: 2)), id: \.self) { start in
@@ -728,6 +779,48 @@ struct NextActionCard: View {
         .card()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(heading) \(next.title), \(StatusPalette.label(for: next.status))")
+    }
+}
+
+private struct NowNextSummary: View {
+    let focus: NowFocus
+    var isStale = false
+    var onOpen: (() -> Void)? = nil
+    var body: some View {
+        if let next = focus.next {
+            VStack(alignment: .leading, spacing: Space.xs) {
+                if !isStale, let leaveAt = focus.leaveAt {
+                    DepartureCountdown(leaveAt: leaveAt)
+                        .font(.subheadline.weight(.medium))
+                }
+                HStack {
+                    Text("다음 · \(next.title)").font(.subheadline).foregroundStyle(Ink.soft)
+                    Spacer(minLength: 0)
+                    if let onOpen {
+                        Button("보기", action: onOpen).font(.caption).frame(minHeight: 44)
+                            .accessibilityLabel("다음 장소 정보: \(next.title)")
+                    }
+                }
+                if next.travelMinutes > 0 {
+                    Text("이동 \(next.travelMinutes)분").font(.caption).foregroundStyle(Ink.soft)
+                }
+            }
+        }
+    }
+}
+
+private struct FreeTimeCard: View {
+    let focus: NowFocus
+    let isStale: Bool
+    let onOpenNext: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.m) {
+            Label("지금", systemImage: "cup.and.saucer").font(.footnote.weight(.semibold)).foregroundStyle(Ink.accent)
+            Text("자유시간").font(Typeface.editorial(.title2))
+            Text(isStale ? "최근 안내예요 · 연결 후 다시 확인해 주세요" : "다음 일정까지 여유가 있어요").font(.headline)
+            NowNextSummary(focus: focus, isStale: isStale, onOpen: onOpenNext)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).card()
     }
 }
 
