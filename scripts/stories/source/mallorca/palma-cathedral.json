@@ -73,7 +73,6 @@
         "MC38",
         "MC39",
         "MC40",
-        "MC41",
         "MC42",
         "MC43",
         "MC44",
@@ -246,10 +245,6 @@
       "title": "「넥서스 네트워크 저널」 2024·팔마 대성당의 빛 정렬 연구",
       "url": "https://doi.org/10.1007/s00004-023-00760-x"
     },
-    "MC41": {
-      "title": "프랑스 천문학회·팔마 대성당의 햇빛(2024)",
-      "url": "https://ccs.saf-astronomie.fr/wp-content/uploads/2024/Info-Mail_2024/2024%20Sunlight%20Mallorca%20Cathedral.pdf"
-    },
     "MC42": {
       "title": "마요르카닷컴·나 코카의 용 전설",
       "url": "https://www.mallorca.com/es/directorio/empresa/drac-de-na-coca-palma-w4baprnu"
@@ -288,8 +283,7 @@
     {
       "claim": "동지 무렵 아침에는 동쪽 창의 빛이 서쪽 장미창에 거의 그대로 겹치는데, 같은 연구는 그 장면이 동짓날 아침에 가장 가깝게 겹친다고 계산했습니다.",
       "sources": [
-        "MC40",
-        "MC41"
+        "MC40"
       ],
       "status": "CONFIRMED"
     },

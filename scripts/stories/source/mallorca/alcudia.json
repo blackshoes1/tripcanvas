@@ -105,8 +105,8 @@
       "url": "https://en.wikipedia.org/wiki/Church_of_St._Jaume"
     },
     "MA15": {
-      "title": "바르셀로나 대학교 학술 저장소·폴렌티아 관련 논문",
-      "url": "https://dipositint.ub.edu/dspace/handle/2445/42649"
+      "title": "바르셀로나 대학교 박사 논문(발로리, 2012)·폴렌티아의 도시 계획과 공공 건축",
+      "url": "https://hdl.handle.net/2445/42649"
     },
     "MA16": {
       "title": "마요르카닷컴·폴렌티아 로마 극장 — 관람과 역사",
@@ -136,8 +136,7 @@
     {
       "claim": "두 집 사이 회랑 거리의 가장 깊은 층에서는, 로마인이 오기 전 탈라요트 시대 마을의 것으로 보이는 오두막 흔적도 나왔습니다.",
       "sources": [
-        "MA17",
-        "MA18"
+        "MA17"
       ],
       "status": "CONFIRMED"
     }

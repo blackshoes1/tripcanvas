@@ -262,12 +262,14 @@ function loadPlaces() {
         // '다음 이동:'은 편집용 라벨이라 읽지 않는다(pronunciation-notes.txt) — 마지막 트랙의 '마지막 트랙입니다' 앞에 '다음 장소로 갑니다'가 붙었다
         t.text = String(t.text || '').replace(/^다음 이동:\s*/m, '').trim();
       }
-      // 폴더가 이긴다 — 음성 경로와 검사가 폴더 이름을 쓴다
-      places.push({ ...p, file: f, region });
+      places.push(placeRecord(p, f, region));
     }
   }
   return resolveSameStory(places);
 }
+
+/** 원고 JSON → 장소. 폴더가 이긴다 — 음성 경로와 검사가 폴더 이름을 쓰므로 JSON에 region·file이 적혀 있어도 따르지 않는다 */
+const placeRecord = (json, file, region) => ({ ...json, file, region });
 
 // 같은 이야기를 다른 자리에도 붙일 때(소예르 기차의 팔마 종점) — 원고·음성·출처·검수는 원본(sameStoryAs) 하나에서 물려받는다.
 // 따로 들고 있으면 원본의 검수만 지우거나 한쪽 출처만 고쳐도 다른 쪽이 옛 음성·옛 출처를 그대로 내보낸다
@@ -278,6 +280,7 @@ function resolveSameStory(places) {
     const from = p.sameStoryAs ? byId.get(p.sameStoryAs) : null;
     if (!from || from.sameStoryAs) continue;   // 없는 원본·이어진 참조는 check()가 말한다
     for (const k of SHARED_STORY_KEYS) { if (k in from) p[k] = from[k]; else delete p[k]; }
+    p.storyOf = { id: from.id, region: from.region };   // 합성하는 트랙도 원본의 음성 경로를 쓴다 — 같은 원고를 두 번 합성하지 않게
   }
   return places;
 }
@@ -285,9 +288,10 @@ function resolveSameStory(places) {
 /** 이미 만든 음성의 원고 지문 — 음성을 만든 원고와 지금 원고가 같은지 본다(카탈로그에는 원고가 실리지 않는다) */
 const textHash = (text) => sha256(String(text)).slice(0, 16);
 
-/** 트랙의 음성 경로(stories/ 아래) — 이미 만든 음성(audio)은 그 경로, 아니면 '<지역>/<장소>-<트랙>.mp3' */
+/** 트랙의 음성 경로(stories/ 아래) — 이미 만든 음성(audio)은 그 경로, 아니면 '<지역>/<장소>-<트랙>.mp3'(같은 이야기는 원본 장소의 것) */
 function trackSrc(p, t) {
-  return t.audio || `${p.region}/${p.id.replace(new RegExp(`^${p.region}-`), '')}-${t.id}.mp3`;
+  const o = p.storyOf || p;
+  return t.audio || `${o.region}/${o.id.replace(new RegExp(`^${o.region}-`), '')}-${t.id}.mp3`;
 }
 
 /** 원고 검사 — 키 없이 돈다. 틀린 것을 모아 한 번에 말한다 */
@@ -300,6 +304,8 @@ function check(places) {
     const where = p.file;
     if (p.sameStoryAs && !(byId.has(p.sameStoryAs) && !byId.get(p.sameStoryAs).sameStoryAs))
       errors.push(`${where}: sameStoryAs(${p.sameStoryAs})가 가리키는 원본이 없거나, 원본도 다른 이야기를 가리킵니다`);
+    else if (p.sameStoryAs && byId.get(p.sameStoryAs).region !== p.region)
+      errors.push(`${where}: sameStoryAs(${p.sameStoryAs})는 같은 지역 폴더 안의 이야기만 가리킵니다 — 음성은 지역 폴더에 있다`);
     if (!/^[a-z0-9-]+$/.test(p.id || '')) errors.push(`${where}: id가 올바르지 않습니다`);
     if (ids.has(p.id)) errors.push(`${where}: 같은 id(${p.id})가 또 있습니다`);
     ids.add(p.id);
@@ -457,6 +463,6 @@ async function main() {
   console.log(`${draft ? '검수용 ' : ''}카탈로그: ${catalog.places.length}곳 · 이번에 합성한 글자 ${spent.toLocaleString()}자 → ${path.relative(ROOT, outDir)}/`);
 }
 
-module.exports = { sinoKorean, spokenText, withJosa, sentencePlan, mp3Seconds, speechRate, RATE_BAND, PAUSE, check, loadPlaces, trackSrc, resolveSameStory, textHash,
+module.exports = { sinoKorean, spokenText, withJosa, sentencePlan, mp3Seconds, speechRate, RATE_BAND, PAUSE, check, loadPlaces, placeRecord, trackSrc, resolveSameStory, textHash,
   wavSamples, trimSilence, innerPauses, joinTrack, sentenceProblem, synthesizeTrack, SAMPLE_RATE };
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });

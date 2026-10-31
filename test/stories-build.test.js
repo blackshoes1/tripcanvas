@@ -160,6 +160,11 @@ test('이미 만든 음성(audio)은 그 경로를 쓰고, 저장소의 그 지�
   assert.ok(B.check([place('mallorca/-x.mp3')]).some((e) => /mallorca\/ 안의/.test(e)));   // stories.js SRC_RE가 버리는 이름
   // 목소리를 안 적으면 카탈로그가 Chirp 3 HD로 적는다
   assert.ok(B.check([place('mallorca/bellver-core.mp3', { voice: undefined })]).some((e) => /목소리\(voice/.test(e)));
+  // 폴더가 이긴다 — 원고 JSON에 region·file이 적혀 있어도 음성 경로는 폴더 이름을 따른다
+  const rec = B.placeRecord({ id: 'mallorca-x', region: 'seville', file: 'y.json' }, 'x.json', 'mallorca');
+  assert.equal(rec.region, 'mallorca');
+  assert.equal(rec.file, 'x.json');
+  assert.equal(B.trackSrc(rec, { id: 'core' }), 'mallorca/x-core.mp3');
   // 마요르카는 지역 폴더를 읽고, 원자료 폴더(source/cathedral)는 원고로 읽지 않는다
   const ids = B.loadPlaces().map((p) => p.id);
   assert.ok(ids.includes('mallorca-palma-cathedral') && ids.includes('seville-cathedral'));
@@ -194,6 +199,13 @@ test('같은 이야기를 다른 자리에 붙이면 원고·음성·출처·검
   // 원본이 없거나 원본도 다른 이야기를 가리키면 검사가 말한다
   assert.ok(B.check(B.resolveSameStory([{ ...copy, sameStoryAs: 'mallorca-none' }])).some((e) => /가리키는 원본이 없거나/.test(e)));
   assert.ok(B.check(B.resolveSameStory([{ ...original, sameStoryAs: 'mallorca-b' }, { ...copy }])).some((e) => /원본도 다른 이야기/.test(e)));
+  // 합성하는 트랙(audio 없음)도 원본의 음성 경로를 쓴다 — 사본 이름으로 같은 원고를 한 번 더 합성하지 않는다
+  const synth = { file: 'c.json', region: 'seville', id: 'seville-alcazar', kind: 'PLACE', lat: 1, lng: 1, radiusM: 100,
+    sources: { P01: { title: 't', url: 'https://a.example/' } }, tracks: [{ id: 'core', role: 'CORE', title: 't', text, sources: ['P01'] }] };
+  const gate = B.resolveSameStory([{ ...synth }, { file: 'd.json', region: 'seville', id: 'seville-alcazar-gate', kind: 'PLACE', lat: 2, lng: 2, radiusM: 80, sameStoryAs: 'seville-alcazar' }])[1];
+  assert.equal(B.trackSrc(gate, gate.tracks[0]), 'seville/alcazar-core.mp3');
+  // 음성은 지역 폴더에 있다 — 다른 지역의 이야기는 가리키지 않는다
+  assert.ok(B.check(B.resolveSameStory([{ ...synth }, { ...copy, sameStoryAs: 'seville-alcazar' }])).some((e) => /같은 지역 폴더/.test(e)));
   // 배포되는 팔마 종점은 소예르역의 것을 그대로 쓴다
   const places = B.loadPlaces();
   const palma = places.find((p) => p.id === 'mallorca-soller-train-palma');

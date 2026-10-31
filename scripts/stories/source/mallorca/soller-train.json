@@ -40,10 +40,10 @@
         "MS01",
         "MS02",
         "MS03",
-        "MS04",
+        "MS16",
         "MS05",
         "MS06",
-        "MS07",
+        "MS18",
         "MS08",
         "MS09",
         "MS10",
@@ -52,9 +52,7 @@
         "MS13",
         "MS14",
         "MS15",
-        "MS16",
-        "MS17",
-        "MS18"
+        "MS17"
       ]
     }
   ],
@@ -71,10 +69,6 @@
       "title": "소예르 기차 공식·기차 여행",
       "url": "https://trendesoller.com/eng/train/"
     },
-    "MS04": {
-      "title": "소예르 기차 공식·역사(스페인어)",
-      "url": "https://trendesoller.com/historia"
-    },
     "MS05": {
       "title": "위키백과(영어) — Sóller",
       "url": "https://en.wikipedia.org/wiki/S%C3%B3ller"
@@ -82,10 +76,6 @@
     "MS06": {
       "title": "소예르 기차 공식·소예르에서 놓치면 안 될 다섯 곳",
       "url": "https://trendesoller.com/eng/whattosee/soller"
-    },
-    "MS07": {
-      "title": "소예르 기차 공식·트램 여행(스페인어)",
-      "url": "https://trendesoller.com/tranvia"
     },
     "MS08": {
       "title": "위키백과(영어) — Titanic",
