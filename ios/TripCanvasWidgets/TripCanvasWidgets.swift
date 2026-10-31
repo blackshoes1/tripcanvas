@@ -278,7 +278,8 @@ struct LockScreenActivityView: View {
                 ActivityFreeTimeDetail(state: context.state, isStale: context.isStale)
             }
 
-            if let fixed = context.state.fixedTitle, let at = context.state.fixedStartAt {
+            if context.state.nowFocus?.kind != .currentStay, context.state.nowFocus?.kind != .freeTime,
+               let fixed = context.state.fixedTitle, let at = context.state.fixedStartAt {
                 Divider().opacity(0.4)
                 HStack(spacing: 6) {
                     Image(systemName: "lock.fill").font(.system(size: 9)).foregroundStyle(.secondary)
@@ -301,7 +302,11 @@ private struct ActivityFreeTimeDetail: View {
                 if let leaveAt = focus.leaveAt {
                     DepartureCountdown(leaveAt: leaveAt).font(.subheadline.weight(.medium))
                 }
-                Text("다음 · \(next.title)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing: 4) {
+                    Text("다음 ·")
+                    if let start = ISO8601DateFormatter.tripCanvasDate(next.startAtISO) { Text(start, style: .time) }
+                    Text(next.title)
+                }.font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
         }
     }

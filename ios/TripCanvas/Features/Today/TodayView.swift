@@ -362,6 +362,9 @@ struct TodayView: View {
                     // 단순 today 조회에는 GPS가 없다. 화면을 고른 때와 같은 신선한 관측으로 서버가 다시 판정한다.
                     var point: GeoPoint?
                     let active = env.travelMode.isActive && env.travelMode.snapshot.tripId == trip.id
+                    if !active {
+                        return try await env.service.today(tripId: trip.id, dayIndex: nil, intent: nil, energy: nil)
+                    }
                     if active, env.location.permission == .granted,
                        await env.location.requestOnce() != nil { point = env.location.freshArrivalPoint() }
                     let fetched = try await env.service.travelState(tripId: trip.id, location: point,
