@@ -110,7 +110,7 @@ final class TodayPlaceChangeUITests: XCTestCase {
 
     private func checkBlocked(_ flags: [String]) {
         let app = launch(flags)
-        XCTAssertTrue(app.staticTexts["현재 미술관"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["장소 정보: 현재 미술관"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["현재 미술관 작업"].exists)
         XCTAssertTrue(app.staticTexts["placeReviewServerState"].label.contains("저장 0회 · 검토 0회 · 시도 0회"))
     }

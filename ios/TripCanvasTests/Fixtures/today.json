@@ -1,4 +1,21 @@
 {
+  "nowFocus": {
+    "kind": "FREE_TIME",
+    "currentStay": null,
+    "next": {
+      "target": {
+        "dayIndex": 0,
+        "activityId": "d0s1",
+        "revision": 2
+      },
+      "title": "저녁 예약",
+      "startAtISO": "2026-09-01T10:00:00Z",
+      "leaveAtISO": "2026-09-01T09:48:00Z",
+      "travelMinutes": 2,
+      "departureText": "18:48쯤 움직이면 여유가 있어요 (약 2분 거리, 지금부터 5시간 48분 남음)"
+    },
+    "switchAtISO": "2026-09-01T09:36:00Z"
+  },
   "schemaVersion": 1,
   "generatedAt": "2026-09-01T04:00:00Z",
   "travelTimeSource": "STRAIGHT_LINE_ESTIMATE",

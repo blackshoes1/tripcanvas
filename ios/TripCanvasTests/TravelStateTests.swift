@@ -107,6 +107,10 @@ final class TravelStateTests: XCTestCase {
         XCTAssertEqual(current.fixedTitle, "미술관 예약")
         XCTAssertEqual(current.travelMinutes, 12)
         XCTAssertNil(current.departureText)
+        XCTAssertEqual(current.nowFocus?.kind, .currentStay)
+        XCTAssertEqual(current.nowFocus?.currentStay?.status, .inProgress)
+        XCTAssertNotNil(current.nowFocus?.leaveAt)
+        XCTAssertNotNil(current.nowFocus?.switchAt)
         XCTAssertEqual(current.scheduleElapsed, false)
         let elapsed = try decode(XCTUnwrap(payloads.last))
         XCTAssertEqual(elapsed.dayLabel, "Day 2")
@@ -119,6 +123,7 @@ final class TravelStateTests: XCTestCase {
         XCTAssertNil(elapsed.fixedTitle)
         XCTAssertNil(elapsed.travelMinutes)
         XCTAssertNil(elapsed.departureText)
+        XCTAssertNil(elapsed.nowFocus)
     }
 
     func testActivityContentStateMapping() throws {
@@ -136,6 +141,7 @@ final class TravelStateTests: XCTestCase {
         let state = try fixture()
         var raw = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(state.liveActivity)) as? [String: Any])
         raw["scheduleElapsed"] = true
+        raw.removeValue(forKey: "nowFocus")
         raw["status"] = "COMPLETED"
         raw["nextTitle"] = "예정 시간 지남"
         let live = try JSONDecoder().decode(LiveActivityState.self, from: JSONSerialization.data(withJSONObject: raw))
@@ -149,6 +155,7 @@ final class TravelStateTests: XCTestCase {
         let state = try fixture()
         XCTAssertNil(state.liveActivity.scheduleElapsed, "이전 API 응답도 그대로 읽는다")
         var content = TripCanvasActivityAttributes.ContentState(from: state.liveActivity)
+        content.nowFocus = nil
         content.status = .completed
         let old = try JSONDecoder().decode(TripCanvasActivityAttributes.ContentState.self, from: JSONEncoder().encode(content))
         XCTAssertNil(old.scheduleElapsed, "이전 잠금화면 상태도 그대로 읽는다")
@@ -169,6 +176,7 @@ final class TravelStateTests: XCTestCase {
     func testHeadlinePrefersDepartureSentence() throws {
         let state = try fixture()
         var content = TripCanvasActivityAttributes.ContentState(from: state.liveActivity)
+        content.nowFocus = nil
         content.departureText = "이제 출발하면 여유 있게 도착할 수 있어요"
         XCTAssertEqual(ActivityPresentation.headline(content), content.departureText)
         content.departureText = nil

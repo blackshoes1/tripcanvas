@@ -320,6 +320,19 @@ const travel = buildTravelState({
 });
 
 describe('Travel State도 Swift가 전부 담는다', () => {
+  it('실제 머무름·다음 출발 압축 계약도 모든 중첩 Swift 구조체와 대조한다', () => {
+    const response = buildTravelState({
+      tripId: 'parity', trip, revision: 2, updatedAt: '2026-08-31T00:00:00Z',
+      todayISO: '2026-09-01', nowMinutes: 13 * 60, generatedAt: '2026-09-01T04:00:00Z',
+      arrivedActivityId: 'd0s0', travelMode: true
+    });
+    expect(response.today.nowFocus?.kind).toBe('CURRENT_STAY');
+    expect(response.today.nowFocus?.currentStay).toBeTruthy();
+    expect(response.today.nowFocus?.next).toBeTruthy();
+    expectCovered('TravelStateResponse', response);
+    writeFixture(path.join(__dirname, '../../../../../ios/TripCanvasTests/Fixtures/travel-current-stay.json'), JSON.stringify(response, null, 2) + '\n');
+  });
+
   it('TravelStateResponse와 그 안의 구조체', () => {
     expectCovered('TravelStateResponse', travel);
     expectCovered('TripPulse', travel.pulse);

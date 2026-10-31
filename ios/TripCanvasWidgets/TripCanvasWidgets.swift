@@ -182,7 +182,7 @@ struct TripCanvasLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TripCanvasActivityAttributes.self) { context in
             LockScreenActivityView(context: context)
-                .widgetURL(LiveActivityLink.url(tripId: context.attributes.tripId, target: context.state.target))
+                .widgetURL(LiveActivityLink.url(tripId: context.attributes.tripId, target: ActivityPresentation.target(context.state)))
                 .activityBackgroundTint(Color.black.opacity(0.35))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
@@ -193,19 +193,23 @@ struct TripCanvasLiveActivity: Widget {
                         .foregroundStyle(.secondary)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    if let travel = context.state.travelMinutes, travel > 0 {
+                    if let travel = ActivityPresentation.travelMinutes(context.state), travel > 0 {
                         Text("\(travel)분").font(.caption.monospacedDigit())
                     }
                 }
                 DynamicIslandExpandedRegion(.center) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(ActivityPresentation.heading(context.state)).font(.caption2).foregroundStyle(.secondary)
-                        Text(context.state.nextTitle).font(.headline).lineLimit(1)
+                        Text(ActivityPresentation.title(context.state)).font(.headline).lineLimit(1)
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     // 확장 상태에서도 한 줄 이상 욕심내지 않는다(§20).
-                    if let fixed = context.state.fixedTitle, let at = context.state.fixedStartAt {
+                    if context.state.nowFocus?.kind == .currentStay || context.state.nowFocus?.kind == .freeTime {
+                        if context.isStale {
+                            Text("최근 안내예요 · 앱에서 새로 확인해 주세요").font(.caption).foregroundStyle(.secondary)
+                        } else { ActivityFreeTimeDetail(state: context.state, isStale: false) }
+                    } else if let fixed = context.state.fixedTitle, let at = context.state.fixedStartAt {
                         Text("\(at, style: .time) \(fixed)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -219,13 +223,18 @@ struct TripCanvasLiveActivity: Widget {
             } compactLeading: {
                 Image(systemName: ActivityPresentation.symbol(for: context.state))
             } compactTrailing: {
-                Text(ActivityPresentation.compactTravel(context.state.travelMinutes))
-                    .font(.caption2.monospacedDigit())
+                if !context.isStale, let focus = context.state.nowFocus,
+                   focus.kind == .currentStay || focus.kind == .freeTime, let leaveAt = focus.leaveAt {
+                    DepartureCountdown(leaveAt: leaveAt, compact: true).font(.caption2)
+                } else {
+                    Text(ActivityPresentation.compactTravel(ActivityPresentation.travelMinutes(context.state)))
+                        .font(.caption2.monospacedDigit())
+                }
             } minimal: {
                 Image(systemName: ActivityPresentation.symbol(for: context.state))
             }
             .keylineTint(.orange)
-            .widgetURL(LiveActivityLink.url(tripId: context.attributes.tripId, target: context.state.target))
+            .widgetURL(LiveActivityLink.url(tripId: context.attributes.tripId, target: ActivityPresentation.target(context.state)))
         }
     }
 }
@@ -249,10 +258,10 @@ struct LockScreenActivityView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(ActivityPresentation.heading(context.state)).font(.caption2).foregroundStyle(.secondary)
-                    Text(context.state.nextTitle).font(.title3.weight(.semibold)).lineLimit(1)
+                    Text(ActivityPresentation.title(context.state)).font(.title3.weight(.semibold)).lineLimit(1)
                 }
                 Spacer()
-                if let travel = context.state.travelMinutes, travel > 0 {
+                if let travel = ActivityPresentation.travelMinutes(context.state), travel > 0 {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("이동").font(.caption2).foregroundStyle(.secondary)
                         Text("\(travel)분").font(.title3.monospacedDigit().weight(.semibold))
@@ -265,7 +274,12 @@ struct LockScreenActivityView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
-            if let fixed = context.state.fixedTitle, let at = context.state.fixedStartAt {
+            if context.state.nowFocus?.kind == .currentStay || context.state.nowFocus?.kind == .freeTime {
+                ActivityFreeTimeDetail(state: context.state, isStale: context.isStale)
+            }
+
+            if context.state.nowFocus?.kind != .currentStay, context.state.nowFocus?.kind != .freeTime,
+               let fixed = context.state.fixedTitle, let at = context.state.fixedStartAt {
                 Divider().opacity(0.4)
                 HStack(spacing: 6) {
                     Image(systemName: "lock.fill").font(.system(size: 9)).foregroundStyle(.secondary)
@@ -276,5 +290,24 @@ struct LockScreenActivityView: View {
             }
         }
         .padding(14)
+    }
+}
+
+private struct ActivityFreeTimeDetail: View {
+    let state: TripCanvasActivityAttributes.ContentState
+    let isStale: Bool
+    var body: some View {
+        if !isStale, let focus = state.nowFocus, let next = focus.next {
+            VStack(alignment: .leading, spacing: 3) {
+                if let leaveAt = focus.leaveAt {
+                    DepartureCountdown(leaveAt: leaveAt).font(.subheadline.weight(.medium))
+                }
+                HStack(spacing: 4) {
+                    Text("다음 ·")
+                    if let start = ISO8601DateFormatter.tripCanvasDate(next.startAtISO) { Text(start, style: .time) }
+                    Text(next.title)
+                }.font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
     }
 }

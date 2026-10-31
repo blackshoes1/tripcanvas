@@ -408,7 +408,7 @@ declare module '@legacy/adaptive.js' {
     day: Record<string, unknown>; items: TripItem[];
     completedItems: string[]; remainingItems: string[]; skippedItems: string[];
     fixedCommitments: FixedCommitment[]; nextFixed: FixedCommitment | null;
-    currentItem: TripItem | null; nextItem: TripItem | null;
+    currentItem: TripItem | null; nextItem: TripItem | null; currentStay: TripItem | null;
     arrivedActivityId: string | null;
     currentLocation: LatLng | null; startLocation: LatLng | null; hotelLocation: LatLng | null;
     /** 다음 남은 일정 — 쉴 여유(availableMin)는 다음 고정 일정이 아니라 여기까지다 */
@@ -464,9 +464,15 @@ declare module '@legacy/adaptive.js' {
       level: 'EARLY' | 'NOW' | 'LATE'; stage: 'UPCOMING' | 'READY_TO_LEAVE' | 'LATE_RISK';
       lateByMin: number; text: string; targetMin: number;
     } | null;
+    buildNowFocus(state: TripState, opts?: { legMin?: (a: unknown, b: unknown, item: TripItem) => number; cfg?: Record<string, number> }): {
+      kind: 'CURRENT_STAY' | 'FREE_TIME' | 'DEPARTURE' | 'SCHEDULE';
+      currentStay: TripItem | null; next: TripItem | null;
+      departure: NonNullable<ReturnType<typeof api.departurePlan>> | null;
+      switchMin: number | null;
+    } | null;
     tripPulse(state: TripState, replan: ReplanResult | null, departure?: unknown, opts?: Record<string, unknown>):
       { code: string; text: string; detail: string };
-    stateVersion(state: TripState, extra?: { stage?: string; pulse?: string; travelMinutes?: number | null; timeZone?: string }): string;
+    stateVersion(state: TripState, extra?: { stage?: string; pulse?: string; travelMinutes?: number | null; timeZone?: string; nowFocus?: string }): string;
     notificationPlan(state: TripState, input?: {
       departure?: unknown; pulse?: unknown; replan?: unknown; suggestions?: unknown[];
       suppressUntilMin?: number; travelMode?: boolean; quiet?: boolean;

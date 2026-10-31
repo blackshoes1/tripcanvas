@@ -7,21 +7,25 @@ import type { LegCache } from '@/features/itinerary/domain/types';
 import { resolveClock } from '@/features/trip-state/services/handlerKit';
 import { LIVE_ACTIVITY_LEASE_MS, type LiveActivityRepository, type LiveActivitySender } from './types';
 
-/** 활동 시작·종료와 현지 자정만 일정 선택의 경계다. 일자 계산에 24시간을 더하지 않는다(DST). */
+/** 일정과 현재 장소 안내의 다음 경계. 일자 계산에 24시간을 더하지 않는다(DST). */
 export function nextLiveActivityBoundary(state: TravelStateResponse, now: Date): Date | null {
   const day = state.today.day;
   const times: number[] = [];
-  const add = (minutes: number) => {
-    const iso = lib.zonedMinutesToISOString(day.date, Math.round(minutes), day.timeZone || 'UTC');
+  const addISO = (iso: string | null | undefined) => {
     const time = iso ? Date.parse(iso) : NaN;
     if (Number.isFinite(time) && time > now.getTime()) times.push(time);
   };
+  const add = (minutes: number) => addISO(lib.zonedMinutesToISOString(day.date, Math.round(minutes), day.timeZone || 'UTC'));
   for (const activity of state.today.activities) {
     if (activity.status === 'COMPLETED' || activity.status === 'SKIPPED') continue;
     add(activity.startMinutes);
     add(activity.endMinutes);
   }
   if (state.departure) add(state.departure.leaveMinutes);
+  const focus = state.liveActivity.nowFocus;
+  addISO(focus?.switchAtISO);
+  addISO(focus?.next?.leaveAtISO);
+  addISO(focus?.currentStay?.expiresAtISO);
   add(1440);
   return times.length ? new Date(Math.min(...times)) : null;
 }
@@ -85,7 +89,7 @@ export async function runLiveActivityBatch(deps: {
       }
       const content = shouldEnd ? { ...state.liveActivity, status: 'COMPLETED' as const,
         nextTitle: '일정 안내 종료', nextStartISO: null, travelMinutes: null, departureText: null,
-        fixedTitle: null, fixedStartISO: null, scheduleElapsed: false } : state.liveActivity;
+        fixedTitle: null, fixedStartISO: null, scheduleElapsed: false, nowFocus: undefined } : state.liveActivity;
       const result = await deps.send(delivery, { state: content, event: shouldEnd ? 'end' : 'update', at: now,
         staleAt: boundary, expiresAt: claim.expiresAt });
       if (result.ok) {
