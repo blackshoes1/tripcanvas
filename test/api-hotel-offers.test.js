@@ -6,7 +6,7 @@ function response() {
   return { headers: {}, statusCode: 0, body: '', setHeader(k, v) { this.headers[k] = v; }, end(value) { this.body = value; } };
 }
 
-const BODY = { name: 'Cap Rocat', lat: 39.4699, lng: 2.7166, checkIn: '2026-10-30', checkOut: '2026-11-01', adults: 2, rooms: 1, currency: 'KRW' };
+const BODY = { name: 'Cap Rocat', lat: 39.4699, lng: 2.7166, checkIn: '2099-10-30', checkOut: '2099-11-01', adults: 2, rooms: 1, currency: 'KRW' };
 
 async function invoke(handler, overrides = {}) {
   const req = { method: 'POST', headers: {}, url: '/api/hotel-offers', body: { ...BODY }, socket: { remoteAddress: `t-${Math.random()}` }, ...overrides };
@@ -41,7 +41,7 @@ test('hotel-offers: 검증 — 메서드·요청 필드·키 없음(AUTH_REQUIRE
   const withKey = createHandler({ env: { HOTEL_METASEARCH_API_KEY: 'k' }, fetchImpl: fetchOK });
   assert.equal((await invoke(withKey, { method: 'PUT' })).status, 405);
   assert.equal((await invoke(withKey, { body: { ...BODY, checkIn: '10/30' } })).status, 400);
-  assert.equal((await invoke(withKey, { body: { ...BODY, checkIn: '2026-11-02' } })).status, 400);   // checkIn >= checkOut
+  assert.equal((await invoke(withKey, { body: { ...BODY, checkIn: '2099-11-02' } })).status, 400);   // checkIn >= checkOut
   assert.equal((await invoke(withKey, { body: { ...BODY, name: undefined } })).status, 400);
   // 키 없음 → 앱을 깨지 않고 미연결 상태 그대로 반환
   const noKey = await invoke(createHandler({ env: {}, fetchImpl: fetchOK }));
@@ -173,7 +173,7 @@ test('hotel-offers: Verification Provider가 연결되면 오퍼에 verified 표
       verify: async () => { throw new Error('down'); } }
   ];
   const result = await runSearch({ env: { HOTEL_METASEARCH_API_KEY: 'k' }, fetchImpl: fetchOK, verifiers }, {
-    name: 'Cap Rocat', lat: 39.4699, lng: 2.7166, checkIn: '2026-10-30', checkOut: '2026-11-01', adults: 2, rooms: 1, currency: 'KRW', gl: 'kr', hl: 'ko'
+    name: 'Cap Rocat', lat: 39.4699, lng: 2.7166, checkIn: '2099-10-30', checkOut: '2099-11-01', adults: 2, rooms: 1, currency: 'KRW', gl: 'kr', hl: 'ko'
   });
   const exp = result.offers.find(o => o.seller === 'Expedia');
   assert.equal(exp.verified, true);
