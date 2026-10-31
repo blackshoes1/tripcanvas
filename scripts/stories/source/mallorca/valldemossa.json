@@ -1,0 +1,217 @@
+{
+  "id": "mallorca-valldemossa",
+  "kind": "PLACE",
+  "name": "발데모사",
+  "localName": "Valldemossa",
+  "city": "마요르카",
+  "lat": 39.7103,
+  "lng": 2.6223,
+  "radiusM": 700,
+  "aliases": [
+    "발데모사 수도원",
+    "발데모사 카르투하",
+    "Cartoixa de Valldemossa",
+    "Real Cartuja de Valldemossa",
+    "Valldemossa Charterhouse"
+  ],
+  "placeIds": [],
+  "voice": {
+    "engine": "Gemini 3.8 Flash TTS",
+    "name": "Sulafat"
+  },
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "왕궁에서 수도원으로, 쇼팽의 겨울",
+      "textFile": "mallorca/narration/valldemossa.txt",
+      "audio": "mallorca/valldemossa-core.mp3",
+      "sources": [
+        "MV01",
+        "MV02",
+        "MV03",
+        "MV04",
+        "MV05",
+        "MV06",
+        "MV07",
+        "MV08",
+        "MV09",
+        "MV10",
+        "MV11",
+        "MV12",
+        "MV13",
+        "MV14",
+        "MV15",
+        "MV16",
+        "MV17",
+        "MV18",
+        "MV19",
+        "MV20",
+        "MV21",
+        "MV22",
+        "MV23",
+        "MV24",
+        "MV25",
+        "MV26",
+        "MV27",
+        "MV28",
+        "MV29",
+        "MV30"
+      ]
+    }
+  ],
+  "sources": {
+    "MV01": {
+      "title": "위키백과(영어) — Valldemossa Charterhouse",
+      "url": "https://en.wikipedia.org/wiki/Valldemossa_Charterhouse"
+    },
+    "MV02": {
+      "title": "위키백과(카탈루냐어) — Cartoixa de Valldemossa",
+      "url": "https://ca.wikipedia.org/wiki/Cartoixa_de_Valldemossa"
+    },
+    "MV03": {
+      "title": "mallorca.com — frederic chopin 3",
+      "url": "https://www.mallorca.com/en/guide/sights/frederic-chopin-3"
+    },
+    "MV04": {
+      "title": "위키백과(영어) — Valldemossa",
+      "url": "https://en.wikipedia.org/wiki/Valldemossa"
+    },
+    "MV05": {
+      "title": "위키백과(영어) — Prelude, Op. 28, No. 15 (Chopin)",
+      "url": "https://en.wikipedia.org/wiki/Prelude,_Op._28,_No._15_(Chopin)"
+    },
+    "MV06": {
+      "title": "majorcadailybulletin.com — judge rules tourists have been looking wrong chopin cell",
+      "url": "https://www.majorcadailybulletin.com/news/local/2013/02/06/27343/judge-rules-tourists-have-been-looking-wrong-chopin-cell.html"
+    },
+    "MV07": {
+      "title": "classicfm.com — paris poland customs",
+      "url": "https://www.classicfm.com/composers/chopin/guides/chopin-facts/paris-poland-customs/"
+    },
+    "MV08": {
+      "title": "legaltoday.com — juicio por los pianos de chopin de mallorca 2021 08 11",
+      "url": "https://www.legaltoday.com/opinion/articulos-de-opinion/juicio-por-los-pianos-de-chopin-de-mallorca-2021-08-11/"
+    },
+    "MV09": {
+      "title": "위키백과(영어) — A Winter in Majorca",
+      "url": "https://en.wikipedia.org/wiki/A_Winter_in_Majorca"
+    },
+    "MV10": {
+      "title": "robertgraves.org — bibliography",
+      "url": "https://robertgraves.org/bibliography/1086"
+    },
+    "MV11": {
+      "title": "위키백과(영어) — Catherine of Palma",
+      "url": "https://en.wikipedia.org/wiki/Catherine_of_Palma"
+    },
+    "MV12": {
+      "title": "illesbalears.travel — discover the unique fiestas de la beata",
+      "url": "https://www.illesbalears.travel/en/mallorca/discover-the-unique-fiestas-de-la-beata"
+    },
+    "MV13": {
+      "title": "rumbo.es — que ver valldemossa",
+      "url": "https://www.rumbo.es/ideas-para-viajar/cultura/que-ver-valldemossa"
+    },
+    "MV14": {
+      "title": "directoalpaladar.com — coca patata valldemossa receta facil dulce para bollo muy tipico mallorca",
+      "url": "https://www.directoalpaladar.com/postres/coca-patata-valldemossa-receta-facil-dulce-para-bollo-muy-tipico-mallorca"
+    },
+    "MV15": {
+      "title": "mallorca.com — coca de patata the sweet yeasted pastry from valldemossa",
+      "url": "https://www.mallorca.com/en/magazin/mallorca-food-drink/coca-de-patata-the-sweet-yeasted-pastry-from-valldemossa"
+    },
+    "MV16": {
+      "title": "en.arabalears.cat — jovellanos from minister to prisoner in bellver 130 5711246",
+      "url": "https://en.arabalears.cat/culture/jovellanos-from-minister-to-prisoner-in-bellver_130_5711246.html"
+    },
+    "MV17": {
+      "title": "위키백과(영어) — Manuel Bayeu",
+      "url": "https://en.wikipedia.org/wiki/Manuel_Bayeu"
+    },
+    "MV18": {
+      "title": "ultimahora.es — parte del legado palmesano jovellanos exhibe casa natal gijon",
+      "url": "https://www.ultimahora.es/noticias/cultura/2013/07/22/104443/parte-del-legado-palmesano-jovellanos-exhibe-casa-natal-gijon.html"
+    },
+    "MV19": {
+      "title": "cartoixadevalldemossa.com — ruben dario en",
+      "url": "https://cartoixadevalldemossa.com/en/ruben-dario-en"
+    },
+    "MV20": {
+      "title": "cervantesvirtual.com — album personal",
+      "url": "https://www.cervantesvirtual.com/portales/ruben_dario/album_personal/3"
+    },
+    "MV21": {
+      "title": "world-in-words.com — tiles of the blessed",
+      "url": "https://world-in-words.com/news/tiles-of-the-blessed"
+    },
+    "MV22": {
+      "title": "album-online.com — baldosa evocando santa catalina thomas pregau per nosaltres valldemossa mallorca alb957979",
+      "url": "https://www.album-online.com/detail/fr/MWI4YzMyMA/baldosa-evocando-santa-catalina-thomas-pregau-per-nosaltres-valldemossa-mallorca-alb9579794"
+    },
+    "MV23": {
+      "title": "위키백과(카탈루냐어) — Valldemossa",
+      "url": "https://ca.wikipedia.org/wiki/Valldemossa"
+    },
+    "MV24": {
+      "title": "위키백과(스페인어) — Cartuja de Valldemosa",
+      "url": "https://es.wikipedia.org/wiki/Cartuja_de_Valldemosa"
+    },
+    "MV25": {
+      "title": "위키백과(스페인어) — Manuel Bayeu",
+      "url": "https://es.wikipedia.org/wiki/Manuel_Bayeu"
+    },
+    "MV26": {
+      "title": "guide.cartoixadevalldemossa.com",
+      "url": "https://guide.cartoixadevalldemossa.com/?p=1030"
+    },
+    "MV27": {
+      "title": "cartoixadevalldemossa.com — the church",
+      "url": "https://cartoixadevalldemossa.com/en/the-church"
+    },
+    "MV28": {
+      "title": "위키백과(영어) — Scherzo No. 3 (Chopin)",
+      "url": "https://en.wikipedia.org/wiki/Scherzo_No._3_(Chopin)"
+    },
+    "MV29": {
+      "title": "위키백과(영어) — Ballade No. 2 (Chopin)",
+      "url": "https://en.wikipedia.org/wiki/Ballade_No._2_(Chopin)"
+    },
+    "MV30": {
+      "title": "위키백과(영어) — Frédéric Chopin",
+      "url": "https://en.wikipedia.org/wiki/Fr%C3%A9d%C3%A9ric_Chopin"
+    }
+  },
+  "factCheckNote": "2026-10-30 독립 검증 — 주장 51개를 출처와 맞춰 보고 지적 3건을 모두 고쳤다. 여기에는 고친 곳만 적는다",
+  "factCheck": [
+    {
+      "claim": "트라문타나 산자락, 해발 400미터가 넘는 곳의 이 마을은 왕의 별궁에서 시작됐습니다.",
+      "sources": [
+        "MV23",
+        "MV24"
+      ],
+      "status": "WRONG",
+      "resolution": "OMITTED"
+    },
+    {
+      "claim": "천장 벽화를 그린 사람은 아라곤의 다른 카르투시오회 수도원에서 이곳으로 보내진 수도사 화가 마누엘 바예우인데, 그는 화가 고야의 처남이었습니다.",
+      "sources": [
+        "MV25",
+        "MV17",
+        "MV26",
+        "MV27"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "몸이 아픈 가운데서도 쇼팽은 이곳에서 24개의 전주곡을 마무리했고, 발라드 2번과 스케르초 3번 같은 곡도 이곳에서 작업했습니다.",
+      "sources": [
+        "MV28",
+        "MV29",
+        "MV30"
+      ],
+      "status": "CONFIRMED"
+    }
+  ],
+  "reviewedAt": "2026-10-31"
+}

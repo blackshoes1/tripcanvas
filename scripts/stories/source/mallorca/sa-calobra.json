@@ -1,0 +1,193 @@
+{
+  "id": "mallorca-sa-calobra",
+  "kind": "PLACE",
+  "name": "사 칼로브라",
+  "localName": "Sa Calobra",
+  "city": "마요르카",
+  "lat": 39.851,
+  "lng": 2.8,
+  "radiusM": 3000,
+  "aliases": [
+    "칼로브라",
+    "La Calobra",
+    "토렌트 데 파레이스",
+    "Torrent de Pareis",
+    "넥타이 매듭",
+    "Nus de sa Corbata",
+    "트라문타나 산맥",
+    "Serra de Tramuntana"
+  ],
+  "placeIds": [],
+  "voice": {
+    "engine": "Gemini 3.8 Flash TTS",
+    "name": "Sulafat"
+  },
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "사람이 만든 풍경과 넥타이 매듭 길",
+      "textFile": "mallorca/narration/sa-calobra.txt",
+      "audio": "mallorca/sa-calobra-core.mp3",
+      "sources": [
+        "MT01",
+        "MT02",
+        "MT03",
+        "MT04",
+        "MT05",
+        "MT06",
+        "MT07",
+        "MT08",
+        "MT09",
+        "MT10",
+        "MT11",
+        "MT12",
+        "MT13",
+        "MT14",
+        "MT15",
+        "MT16",
+        "MT17",
+        "MT18",
+        "MT19",
+        "MT20",
+        "MT21",
+        "MT22",
+        "MT23"
+      ]
+    }
+  ],
+  "sources": {
+    "MT01": {
+      "title": "위키백과(영어) — Serra de Tramuntana",
+      "url": "https://en.wikipedia.org/wiki/Serra_de_Tramuntana"
+    },
+    "MT02": {
+      "title": "whc.unesco.org — list",
+      "url": "https://whc.unesco.org/es/list/1371/"
+    },
+    "MT03": {
+      "title": "위키백과(영어) — Puig Major",
+      "url": "https://en.wikipedia.org/wiki/Puig_Major"
+    },
+    "MT04": {
+      "title": "mallorca.com — dry stone walls of mallorca how pedra en sec shapes the serra",
+      "url": "https://www.mallorca.com/en/magazin/mallorca-society-culture/dry-stone-walls-of-mallorca-how-pedra-en-sec-shapes-the-serra"
+    },
+    "MT05": {
+      "title": "nesnovnadediscina.si — art of dry stone walling knowledge and techniques",
+      "url": "https://nesnovnadediscina.si/en/unesco/art-of-dry-stone-walling-knowledge-and-techniques"
+    },
+    "MT06": {
+      "title": "ich.unesco.org — art of dry stone walling knowledge and techniques 01393",
+      "url": "https://ich.unesco.org/en/RL/art-of-dry-stone-walling-knowledge-and-techniques-01393"
+    },
+    "MT07": {
+      "title": "위키백과(스페인어) — Antonio Parietti",
+      "url": "https://es.wikipedia.org/wiki/Antonio_Parietti"
+    },
+    "MT08": {
+      "title": "위키백과(영어) — Sa Calobra",
+      "url": "https://en.wikipedia.org/wiki/Sa_Calobra"
+    },
+    "MT09": {
+      "title": "mallorca.com — nus de sa corbata",
+      "url": "https://www.mallorca.com/en/guide/sights/nus-de-sa-corbata"
+    },
+    "MT10": {
+      "title": "위키백과(스페인어) — Torrente de Pareis",
+      "url": "https://es.wikipedia.org/wiki/Torrente_de_Pareis"
+    },
+    "MT11": {
+      "title": "intranet.caib.es — LIG TORRENT DE PAREIS CAS",
+      "url": "https://intranet.caib.es/geoturfront/fichero/download/477/LIG%20TORRENT%20DE%20PAREIS%20CAS.pdf"
+    },
+    "MT12": {
+      "title": "majorcadailybulletin.com — the concert the torrent calobra",
+      "url": "https://majorcadailybulletin.com/enjoying-mallorca/whatson/music/the-concert-the-torrent-calobra.html"
+    },
+    "MT13": {
+      "title": "planomato.com — concierto torrent pareis edicion 62",
+      "url": "https://planomato.com/es/palma-de-mallorca/n/concierto-torrent-pareis-edicion-62"
+    },
+    "MT14": {
+      "title": "ultimahora.es — cases neu primeros frigorificos mallorca",
+      "url": "https://www.ultimahora.es/noticias/local/2023/01/27/1871203/cases-neu-primeros-frigorificos-mallorca.html"
+    },
+    "MT15": {
+      "title": "mallorca.com — antonio parietti coll",
+      "url": "https://www.mallorca.com/en/guide/sights/antonio-parietti-coll"
+    },
+    "MT16": {
+      "title": "khan.co.kr — article",
+      "url": "https://www.khan.co.kr/en/article/202610131633007"
+    },
+    "MT17": {
+      "title": "en.gancarczyk.com",
+      "url": "https://en.gancarczyk.com/?p=395"
+    },
+    "MT18": {
+      "title": "위키백과(영어) — Mallorcan midwife toad",
+      "url": "https://en.wikipedia.org/wiki/Mallorcan_midwife_toad"
+    },
+    "MT19": {
+      "title": "caib.es — monumento natural del torrent de pareis",
+      "url": "https://caib.es/sites/espaisnaturalsprotegits/es/monumento_natural_del_torrent_de_pareis/"
+    },
+    "MT20": {
+      "title": "위키백과(카탈루냐어) — Torrent de Pareis",
+      "url": "https://ca.wikipedia.org/wiki/Torrent_de_Pareis"
+    },
+    "MT21": {
+      "title": "intranet.caib.es — LIG TORRENT DE PAREIS EN",
+      "url": "https://intranet.caib.es/geoturfront/fichero/download/478/LIG%20TORRENT%20DE%20PAREIS%20EN.pdf"
+    },
+    "MT22": {
+      "title": "mallorca.com — nus de sa corbata",
+      "url": "https://www.mallorca.com/it/guida/attrazioni/nus-de-sa-corbata"
+    },
+    "MT23": {
+      "title": "mallorca.com — nus de sa corbata",
+      "url": "https://www.mallorca.com/fr/guide/sites-touristiques/nus-de-sa-corbata"
+    }
+  },
+  "factCheckNote": "2026-10-30 독립 검증 — 주장 36개를 출처와 맞춰 보고 지적 3건을 모두 고쳤다. 여기에는 고친 곳만 적는다",
+  "factCheck": [
+    {
+      "claim": "마요르카 트라문타나 산맥의 골짜기에만 사는 작은 두꺼비가 이 협곡에도 살고, 해마다 7월 첫 일요일에는 협곡 안에서 합창 공연이 열립니다.",
+      "sources": [
+        "MT18",
+        "MT19",
+        "MT20"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "협곡 안쪽에는 '어둠'이라는 뜻의 '사 포스카' 구간이 있는데, 벽이 너무 가까워 한낮에도 해가 바로 들지 않습니다.",
+      "sources": [
+        "MT21",
+        "MT19",
+        "MT20"
+      ],
+      "status": "WRONG",
+      "resolution": "OMITTED"
+    },
+    {
+      "claim": "터널을 뚫는 대신 길을 이렇게 감아 돌려 높이를 낮춘 것입니다.",
+      "sources": [
+        "MT22",
+        "MT23"
+      ],
+      "status": "UNCONFIRMED",
+      "resolution": "OMITTED"
+    },
+    {
+      "claim": "좁은 비탈에서 더 급한 굽잇길을 만드는 대신, 길을 이렇게 감아 돌려 길이를 늘리고 경사를 누그러뜨린 것입니다.",
+      "sources": [
+        "MT22",
+        "MT23"
+      ],
+      "status": "CONFIRMED"
+    }
+  ],
+  "reviewedAt": "2026-10-31"
+}

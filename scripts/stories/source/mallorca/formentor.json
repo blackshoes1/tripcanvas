@@ -1,0 +1,189 @@
+{
+  "id": "mallorca-formentor",
+  "kind": "PLACE",
+  "name": "포르멘토르 곶",
+  "localName": "Cap de Formentor",
+  "city": "마요르카",
+  "lat": 39.943,
+  "lng": 3.162,
+  "radiusM": 5500,
+  "aliases": [
+    "포르멘토르",
+    "Formentor",
+    "포르멘토르 등대",
+    "Far de Formentor",
+    "미라도르 데스 콜로메르",
+    "에스 콜로메르 전망대",
+    "Mirador des Colomer",
+    "Mirador Es Colomer"
+  ],
+  "placeIds": [],
+  "voice": {
+    "engine": "Gemini 3.8 Flash TTS",
+    "name": "Sulafat"
+  },
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "바람이 만나는 곳",
+      "textFile": "mallorca/narration/formentor.txt",
+      "audio": "mallorca/formentor-core.mp3",
+      "sources": [
+        "MF01",
+        "MF02",
+        "MF03",
+        "MF04",
+        "MF05",
+        "MF06",
+        "MF07",
+        "MF08",
+        "MF09",
+        "MF10",
+        "MF11",
+        "MF12",
+        "MF13",
+        "MF14",
+        "MF15",
+        "MF16",
+        "MF17",
+        "MF18",
+        "MF19",
+        "MF20",
+        "MF21",
+        "MF22",
+        "MF23",
+        "MF24",
+        "MF25",
+        "MF26"
+      ]
+    }
+  ],
+  "sources": {
+    "MF01": {
+      "title": "위키백과(영어) — Cap de Formentor",
+      "url": "https://en.wikipedia.org/wiki/Cap_de_Formentor"
+    },
+    "MF02": {
+      "title": "barcelo.com — cap de formentor",
+      "url": "https://www.barcelo.com/guia-turismo/es/espana/mallorca/que-ver/cap-de-formentor/"
+    },
+    "MF03": {
+      "title": "위키백과(영어) — Formentor Lighthouse",
+      "url": "https://en.wikipedia.org/wiki/Formentor_Lighthouse"
+    },
+    "MF04": {
+      "title": "위키백과(스페인어) — Faro de Formentor",
+      "url": "https://es.wikipedia.org/wiki/Faro_de_Formentor"
+    },
+    "MF05": {
+      "title": "mallorca.com — far de formentor",
+      "url": "https://www.mallorca.com/en/guide/sights/far-de-formentor"
+    },
+    "MF06": {
+      "title": "yosoymallorca.com — formentor lighthouse",
+      "url": "https://yosoymallorca.com/en/mallorca-lighthouses/formentor-lighthouse/"
+    },
+    "MF07": {
+      "title": "press.fourseasons.com — hotel history",
+      "url": "https://press.fourseasons.com/mallorca/trending-now/hotel-history"
+    },
+    "MF08": {
+      "title": "mallorca.com — antonio parietti coll",
+      "url": "https://www.mallorca.com/en/guide/sights/antonio-parietti-coll"
+    },
+    "MF09": {
+      "title": "wikiwand.com — Talaia d'Albercuix",
+      "url": "https://wikiwand.com/ca/articles/Talaia_d'Albercuix"
+    },
+    "MF10": {
+      "title": "boe.es — BOE A 2021 17657",
+      "url": "https://boe.es/boe/dias/2021/10/29/pdfs/BOE-A-2021-17657.pdf"
+    },
+    "MF11": {
+      "title": "majorcadailybulletin.com — formentor hotel construction mallorca",
+      "url": "https://www.majorcadailybulletin.com/news/local/2021/02/22/79693/formentor-hotel-construction-mallorca.html"
+    },
+    "MF12": {
+      "title": "orf.at — stories",
+      "url": "https://orf.at/stories/3194054/"
+    },
+    "MF13": {
+      "title": "majorcadailybulletin.com — formentor wisdom and tourism mallorca",
+      "url": "https://www.majorcadailybulletin.com/holiday/life-style/2020/04/21/65893/formentor-wisdom-and-tourism-mallorca.html"
+    },
+    "MF14": {
+      "title": "ultimahora.es — muerte montserrat sabater memoria premios formentor",
+      "url": "https://www.ultimahora.es/noticias/cultura/2020/04/19/1158441/muerte-montserrat-sabater-memoria-premios-formentor.html"
+    },
+    "MF15": {
+      "title": "위키백과(영어) — Prix Formentor",
+      "url": "https://en.wikipedia.org/wiki/Prix_Formentor"
+    },
+    "MF16": {
+      "title": "realassets.ipe.com — 10095472.article",
+      "url": "https://realassets.ipe.com/propertyeu/emin-capital-buys-historic-mallorca-hotel-for-165m/10095472.article"
+    },
+    "MF17": {
+      "title": "hospitality-on.com — le four seasons hotel formentor ouvrira en 2023",
+      "url": "https://hospitality-on.com/fr/ouverture/le-four-seasons-hotel-formentor-ouvrira-en-2023"
+    },
+    "MF18": {
+      "title": "위키백과(영어) — The Pine of Formentor",
+      "url": "https://en.wikipedia.org/wiki/The_Pine_of_Formentor"
+    },
+    "MF19": {
+      "title": "lanacion.com.ar — cronica de un refugio literario nid214472",
+      "url": "https://www.lanacion.com.ar/cultura/cronica-de-un-refugio-literario-nid214472/"
+    },
+    "MF20": {
+      "title": "majorcadailybulletin.com — agatha christie new face pollensa the uk",
+      "url": "https://majorcadailybulletin.com/news/local/2008/12/11/19837/agatha-christie-new-face-pollensa-the-uk.html"
+    },
+    "MF21": {
+      "title": "mallorcamagazin.com — ungeloste ratsel agatha christie auf mallorca",
+      "url": "https://www.mallorcamagazin.com/nachrichten/kultur/2020/08/08/82121/ungeloste-ratsel-agatha-christie-auf-mallorca.html"
+    },
+    "MF22": {
+      "title": "hotel-details.com — formentor",
+      "url": "https://hotel-details.com/hotels/formentor"
+    },
+    "MF23": {
+      "title": "mallorca.com — mirador des colomer",
+      "url": "https://www.mallorca.com/en/guide/sights/mirador-des-colomer"
+    },
+    "MF24": {
+      "title": "click-mallorca.com — mirador es colomer",
+      "url": "https://www.click-mallorca.com/blog/rincones/mirador-es-colomer"
+    },
+    "MF25": {
+      "title": "zafirohotels.com — the es colomer viewpoint the formentor lookout",
+      "url": "https://www.zafirohotels.com/en/magazine/the-es-colomer-viewpoint-the-formentor-lookout/"
+    },
+    "MF26": {
+      "title": "vilaweb.cat — pi de formentor ilustrat",
+      "url": "https://www.vilaweb.cat/noticies/pi-de-formentor-ilustrat/"
+    }
+  },
+  "factCheckNote": "2026-10-30 독립 검증 — 주장 30개를 출처와 맞춰 보고 지적 2건을 모두 고쳤다. 여기에는 고친 곳만 적는다",
+  "factCheck": [
+    {
+      "claim": "전망대에 서면, 발아래로 200미터가 넘는 절벽이 바다로 떨어집니다.",
+      "sources": [
+        "MF23",
+        "MF24",
+        "MF25"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "이곳을 이야기할 때 마요르카 사람들이 빼놓지 않는 것이 한 편의 시입니다.",
+      "sources": [
+        "MF26",
+        "MF18"
+      ],
+      "status": "CONFIRMED"
+    }
+  ],
+  "reviewedAt": "2026-10-31"
+}

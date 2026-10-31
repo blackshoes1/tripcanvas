@@ -146,3 +146,18 @@ test('검수 표시는 확인하지 못한 사실마다 처리(뺐음·단정 �
 test('저장소의 원고는 검사를 통과한다', () => {
   assert.deepEqual(B.check(B.loadPlaces()), []);
 });
+
+test('이미 만든 음성(audio)은 그 경로를 쓰고, 저장소의 그 지역 폴더에 있어야 한다 — 합성하지 않으니 없으면 만들 길이 없다', () => {
+  assert.equal(B.trackSrc({ region: 'seville', id: 'seville-alcazar' }, { id: 'more' }), 'seville/alcazar-more.mp3');
+  assert.equal(B.trackSrc({ region: 'mallorca', id: 'mallorca-soller-train-palma' }, { id: 'core', audio: 'mallorca/soller-train-core.mp3' }), 'mallorca/soller-train-core.mp3');
+  const text = '이 문장은 충분히 긴 원고입니다. '.repeat(8);
+  const place = (audio) => ({ file: 'x.json', region: 'mallorca', id: 'mallorca-x', kind: 'PLACE', lat: 1, lng: 1, radiusM: 100,
+    sources: { P01: { title: 't', url: 'https://a.example/' } }, tracks: [{ id: 'core', role: 'CORE', title: 't', text, sources: ['P01'], audio }] });
+  assert.deepEqual(B.check([place('mallorca/bellver-core.mp3')]), []);
+  assert.ok(B.check([place('mallorca/none-core.mp3')]).some((e) => /이미 만든 음성/.test(e)));
+  assert.ok(B.check([place('seville/alcazar-core.mp3')]).some((e) => /mallorca\/ 밖/.test(e)));
+  // 마요르카는 지역 폴더를 읽고, 원자료 폴더(source/cathedral)는 원고로 읽지 않는다
+  const ids = B.loadPlaces().map((p) => p.id);
+  assert.ok(ids.includes('mallorca-palma-cathedral') && ids.includes('seville-cathedral'));
+  assert.ok(!B.loadPlaces().some((p) => p.region === 'cathedral'));
+});

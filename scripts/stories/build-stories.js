@@ -6,6 +6,7 @@
 //   node scripts/stories/build-stories.js              검수한 원고(reviewedAt)만 stories/에 만들고 카탈로그를 쓴다
 //
 // ⚠️ TTS 키(GOOGLE_TTS_API_KEY)는 저장소·CI에 넣지 않는다. 키가 있는 기기에서 사람이 돌린다. 합성에는 ffmpeg가 필요하다(MP3로 굳힌다).
+// 이미 만든 음성(트랙의 audio — 마요르카는 Gemini TTS로 따로 만들었다)은 합성하지 않고 그 파일을 싣는다. 합성할 것이 없으면 키도 묻지 않는다.
 // 같은 원고·같은 목소리면 다시 합성하지 않는다(build-state.json의 지문) — 무료 한도(월 100만 자)를 아낀다.
 'use strict';
 const fs = require('node:fs');
@@ -246,20 +247,30 @@ function sentenceProblem(markup, pcm, rate) {
   return null;
 }
 
-/** 원고 묶음 — source/seville/*.json. 대성당은 관람 지점 원고(narration/NN_narration.txt)를 읽어 들인다 */
+// 원고 묶음의 지역 — 폴더 이름이 음성 경로(stories/<지역>/)가 된다. source/cathedral/은 원자료라 읽지 않는다
+const REGIONS = ['seville', 'mallorca'];
+
+/** 원고 묶음 — source/<지역>/*.json. 대성당은 관람 지점 원고(narration/NN_narration.txt)를 읽어 들인다 */
 function loadPlaces() {
-  const dir = path.join(SOURCE, 'seville');
   const places = [];
-  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.json')).sort()) {
-    const p = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
-    for (const t of p.tracks) {
-      if (t.textFile) t.text = fs.readFileSync(path.join(SOURCE, t.textFile), 'utf8');
-      // '다음 이동:'은 편집용 라벨이라 읽지 않는다(pronunciation-notes.txt) — 마지막 트랙의 '마지막 트랙입니다' 앞에 '다음 장소로 갑니다'가 붙었다
-      t.text = String(t.text || '').replace(/^다음 이동:\s*/m, '').trim();
+  for (const region of REGIONS) {
+    const dir = path.join(SOURCE, region);
+    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.json')).sort()) {
+      const p = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+      for (const t of p.tracks) {
+        if (t.textFile) t.text = fs.readFileSync(path.join(SOURCE, t.textFile), 'utf8');
+        // '다음 이동:'은 편집용 라벨이라 읽지 않는다(pronunciation-notes.txt) — 마지막 트랙의 '마지막 트랙입니다' 앞에 '다음 장소로 갑니다'가 붙었다
+        t.text = String(t.text || '').replace(/^다음 이동:\s*/m, '').trim();
+      }
+      places.push({ file: f, region, ...p });
     }
-    places.push({ file: f, ...p });
   }
   return places;
+}
+
+/** 트랙의 음성 경로(stories/ 아래) — 이미 만든 음성(audio)은 그 경로, 아니면 '<지역>/<장소>-<트랙>.mp3' */
+function trackSrc(p, t) {
+  return t.audio || `${p.region}/${p.id.replace(new RegExp(`^${p.region}-`), '')}-${t.id}.mp3`;
 }
 
 /** 원고 검사 — 키 없이 돈다. 틀린 것을 모아 한 번에 말한다 */
@@ -286,6 +297,9 @@ function check(places) {
       for (const s of t.sources || []) if (!p.sources || !p.sources[s]) errors.push(`${tw}: 출처 ${s}가 sources에 없습니다`);
       if (!(t.sources || []).length) errors.push(`${tw}: 출처가 하나도 없습니다`);
       if (t.role === 'STOP' && !(t.stop && Number.isInteger(t.stop.n))) errors.push(`${tw}: 관람 지점 번호가 없습니다`);
+      // 이미 만든 음성 — 그 지역 폴더 안의 mp3이고 저장소에 있어야 한다(합성하지 않으니 없으면 만들 길이 없다)
+      if (t.audio && !(new RegExp(`^${p.region}/[a-z0-9-]+\\.mp3$`).test(t.audio) && fs.existsSync(path.join(ROOT, 'stories', t.audio))))
+        errors.push(`${tw}: 이미 만든 음성(audio) stories/${t.audio}가 없거나 ${p.region}/ 밖에 있습니다`);
       try { sentencePlan(spokenText(t.text)); } catch (e) { errors.push(`${tw}: ${e.message}`); }
     }
     for (const [k, v] of Object.entries(p.sources || {})) if (!/^https:\/\//.test(v.url || '')) errors.push(`${where}: 출처 ${k}의 주소가 https가 아닙니다`);
@@ -360,8 +374,8 @@ async function main() {
   if (args.has('--check')) return;
 
   const draft = args.has('--draft');
+  // 키는 합성할 트랙이 있을 때만 묻는다 — 바뀐 원고가 없으면(또는 이미 만든 음성만 실을 때) 키 없이 카탈로그를 다시 쓴다
   const key = process.env.GOOGLE_TTS_API_KEY;
-  if (!key) { console.error('GOOGLE_TTS_API_KEY가 없습니다. 키가 있는 기기에서 돌려 주세요.'); process.exit(2); }
   const outDir = path.join(ROOT, draft ? 'stories-draft' : 'stories');
   const state = fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) : {};
   const catalog = { version: 1, updated: new Date().toISOString().slice(0, 10),
@@ -373,11 +387,15 @@ async function main() {
     for (const t of p.tracks) {
       const reviewedAt = t.reviewedAt || p.reviewedAt || null;
       if (!draft && !reviewedAt) continue;
-      const src = `seville/${p.id.replace(/^seville-/, '')}-${t.id}.mp3`;
+      const src = trackSrc(p, t);
       const file = path.join(outDir, src);
       const spoken = spokenText(t.text);
       const fingerprint = sha256(JSON.stringify([spoken, VOICE, AUDIO, PAUSE, COMMA_PAUSE, MP3_BITRATE, MAKE_VERSION]));
-      if (!(state[src] === fingerprint && fs.existsSync(file))) {
+      if (t.audio) {
+        // 이미 만든 음성(다른 엔진 — 마요르카는 Gemini TTS)은 합성하지 않고 그 파일을 싣는다. 원고를 고치면 음성도 사람이 다시 만든다
+        if (draft) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.copyFileSync(path.join(ROOT, 'stories', src), file); }
+      } else if (!(state[src] === fingerprint && fs.existsSync(file))) {
+        if (!key) { console.error(`${src}을(를) 합성해야 하는데 GOOGLE_TTS_API_KEY가 없습니다. 키가 있는 기기에서 돌려 주세요.`); process.exit(2); }
         const made = await synthesizeTrack(spoken, src, key);
         spent += made.spent;
         if (!made.audio) { failed.push(src); continue; }
@@ -390,8 +408,9 @@ async function main() {
         sha256: sha256(buf), sources: t.sources, ...(t.stop ? { stop: t.stop } : {}), reviewedAt: reviewedAt || 'DRAFT' });
     }
     if (!tracks.length) continue;
-    const { lat, lng, radiusM, kind, id, name, localName = '', city = '', aliases = [], placeIds = [] } = p;
-    catalog.places.push({ id, kind, name, localName, city, lat, lng, radiusM, aliases, placeIds, tracks });
+    const { lat, lng, radiusM, kind, id, name, localName = '', city = '', aliases = [], placeIds = [], voice } = p;
+    // 목소리가 카탈로그 머리(Chirp 3 HD)와 다른 장소는 그 장소에 적어 둔다 — 화면은 'AI 음성' 고지만 쓴다
+    catalog.places.push({ id, kind, name, localName, city, lat, lng, radiusM, aliases, placeIds, ...(voice ? { voice } : {}), tracks });
     for (const s of new Set(tracks.flatMap((t) => t.sources))) catalog.sources[s] = { title: p.sources[s].title, url: p.sources[s].url };
   }
   // 상태는 먼저 남긴다 — 다시 돌릴 때 잘 만든 트랙에 또 돈을 쓰지 않게
@@ -406,6 +425,6 @@ async function main() {
   console.log(`${draft ? '검수용 ' : ''}카탈로그: ${catalog.places.length}곳 · 이번에 합성한 글자 ${spent.toLocaleString()}자 → ${path.relative(ROOT, outDir)}/`);
 }
 
-module.exports = { sinoKorean, spokenText, withJosa, sentencePlan, mp3Seconds, speechRate, RATE_BAND, PAUSE, check, loadPlaces,
+module.exports = { sinoKorean, spokenText, withJosa, sentencePlan, mp3Seconds, speechRate, RATE_BAND, PAUSE, check, loadPlaces, trackSrc,
   wavSamples, trimSilence, innerPauses, joinTrack, sentenceProblem, synthesizeTrack, SAMPLE_RATE };
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });

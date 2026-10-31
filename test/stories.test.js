@@ -119,3 +119,21 @@ test('배포되는 stories/catalog.json은 정규화를 지나도 그대로이�
     assert.equal(fs.statSync(f).size, t.bytes, `${t.src} 크기가 카탈로그와 다르다`);
   }
 });
+
+test('배포되는 마요르카 이야기도 이름만 같은 곳에는 붙지 않는다 — 섬 이야기는 섬 안의 날에만', () => {
+  const cat = S.normalizeCatalog(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'stories', 'catalog.json'), 'utf8')));
+  const at = (name, lat, lng) => (S.storyForSpot({ name, lat, lng }, cat) || { id: null }).id;
+  assert.equal(at('팔마 대성당', 39.5675, 2.6483), 'mallorca-palma-cathedral');
+  assert.equal(at('Cap Rocat', 39.4756, 2.7247), 'mallorca-cap-rocat');
+  assert.equal(at('미라도르 데스 콜로메르', 39.9310, 3.1124), 'mallorca-formentor');
+  // 팔마에서 타는 소예르 기차는 팔마 종점에, 소예르에 내리면 소예르역에 — 같은 음성이다
+  assert.equal(at('소예르 기차', 39.5767, 2.6538), 'mallorca-soller-train-palma');
+  assert.equal(at('Tren de Sóller', 39.7649, 2.7152), 'mallorca-soller-train');
+  // 바로 옆이어도 이름이 다르면(알무다이나 궁전), 이름이 같아도 멀면(폴렌사 항구의 '포르멘토르') 붙지 않는다
+  assert.equal(at('알무다이나 궁전', 39.5677, 2.6466), null);
+  assert.equal(at('포르멘토르', 39.904, 3.085), null);
+  const city = (lat, lng) => (S.cityStoryForDay({ spots: [{ name: 'x', lat, lng }] }, cat) || { id: null }).id;
+  assert.equal(city(39.5517, 2.7388), 'mallorca-island');   // 팔마 공항
+  assert.equal(city(40.0, 3.84), null);                      // 메노르카
+  assert.equal(city(37.389, -5.984), 'seville-city');
+});

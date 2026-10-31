@@ -1,0 +1,346 @@
+{
+  "id": "mallorca-palma-cathedral",
+  "kind": "PLACE",
+  "name": "팔마 대성당",
+  "localName": "Catedral de Mallorca",
+  "city": "마요르카",
+  "lat": 39.5674,
+  "lng": 2.6481,
+  "radiusM": 250,
+  "aliases": [
+    "라 세우",
+    "마요르카 대성당",
+    "팔마 데 마요르카 대성당",
+    "La Seu",
+    "Palma Cathedral",
+    "Catedral de Palma",
+    "Catedral-Basílica de Santa María de Mallorca"
+  ],
+  "placeIds": [],
+  "voice": {
+    "engine": "Gemini 3.8 Flash TTS",
+    "name": "Sulafat"
+  },
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "바다 앞의 성당, 라 세우",
+      "textFile": "mallorca/narration/palma-cathedral.txt",
+      "audio": "mallorca/palma-cathedral-core.mp3",
+      "sources": [
+        "MC01",
+        "MC02",
+        "MC03",
+        "MC04",
+        "MC05",
+        "MC06",
+        "MC07",
+        "MC08",
+        "MC09",
+        "MC10",
+        "MC11",
+        "MC12",
+        "MC13",
+        "MC14",
+        "MC15",
+        "MC16",
+        "MC17",
+        "MC18",
+        "MC19",
+        "MC20",
+        "MC21",
+        "MC22",
+        "MC23",
+        "MC24",
+        "MC25",
+        "MC26",
+        "MC27",
+        "MC28",
+        "MC29",
+        "MC30",
+        "MC31",
+        "MC32",
+        "MC33",
+        "MC34",
+        "MC35",
+        "MC36",
+        "MC37",
+        "MC38",
+        "MC39",
+        "MC40",
+        "MC41",
+        "MC42",
+        "MC43",
+        "MC44",
+        "MC45",
+        "MC46",
+        "MC47",
+        "MC48",
+        "MC49"
+      ]
+    }
+  ],
+  "sources": {
+    "MC01": {
+      "title": "enciclopedia.cat — conquesta de mallorca",
+      "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/conquesta-de-mallorca"
+    },
+    "MC02": {
+      "title": "catedraldemallorca.org — historia",
+      "url": "https://catedraldemallorca.org/catedral/historia/"
+    },
+    "MC03": {
+      "title": "ojs.uv.es — download",
+      "url": "https://ojs.uv.es/index.php/caplletra/article/download/4813/10440"
+    },
+    "MC04": {
+      "title": "aleteia.org — two amazing tricks of light at the cathedral of majorca",
+      "url": "https://aleteia.org/2017/08/11/two-amazing-tricks-of-light-at-the-cathedral-of-majorca"
+    },
+    "MC05": {
+      "title": "위키백과(카탈루냐어) — Catedral de Mallorca",
+      "url": "https://ca.wikipedia.org/wiki/Catedral_de_Mallorca"
+    },
+    "MC06": {
+      "title": "enciclopedia.cat — catedral de mallorca",
+      "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/catedral-de-mallorca"
+    },
+    "MC07": {
+      "title": "catedraldemallorca.org — recorridos",
+      "url": "https://catedraldemallorca.org/visitas/recorridos/"
+    },
+    "MC08": {
+      "title": "forbes.es — not prague or notre dame de paris palma de mallorca has the worlds largest gothic rose win",
+      "url": "https://forbes.es/en/balearic/909018/not-prague-or-notre-dame-de-paris-palma-de-mallorca-has-the-worlds-largest-gothic-rose-window/"
+    },
+    "MC09": {
+      "title": "illesbalears.travel — mallorca cathedrals figure of festa de la llum",
+      "url": "https://www.illesbalears.travel/en/mallorca/mallorca-cathedrals-figure-of-festa-de-la-llum"
+    },
+    "MC10": {
+      "title": "theobjective.com — cientos de personas presencian un fenomeno luminico unico en la catedral de mallorca",
+      "url": "https://theobjective.com/cultura/2018-11-11/cientos-de-personas-presencian-un-fenomeno-luminico-unico-en-la-catedral-de-mallorca/"
+    },
+    "MC11": {
+      "title": "gaudiclub.com — mallorca",
+      "url": "https://gaudiclub.com/ingles/i_vida/mallorca.asp"
+    },
+    "MC12": {
+      "title": "en.fundacionantoniogaudi.org — gaudi restorer the cathedral of mallorca",
+      "url": "https://en.fundacionantoniogaudi.org/gaudi-restorer-the-cathedral-of-mallorca/"
+    },
+    "MC13": {
+      "title": "catedraldemallorca.org — el ano gaudi 2026 reivindica la catedral de mallorca como obra principal y unica del arqui",
+      "url": "https://catedraldemallorca.org/noticias/el-ano-gaudi-2026-reivindica-la-catedral-de-mallorca-como-obra-principal-y-unica-del-arquitecto-catalan"
+    },
+    "MC14": {
+      "title": "bonart.cat — gaudi returns to the cathedral of mallorca with an exhibition that rediscovers his great l",
+      "url": "https://www.bonart.cat/en/n/47027/gaudi-returns-to-the-cathedral-of-mallorca-with-an-exhibition-that-rediscovers-his-great-liturgical-reform"
+    },
+    "MC15": {
+      "title": "위키백과(스페인어) — Catedral de Santa María de Palma de Mallorca",
+      "url": "https://es.wikipedia.org/wiki/Catedral_de_Santa_Mar%C3%ADa_de_Palma_de_Mallorca"
+    },
+    "MC16": {
+      "title": "eldiario.es — els papers gaudi surten llum les cartes factures i tecniques l arquitecte deu mallorca 1 1",
+      "url": "https://www.eldiario.es/illes-balears/cat/els-papers-gaudi-surten-llum-les-cartes-factures-i-tecniques-l-arquitecte-deu-mallorca_1_13300302.html"
+    },
+    "MC17": {
+      "title": "mallorcamagazin.com — magische muster das hat palmas kathedrale auf mallorca vom grossen architekten antoni gaud",
+      "url": "https://www.mallorcamagazin.com/nachrichten/kultur/2026/02/07/146617/magische-muster-das-hat-palmas-kathedrale-auf-mallorca-vom-grossen-architekten-antoni-gaudi-ihrem-innern-bewahrt.html"
+    },
+    "MC18": {
+      "title": "visitpalma.com — the cathedral the crown jewels",
+      "url": "https://visitpalma.com/en/discover/pln523/the-cathedral-the-crown-jewels"
+    },
+    "MC19": {
+      "title": "enciclopedia.cat — miquel barcelo i artigues",
+      "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/miquel-barcelo-i-artigues"
+    },
+    "MC20": {
+      "title": "catedraldemallorca.org",
+      "url": "https://catedraldemallorca.org/en/?p=8022"
+    },
+    "MC21": {
+      "title": "majorcadailybulletin.com — king and queen attend cathedral chapel opening",
+      "url": "https://amp.majorcadailybulletin.com/news/local/2007/01/16/15614/king-and-queen-attend-cathedral-chapel-opening.html"
+    },
+    "MC22": {
+      "title": "위키백과(영어) — Palma Cathedral",
+      "url": "https://en.wikipedia.org/wiki/Palma_Cathedral"
+    },
+    "MC23": {
+      "title": "majorcadailybulletin.com — palma cathedral will stun mallorca with new edition the festa llum next week",
+      "url": "https://www.majorcadailybulletin.com/news/local/2025/11/06/137889/palma-cathedral-will-stun-mallorca-with-new-edition-the-festa-llum-next-week.html"
+    },
+    "MC24": {
+      "title": "spain.info — catedral mallorca",
+      "url": "https://www.spain.info/es/lugares-interes/catedral-mallorca/"
+    },
+    "MC25": {
+      "title": "위키백과(카탈루냐어) — Parc de la Mar",
+      "url": "https://ca.wikipedia.org/wiki/Parc_de_la_Mar"
+    },
+    "MC26": {
+      "title": "majorcadailybulletin.com — popular photography spot mallorca the story behind the lake front palma cathedral",
+      "url": "https://www.majorcadailybulletin.com/holiday/attractions/2025/01/10/130385/popular-photography-spot-mallorca-the-story-behind-the-lake-front-palma-cathedral.html"
+    },
+    "MC27": {
+      "title": "toponhisp.org — node",
+      "url": "https://toponhisp.org/ca/node/4708"
+    },
+    "MC28": {
+      "title": "enciclopedia.cat — castell de lalmudaina",
+      "url": "https://enciclopedia.cat/gran-enciclopedia-catalana/castell-de-lalmudaina"
+    },
+    "MC29": {
+      "title": "위키백과(스페인어) — Palacio Real de La Almudaina",
+      "url": "https://es.wikipedia.org/wiki/Palacio_Real_de_La_Almudaina"
+    },
+    "MC30": {
+      "title": "spain.info — palacio real almudaina",
+      "url": "https://www.spain.info/es/lugares-interes/palacio-real-almudaina/"
+    },
+    "MC31": {
+      "title": "inspain.org — contexto historico",
+      "url": "https://www.inspain.org/es/baleares/palma/palacio-real-almudaina/info/contexto-historico/"
+    },
+    "MC32": {
+      "title": "inspain.org — descripcion artistica",
+      "url": "https://www.inspain.org/es/baleares/palma/palacio-real-almudaina/info/descripcion-artistica/"
+    },
+    "MC33": {
+      "title": "ultimahora.es — historia mallorca angel custodio ciudad del reino mallorca",
+      "url": "https://www.ultimahora.es/xaloc/historia/2023/04/19/1920669/historia-mallorca-angel-custodio-ciudad-del-reino-mallorca.html"
+    },
+    "MC34": {
+      "title": "ultimahora.es — rey felipe arranca audiencias las autoridades islas almudaina",
+      "url": "https://www.ultimahora.es/noticias/local/2026/07/24/2676327/rey-felipe-arranca-audiencias-las-autoridades-islas-almudaina.html"
+    },
+    "MC35": {
+      "title": "lamoncloa.gob.es — 290726 sanchez despacho rey palma",
+      "url": "https://www.lamoncloa.gob.es/multimedia/galeriasfotograficas/presidente/Paginas/2026/290726-sanchez-despacho-rey-palma.aspx"
+    },
+    "MC36": {
+      "title": "lanacion.com.ar — los reyes la princesa leonor la infanta sofia y la reina sofia reciben a la sociedad balea",
+      "url": "https://www.lanacion.com.ar/agencias/los-reyes-la-princesa-leonor-la-infanta-sofia-y-la-reina-sofia-reciben-a-la-sociedad-balear-en-nid05082025"
+    },
+    "MC37": {
+      "title": "hola.com — el rey felipe vi estrena la nueva almudaina tras su regreso de peru asi es por dentro el p",
+      "url": "https://www.hola.com/realeza/casa_espanola/20260729915471/el-rey-felipe-vi-estrena-la-nueva-almudaina-tras-su-regreso-de-peru-asi-es-por-dentro-el-palacio-que-inaugura-el-verano-real/"
+    },
+    "MC38": {
+      "title": "mallorca.com — es drac de na coca",
+      "url": "https://www.mallorca.com/ca/guia/lugares-de-interes/es-drac-de-na-coca"
+    },
+    "MC39": {
+      "title": "catedraldemallorca.org — faqs",
+      "url": "https://catedraldemallorca.org/faqs/"
+    },
+    "MC40": {
+      "title": "학술 논문 — DOI 10.1007/s00004-023-00760-x",
+      "url": "https://doi.org/10.1007/s00004-023-00760-x"
+    },
+    "MC41": {
+      "title": "ccs.saf-astronomie.fr — 2024 Sunlight Mallorca Cathedral",
+      "url": "https://ccs.saf-astronomie.fr/wp-content/uploads/2024/Info-Mail_2024/2024%20Sunlight%20Mallorca%20Cathedral.pdf"
+    },
+    "MC42": {
+      "title": "mallorca.com — drac de na coca palma w4baprnu",
+      "url": "https://www.mallorca.com/es/directorio/empresa/drac-de-na-coca-palma-w4baprnu"
+    },
+    "MC43": {
+      "title": "click-mallorca.com — sabias que el drac de na coca 2",
+      "url": "https://www.click-mallorca.com/blog/rincones/sabias-que-el-drac-de-na-coca-2/"
+    },
+    "MC44": {
+      "title": "ultimahora.es — campanas seu seran sometidas investigaciones cientificas",
+      "url": "https://www.ultimahora.es/noticias/cultura/2013/09/27/109189/campanas-seu-seran-sometidas-investigaciones-cientificas.html"
+    },
+    "MC45": {
+      "title": "majorcadailybulletin.com — bells from palma cathedral being sent germany",
+      "url": "https://amp.majorcadailybulletin.com/news/local/2013/04/20/34243/bells-from-palma-cathedral-being-sent-germany.html"
+    },
+    "MC46": {
+      "title": "mallorcamagazin.com — handarbeit glockenturm der kathedrale von palma",
+      "url": "https://www.mallorcamagazin.com/nachrichten/kultur/2018/05/06/62103/handarbeit-glockenturm-der-kathedrale-von-palma.html"
+    },
+    "MC47": {
+      "title": "publicacions.iec.cat — 00000045",
+      "url": "https://publicacions.iec.cat/repository/pdf/00000319/00000045.pdf"
+    },
+    "MC48": {
+      "title": "menorca.info — espectacular vuit seu ilumina catedral mallorca ano mas",
+      "url": "https://www.menorca.info/balears/noticias/2024/11/11/2273651/espectacular-vuit-seu-ilumina-catedral-mallorca-ano-mas.html"
+    },
+    "MC49": {
+      "title": "majorcadailybulletin.com — palma cathedral festival light",
+      "url": "https://majorcadailybulletin.com/news/local/2020/01/29/61979/palma-cathedral-festival-light.html"
+    }
+  },
+  "factCheckNote": "2026-10-30 독립 검증 — 주장 52개를 출처와 맞춰 보고 지적 6건을 모두 고쳤다. 여기에는 고친 곳만 적는다",
+  "factCheck": [
+    {
+      "claim": "동지 무렵 아침에는 동쪽 창의 빛이 서쪽 장미창에 거의 그대로 겹치는데, 같은 연구는 그 장면이 동짓날 아침에 가장 가깝게 겹친다고 계산했습니다.",
+      "sources": [
+        "MC40",
+        "MC41"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "성당 바로 옆 주교관의 교구 박물관에는 '나 코카의 용'이라는 것이 있습니다.",
+      "sources": [
+        "MC42",
+        "MC43"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "가장 큰 종 '넬로이'는 무게가 4톤 반이 넘어, 스페인에서 흔들어 치는 종 가운데 가장 큰 것으로 꼽힙니다.",
+      "sources": [
+        "MC44",
+        "MC45",
+        "MC24",
+        "MC46"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "정복 뒤 150년 넘게, 옛 모스크가 성당으로 쓰이며 그 자리에 서 있었던 셈입니다.",
+      "sources": [
+        "MC15",
+        "MC05"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "가우디는 노랑, 파랑, 빨강 세 겹의 유리를 겹쳐 색을 내는 스테인드글라스도 이곳에서 먼저 시험했습니다. 사그라다 파밀리아보다 앞선 실험이었던 셈입니다.",
+      "sources": [
+        "MC47",
+        "MC12"
+      ],
+      "status": "UNCONFIRMED",
+      "resolution": "OMITTED"
+    },
+    {
+      "claim": "가우디는 노랑, 파랑, 빨강 세 겹의 유리를 겹쳐 색을 내는 스테인드글라스도 이곳에서 시험했습니다.",
+      "sources": [
+        "MC47",
+        "MC12"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "마요르카 사람들은 이날을 '빛의 축제'라고 부르고, 이 장면은 십 분 남짓이면 사라집니다.",
+      "sources": [
+        "MC48",
+        "MC49"
+      ],
+      "status": "UNCONFIRMED",
+      "resolution": "HEDGED"
+    }
+  ],
+  "reviewedAt": "2026-10-31"
+}

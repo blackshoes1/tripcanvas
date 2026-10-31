@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-28",
+  "updated": "2026-10-31",
   "voice": {
     "engine": "Google Cloud TTS Chirp 3 HD",
     "name": "ko-KR-Chirp3-HD-Despina",
@@ -571,6 +571,695 @@
           "reviewedAt": "2026-10-23"
         }
       ]
+    },
+    {
+      "id": "mallorca-alcudia",
+      "kind": "PLACE",
+      "name": "알쿠디아",
+      "localName": "Alcúdia",
+      "city": "마요르카",
+      "lat": 39.8505,
+      "lng": 3.122,
+      "radiusM": 900,
+      "aliases": [
+        "알쿠디아 구시가지",
+        "폴렌티아",
+        "폴렌티아 유적",
+        "Pollentia",
+        "Pol·lèntia",
+        "Alcudia"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "두 개의 도시, 알쿠디아와 폴렌티아",
+          "src": "mallorca/alcudia-core.mp3",
+          "seconds": 297,
+          "bytes": 1783872,
+          "sha256": "938793479862c7d95352bb67a51e07663b0c41bedfa2cc723925614ddaa8be33",
+          "sources": [
+            "MA01",
+            "MA02",
+            "MA03",
+            "MA04",
+            "MA05",
+            "MA06",
+            "MA07",
+            "MA08",
+            "MA09",
+            "MA10",
+            "MA11",
+            "MA12",
+            "MA13",
+            "MA14",
+            "MA15",
+            "MA16",
+            "MA17",
+            "MA18"
+          ],
+          "reviewedAt": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "id": "mallorca-bellver",
+      "kind": "PLACE",
+      "name": "벨베르 성",
+      "localName": "Castell de Bellver",
+      "city": "마요르카",
+      "lat": 39.5638,
+      "lng": 2.6193,
+      "radiusM": 400,
+      "aliases": [
+        "벨베르",
+        "Bellver",
+        "Castillo de Bellver",
+        "Bellver Castle"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "둥근 성과 그 안의 수감자들",
+          "src": "mallorca/bellver-core.mp3",
+          "seconds": 275,
+          "bytes": 1648224,
+          "sha256": "ac185c26e87e8bd7474a00aba756aa97a9139cb7c2825e24880b5681b8115cd5",
+          "sources": [
+            "MB01",
+            "MB02",
+            "MB03",
+            "MB04",
+            "MB05",
+            "MB06",
+            "MB07",
+            "MB08",
+            "MB09",
+            "MB10",
+            "MB11",
+            "MB12",
+            "MB13"
+          ],
+          "reviewedAt": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "id": "mallorca-cap-rocat",
+      "kind": "PLACE",
+      "name": "캡 로캣",
+      "localName": "Cap Rocat",
+      "city": "마요르카",
+      "lat": 39.4759,
+      "lng": 2.7247,
+      "radiusM": 500,
+      "aliases": [
+        "캡로캣",
+        "캡 로캇",
+        "캅 로캇",
+        "Hotel Cap Rocat",
+        "엔데로캇 요새",
+        "Fort d'Enderrocat",
+        "Fuerte de Enderrocat"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "팔마만을 지키던 요새",
+          "src": "mallorca/cap-rocat-core.mp3",
+          "seconds": 232,
+          "bytes": 1393488,
+          "sha256": "d04025adbd3ce9f4a4bd7e87beeec8187d1ec79dd747ce290ff6166bec60ba91",
+          "sources": [
+            "MR01",
+            "MR02",
+            "MR03",
+            "MR04",
+            "MR05",
+            "MR06",
+            "MR07",
+            "MR08",
+            "MR09",
+            "MR10",
+            "MR11",
+            "MR12",
+            "MR13",
+            "MR14",
+            "MR15",
+            "MR16",
+            "MR17",
+            "MR18"
+          ],
+          "reviewedAt": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "id": "mallorca-drac-caves",
+      "kind": "PLACE",
+      "name": "드라크 동굴",
+      "localName": "Coves del Drac",
+      "city": "마요르카",
+      "lat": 39.5357,
+      "lng": 3.3306,
+      "radiusM": 500,
+      "aliases": [
+        "드라크",
+        "드라흐 동굴",
+        "드락 동굴",
+        "Cuevas del Drach",
+        "Cuevas del Drac",
+        "Caves of Drach",
+        "용의 동굴"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "용의 동굴과 바다의 호수",
+          "src": "mallorca/drac-caves-core.mp3",
+          "seconds": 250,
+          "bytes": 1500912,
+          "sha256": "11c845fbd16368d6f6a8b800d6f0b772684b36f4531dad3b3baa7866f714f208",
+          "sources": [
+            "MD01",
+            "MD02",
+            "MD03",
+            "MD04",
+            "MD05",
+            "MD06",
+            "MD07",
+            "MD08",
+            "MD09",
+            "MD10",
+            "MD11",
+            "MD12",
+            "MD13",
+            "MD14",
+            "MD15",
+            "MD16",
+            "MD17",
+            "MD18",
+            "MD19",
+            "MD20",
+            "MD21",
+            "MD22",
+            "MD23",
+            "MD24",
+            "MD25",
+            "MD26",
+            "MD27"
+          ],
+          "reviewedAt": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "id": "mallorca-formentor",
+      "kind": "PLACE",
+      "name": "포르멘토르 곶",
+      "localName": "Cap de Formentor",
+      "city": "마요르카",
+      "lat": 39.943,
+      "lng": 3.162,
+      "radiusM": 5500,
+      "aliases": [
+        "포르멘토르",
+        "Formentor",
+        "포르멘토르 등대",
+        "Far de Formentor",
+        "미라도르 데스 콜로메르",
+        "에스 콜로메르 전망대",
+        "Mirador des Colomer",
+        "Mirador Es Colomer"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "바람이 만나는 곳",
+          "src": "mallorca/formentor-core.mp3",
+          "seconds": 235,
+          "bytes": 1407600,
+          "sha256": "1dfeb0e782cbe1f08a9feb222b16f0a2d2c4ae011a0a4b1fade2826d3dcc1e18",
+          "sources": [
+            "MF01",
+            "MF02",
+            "MF03",
+            "MF04",
+            "MF05",
+            "MF06",
+            "MF07",
+            "MF08",
+            "MF09",
+            "MF10",
+            "MF11",
+            "MF12",
+            "MF13",
+            "MF14",
+            "MF15",
+            "MF16",
+            "MF17",
+            "MF18",
+            "MF19",
+            "MF20",
+            "MF21",
+            "MF22",
+            "MF23",
+            "MF24",
+            "MF25",
+            "MF26"
+          ],
+          "reviewedAt": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "id": "mallorca-island",
+      "kind": "CITY",
+      "name": "마요르카",
+      "localName": "Mallorca",
+      "city": "마요르카",
+      "lat": 39.61,
+      "lng": 2.92,
+      "radiusM": 50000,
+      "aliases": [
+        "마요르카 섬",
+        "Mallorca",
+        "Majorca"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "더 큰 섬, 마요르카의 역사",
+          "src": "mallorca/island-core.mp3",
+          "seconds": 517,
+          "bytes": 3099312,
+          "sha256": "5a95513d573cf9ea5e8c8ccd8fe3ad9566e5d1c84f8e226b19968c07d251e9e9",
+          "sources": [
+            "MH01",
+            "MH02",
+            "MH03",
+            "MH04",
+            "MH05",
+            "MH06",
+            "MH07",
+            "MH08",
+            "MH09",
+            "MH10",
+            "MH11",
+            "MH12",
+            "MH13",
+            "MH14",
+            "MH15",
+            "MH16",
+            "MH17",
+            "MH18",
+            "MH19",
+            "MH20",
+            "MH21",
+            "MH22",
+            "MH23",
+            "MH24",
+            "MH25",
+            "MH26",
+            "MH27",
+            "MH28",
+            "MH29",
+            "MH30",
+            "MH31",
+            "MH32",
+            "MH33",
+            "MH34",
+            "MH35",
+            "MH36",
+            "MH37",
+            "MH38",
+            "MH39",
+            "MH40"
+          ],
+          "reviewedAt": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "id": "mallorca-palma-cathedral",
+      "kind": "PLACE",
+      "name": "팔마 대성당",
+      "localName": "Catedral de Mallorca",
+      "city": "마요르카",
+      "lat": 39.5674,
+      "lng": 2.6481,
+      "radiusM": 250,
+      "aliases": [
+        "라 세우",
+        "마요르카 대성당",
+        "팔마 데 마요르카 대성당",
+        "La Seu",
+        "Palma Cathedral",
+        "Catedral de Palma",
+        "Catedral-Basílica de Santa María de Mallorca"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "바다 앞의 성당, 라 세우",
+          "src": "mallorca/palma-cathedral-core.mp3",
+          "seconds": 494,
+          "bytes": 2963088,
+          "sha256": "7e9f59299459397597225a07a26f8d29cbd046419e3916c628bcf2d0cb2203ff",
+          "sources": [
+            "MC01",
+            "MC02",
+            "MC03",
+            "MC04",
+            "MC05",
+            "MC06",
+            "MC07",
+            "MC08",
+            "MC09",
+            "MC10",
+            "MC11",
+            "MC12",
+            "MC13",
+            "MC14",
+            "MC15",
+            "MC16",
+            "MC17",
+            "MC18",
+            "MC19",
+            "MC20",
+            "MC21",
+            "MC22",
+            "MC23",
+            "MC24",
+            "MC25",
+            "MC26",
+            "MC27",
+            "MC28",
+            "MC29",
+            "MC30",
+            "MC31",
+            "MC32",
+            "MC33",
+            "MC34",
+            "MC35",
+            "MC36",
+            "MC37",
+            "MC38",
+            "MC39",
+            "MC40",
+            "MC41",
+            "MC42",
+            "MC43",
+            "MC44",
+            "MC45",
+            "MC46",
+            "MC47",
+            "MC48",
+            "MC49"
+          ],
+          "reviewedAt": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "id": "mallorca-sa-calobra",
+      "kind": "PLACE",
+      "name": "사 칼로브라",
+      "localName": "Sa Calobra",
+      "city": "마요르카",
+      "lat": 39.851,
+      "lng": 2.8,
+      "radiusM": 3000,
+      "aliases": [
+        "칼로브라",
+        "La Calobra",
+        "토렌트 데 파레이스",
+        "Torrent de Pareis",
+        "넥타이 매듭",
+        "Nus de sa Corbata",
+        "트라문타나 산맥",
+        "Serra de Tramuntana"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "사람이 만든 풍경과 넥타이 매듭 길",
+          "src": "mallorca/sa-calobra-core.mp3",
+          "seconds": 245,
+          "bytes": 1468944,
+          "sha256": "f04a20525bcc7d7aac308c2bd47ac1c9300e52a16351dde0b489dcde56d0cfad",
+          "sources": [
+            "MT01",
+            "MT02",
+            "MT03",
+            "MT04",
+            "MT05",
+            "MT06",
+            "MT07",
+            "MT08",
+            "MT09",
+            "MT10",
+            "MT11",
+            "MT12",
+            "MT13",
+            "MT14",
+            "MT15",
+            "MT16",
+            "MT17",
+            "MT18",
+            "MT19",
+            "MT20",
+            "MT21",
+            "MT22",
+            "MT23"
+          ],
+          "reviewedAt": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "id": "mallorca-soller-train-palma",
+      "kind": "PLACE",
+      "name": "소예르 기차",
+      "localName": "Ferrocarril de Sóller",
+      "city": "마요르카",
+      "lat": 39.5767,
+      "lng": 2.6538,
+      "radiusM": 250,
+      "aliases": [
+        "소예르 열차",
+        "소예르 기차역",
+        "Tren de Sóller",
+        "Estació de Sóller"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "오렌지가 놓은 철길",
+          "src": "mallorca/soller-train-core.mp3",
+          "seconds": 281,
+          "bytes": 1684800,
+          "sha256": "5a3cf3325a8eba897b452a05f582eacddf72b7af1b26e95bdd4e5fe0619cb7f8",
+          "sources": [
+            "MS01",
+            "MS02",
+            "MS03",
+            "MS04",
+            "MS05",
+            "MS06",
+            "MS07",
+            "MS08",
+            "MS09",
+            "MS10",
+            "MS11",
+            "MS12",
+            "MS13",
+            "MS14",
+            "MS15",
+            "MS16",
+            "MS17",
+            "MS18"
+          ],
+          "reviewedAt": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "id": "mallorca-soller-train",
+      "kind": "PLACE",
+      "name": "소예르 기차",
+      "localName": "Ferrocarril de Sóller",
+      "city": "마요르카",
+      "lat": 39.7649,
+      "lng": 2.7152,
+      "radiusM": 400,
+      "aliases": [
+        "소예르 열차",
+        "소예르 기차역",
+        "소예르역",
+        "소예르 트램",
+        "솔레르 기차",
+        "Tren de Sóller",
+        "Estació de Sóller",
+        "Tranvía de Sóller",
+        "Tramvia de Sóller"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "오렌지가 놓은 철길",
+          "src": "mallorca/soller-train-core.mp3",
+          "seconds": 281,
+          "bytes": 1684800,
+          "sha256": "5a3cf3325a8eba897b452a05f582eacddf72b7af1b26e95bdd4e5fe0619cb7f8",
+          "sources": [
+            "MS01",
+            "MS02",
+            "MS03",
+            "MS04",
+            "MS05",
+            "MS06",
+            "MS07",
+            "MS08",
+            "MS09",
+            "MS10",
+            "MS11",
+            "MS12",
+            "MS13",
+            "MS14",
+            "MS15",
+            "MS16",
+            "MS17",
+            "MS18"
+          ],
+          "reviewedAt": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "id": "mallorca-valldemossa",
+      "kind": "PLACE",
+      "name": "발데모사",
+      "localName": "Valldemossa",
+      "city": "마요르카",
+      "lat": 39.7103,
+      "lng": 2.6223,
+      "radiusM": 700,
+      "aliases": [
+        "발데모사 수도원",
+        "발데모사 카르투하",
+        "Cartoixa de Valldemossa",
+        "Real Cartuja de Valldemossa",
+        "Valldemossa Charterhouse"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "왕궁에서 수도원으로, 쇼팽의 겨울",
+          "src": "mallorca/valldemossa-core.mp3",
+          "seconds": 273,
+          "bytes": 1639008,
+          "sha256": "e1b4a21395f09f48c49c2d54d942b4a5b05e6db885d02b6af2723089230f02b0",
+          "sources": [
+            "MV01",
+            "MV02",
+            "MV03",
+            "MV04",
+            "MV05",
+            "MV06",
+            "MV07",
+            "MV08",
+            "MV09",
+            "MV10",
+            "MV11",
+            "MV12",
+            "MV13",
+            "MV14",
+            "MV15",
+            "MV16",
+            "MV17",
+            "MV18",
+            "MV19",
+            "MV20",
+            "MV21",
+            "MV22",
+            "MV23",
+            "MV24",
+            "MV25",
+            "MV26",
+            "MV27",
+            "MV28",
+            "MV29",
+            "MV30"
+          ],
+          "reviewedAt": "2026-10-31"
+        }
+      ]
     }
   ],
   "sources": {
@@ -941,6 +1630,1054 @@
     "P13": {
       "title": "스페인 육군·세비야 옛 총사령부 건물 위치 안내",
       "url": "https://ejercito.defensa.gob.es/unidades/Sevilla/futer/Localizacion/index.html"
+    },
+    "MA01": {
+      "title": "alcudia.net — POLLENTIA FULLETO nou 2019 20",
+      "url": "https://www.alcudia.net/export/sites/default/Pollentia/ca/documentos/destacats/POLLENTIA-FULLETO-nou-2019-20.pdf"
+    },
+    "MA02": {
+      "title": "alcudia.net — MUSEU cat",
+      "url": "https://www.alcudia.net/export/sites/default/Pollentia/ca/documentos/MUSEU-cat.pdf"
+    },
+    "MA03": {
+      "title": "위키백과(카탈루냐어) — Alcúdia",
+      "url": "https://ca.wikipedia.org/wiki/Alc%C3%BAdia"
+    },
+    "MA04": {
+      "title": "latindictionary.io — pollentia",
+      "url": "https://www.latindictionary.io/word/pollentia"
+    },
+    "MA05": {
+      "title": "enciclopedia.cat — EC GEC 0051819",
+      "url": "https://www.enciclopedia.cat/EC-GEC-0051819"
+    },
+    "MA06": {
+      "title": "위키백과(영어) — Pollentia (Mallorca)",
+      "url": "https://en.wikipedia.org/wiki/Pollentia_(Mallorca)"
+    },
+    "MA07": {
+      "title": "illesbalears.travel — archaeological site ciutat romana de pollentia",
+      "url": "https://illesbalears.travel/en/mallorca/archaeological-site-ciutat-romana-de-pollentia"
+    },
+    "MA08": {
+      "title": "illesbalears.travel — theater pollentia",
+      "url": "https://illesbalears.travel/tourist-resource/en/mallorca/theater-pollentia"
+    },
+    "MA09": {
+      "title": "es.hispanopedia.com — Teatro romano de Pollentia",
+      "url": "https://es.hispanopedia.com/wiki/Teatro_romano_de_Pollentia"
+    },
+    "MA10": {
+      "title": "enciclopedia.cat — alcudia",
+      "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/alcudia"
+    },
+    "MA11": {
+      "title": "illesbalears.travel — walls muralles dalcudia",
+      "url": "https://www.illesbalears.travel/en/mallorca/walls-muralles-dalcudia"
+    },
+    "MA12": {
+      "title": "위키백과(영어) — Alcúdia",
+      "url": "https://en.wikipedia.org/wiki/Alc%C3%BAdia"
+    },
+    "MA13": {
+      "title": "enciclopedia.cat — EC GEC 0048635",
+      "url": "https://www.enciclopedia.cat/EC-GEC-0048635"
+    },
+    "MA14": {
+      "title": "위키백과(영어) — Church of St. Jaume",
+      "url": "https://en.wikipedia.org/wiki/Church_of_St._Jaume"
+    },
+    "MA15": {
+      "title": "dipositint.ub.edu — handle",
+      "url": "https://dipositint.ub.edu/dspace/handle/2445/42649"
+    },
+    "MA16": {
+      "title": "mallorca.com — teatre roma de pollentia",
+      "url": "https://www.mallorca.com/en/guide/sights/teatre-roma-de-pollentia"
+    },
+    "MA17": {
+      "title": "alcudia.net — CAMPANYA DEXCAVACIO 2019",
+      "url": "https://www.alcudia.net/export/sites/default/Pollentia/ca/documentos/destacats/CAMPANYA-DEXCAVACIO-2019.pdf"
+    },
+    "MA18": {
+      "title": "aespa.revistas.csic.es — download",
+      "url": "https://aespa.revistas.csic.es/index.php/aespa/article/download/298/299"
+    },
+    "MB01": {
+      "title": "위키백과(영어) — Bellver Castle",
+      "url": "https://en.wikipedia.org/wiki/Bellver_Castle"
+    },
+    "MB02": {
+      "title": "illesbalears.travel — castle bellver",
+      "url": "https://www.illesbalears.travel/en/mallorca/castle-bellver"
+    },
+    "MB03": {
+      "title": "위키백과(카탈루냐어) — Castell de Bellver",
+      "url": "https://ca.wikipedia.org/wiki/Castell_de_Bellver"
+    },
+    "MB04": {
+      "title": "enciclopedia.cat — castell de bellver",
+      "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/castell-de-bellver"
+    },
+    "MB05": {
+      "title": "위키백과(스페인어) — Gaspar Melchor de Jovellanos",
+      "url": "https://es.wikipedia.org/wiki/Gaspar_Melchor_de_Jovellanos"
+    },
+    "MB06": {
+      "title": "spain.info — castillo bellver",
+      "url": "https://www.spain.info/es/lugares-interes/castillo-bellver/"
+    },
+    "MB07": {
+      "title": "barcelo.com — castell de bellver",
+      "url": "https://www.barcelo.com/guia-turismo/es/espana/mallorca/que-ver/castell-de-bellver/"
+    },
+    "MB08": {
+      "title": "castelldebellver.palma.es — exposiciones permanentes",
+      "url": "https://castelldebellver.palma.es/exposiciones-permanentes"
+    },
+    "MB09": {
+      "title": "visitpalma.com — castell de bellver les millors vistes de palma",
+      "url": "https://visitpalma.com/ca/dir/castell-de-bellver-les-millors-vistes-de-palma/"
+    },
+    "MB10": {
+      "title": "위키백과(영어) — François Arago",
+      "url": "https://en.wikipedia.org/wiki/Fran%C3%A7ois_Arago"
+    },
+    "MB11": {
+      "title": "위키백과(스페인어) — Castillo de Bellver",
+      "url": "https://es.wikipedia.org/wiki/Castillo_de_Bellver"
+    },
+    "MB12": {
+      "title": "majorcadailybulletin.com — bellver castle civil war exhibition opens",
+      "url": "https://majorcadailybulletin.com/news/local/2017/12/21/50327/bellver-castle-civil-war-exhibition-opens.html"
+    },
+    "MB13": {
+      "title": "위키백과(영어) — Palma Cathedral",
+      "url": "https://en.wikipedia.org/wiki/Palma_Cathedral"
+    },
+    "MR01": {
+      "title": "위키백과(스페인어) — Fuerte del Cabo Enderrocat",
+      "url": "https://es.wikipedia.org/wiki/Fuerte_del_Cabo_Enderrocat"
+    },
+    "MR02": {
+      "title": "위키백과(카탈루냐어) — Cap Enderrocat",
+      "url": "https://ca.wikipedia.org/wiki/Cap_Enderrocat"
+    },
+    "MR03": {
+      "title": "eldebate.com — fortaleza militar espana siglo xix reconvertida hotel recondito privado mediterraneo 40009",
+      "url": "https://www.eldebate.com/estilo-vida/viajar/20260326/fortaleza-militar-espana-siglo-xix-reconvertida-hotel-recondito-privado-mediterraneo_400094.html"
+    },
+    "MR04": {
+      "title": "europeanheritageawards.eu — cap enderrocat fortress",
+      "url": "https://www.europeanheritageawards.eu/winners/cap-enderrocat-fortress/"
+    },
+    "MR05": {
+      "title": "hotels-insolites.com — cap rocat.hotel",
+      "url": "https://www.hotels-insolites.com/en/cap-rocat.hotel"
+    },
+    "MR06": {
+      "title": "europeanheritageawards-archive.eu — cap enderrocat fortress mallorca",
+      "url": "https://europeanheritageawards-archive.eu/laureates-1978-2022/detail/cap-enderrocat-fortress-mallorca"
+    },
+    "MR07": {
+      "title": "ultimahora.es — proyecto mallorca sido galardonado los premios patrimonio cultural 2017",
+      "url": "https://www.ultimahora.es/noticias/local/2017/04/05/259640/proyecto-mallorca-sido-galardonado-los-premios-patrimonio-cultural-2017.html"
+    },
+    "MR08": {
+      "title": "seemallorca.com — new luxury hotel in the bay of palma",
+      "url": "https://www.seemallorca.com/events/news/new-luxury-hotel-in-the-bay-of-palma"
+    },
+    "MR09": {
+      "title": "guide.michelin.com — cap rocat mallorca spain key hotel michelin guide signature space",
+      "url": "https://guide.michelin.com/en/article/travel/cap-rocat-mallorca-spain-key-hotel-michelin-guide-signature-space"
+    },
+    "MR10": {
+      "title": "tablethotels.com — the war is over",
+      "url": "https://www.tablethotels.com/magazine/en/2024/04/the-war-is-over/"
+    },
+    "MR11": {
+      "title": "caprocat.com — once upon a time in majorca",
+      "url": "https://caprocat.com/en/press/once-upon-a-time-in-majorca/"
+    },
+    "MR12": {
+      "title": "caprocat.com — culture and heritage",
+      "url": "https://caprocat.com/en/sustainability/culture-and-heritage"
+    },
+    "MR13": {
+      "title": "caib.es — es0000081 cap enderrocat cap blanc zepa",
+      "url": "https://www.caib.es/sites/xarxanatura/ca/es0000081_cap_enderrocat-cap_blanc_zepa"
+    },
+    "MR14": {
+      "title": "mallorca.com — bateria alfons xiii",
+      "url": "https://www.mallorca.com/fr/guide/sites-touristiques/bateria-alfons-xiii"
+    },
+    "MR15": {
+      "title": "위키백과(카탈루냐어) — Badia de Palma",
+      "url": "https://ca.wikipedia.org/wiki/Badia_de_Palma"
+    },
+    "MR16": {
+      "title": "llucmajor.org — print",
+      "url": "https://llucmajor.org/es/node/2196/printable/print"
+    },
+    "MR17": {
+      "title": "caprocat.com — cap rocat",
+      "url": "https://caprocat.com/cap-rocat/"
+    },
+    "MR18": {
+      "title": "위키백과(영어) — Palma Cathedral",
+      "url": "https://en.wikipedia.org/wiki/Palma_Cathedral"
+    },
+    "MD01": {
+      "title": "spain.info — mallorca concierto cueva",
+      "url": "https://www.spain.info/es/descubrir-espana/mallorca-concierto-cueva/"
+    },
+    "MD02": {
+      "title": "위키백과(스페인어) — Cuevas del Drach",
+      "url": "https://es.wikipedia.org/wiki/Cuevas_del_Drach"
+    },
+    "MD03": {
+      "title": "위키백과(영어) — Caves of Drach",
+      "url": "https://en.wikipedia.org/wiki/Caves_of_Drach"
+    },
+    "MD04": {
+      "title": "showcaves.com — Drac",
+      "url": "https://showcaves.com/english/es/showcaves/Drac.html"
+    },
+    "MD05": {
+      "title": "cuevasdeldrach.com — la cueva",
+      "url": "https://www.cuevasdeldrach.com/la-cueva.php"
+    },
+    "MD06": {
+      "title": "cuevasdeldrach.com — historia",
+      "url": "https://www.cuevasdeldrach.com/historia.php"
+    },
+    "MD07": {
+      "title": "ibdigital.uib.es — PapersSEB 2018vol001p021",
+      "url": "https://ibdigital.uib.es/greenstone/library/collection/papersSocietatEspeleologica/document/PapersSEB_2018vol001p021"
+    },
+    "MD08": {
+      "title": "raco.cat — download",
+      "url": "https://raco.cat/index.php/PapersSeb/article/download/393077/486575"
+    },
+    "MD09": {
+      "title": "mallorca.com — coves del drach",
+      "url": "https://www.mallorca.com/ca/guia/lugares-de-interes/coves-del-drach"
+    },
+    "MD10": {
+      "title": "ibdigital.uib.es — PapersSEB 2020vol003p033",
+      "url": "https://ibdigital.uib.es/greenstone/library/collection/papersSocietatEspeleologica/document/PapersSEB_2020vol003p033"
+    },
+    "MD11": {
+      "title": "cuevasdeldrach.com",
+      "url": "https://www.cuevasdeldrach.com/"
+    },
+    "MD12": {
+      "title": "legacy.caves.org — cave 79 01 59",
+      "url": "https://legacy.caves.org/pub/journal/PDF/V79/cave-79-01-59.pdf"
+    },
+    "MD13": {
+      "title": "pmc.ncbi.nlm.nih.gov — PMC7820252",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7820252"
+    },
+    "MD14": {
+      "title": "위키백과(영어) — Magic Fountain of Montjuïc",
+      "url": "https://en.wikipedia.org/wiki/Magic_Fountain_of_Montju%C3%AFc"
+    },
+    "MD15": {
+      "title": "digitalcommons.usf.edu — Geology and Hydrology",
+      "url": "https://digitalcommons.usf.edu/nckms_2013/Proceedings/Geology_and_Hydrology/7"
+    },
+    "MD16": {
+      "title": "위키백과(영어) — Clovis Dardentor",
+      "url": "https://en.wikipedia.org/wiki/Clovis_Dardentor"
+    },
+    "MD17": {
+      "title": "위키백과(카탈루냐어) — Història de Mallorca",
+      "url": "https://ca.wikipedia.org/wiki/Hist%C3%B2ria_de_Mallorca"
+    },
+    "MD18": {
+      "title": "위키백과(영어) — History of Mallorca",
+      "url": "https://en.wikipedia.org/wiki/History_of_Mallorca"
+    },
+    "MD19": {
+      "title": "aida.de — drachenhoehle mallorca",
+      "url": "https://aida.de/willkommen/aida-stories/drachenhoehle-mallorca"
+    },
+    "MD20": {
+      "title": "hoteles.net — porto cristo mallorca",
+      "url": "https://www.hoteles.net/mallorca/porto-cristo/porto-cristo-mallorca.html"
+    },
+    "MD21": {
+      "title": "mallorca.com — marques del reguer",
+      "url": "https://www.mallorca.com/es/guia/lugares-de-interes/marques-del-reguer"
+    },
+    "MD22": {
+      "title": "cuevasdeldrach.com — historia",
+      "url": "https://www.cuevasdeldrach.com/en/historia.php"
+    },
+    "MD23": {
+      "title": "pmc.ncbi.nlm.nih.gov — PMC7820252",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7820252/"
+    },
+    "MD24": {
+      "title": "ibdigital.uib.es — PapersSEB 2018vol001p223",
+      "url": "https://ibdigital.uib.es/greenstone/library/collection/papersSocietatEspeleologica/document/PapersSEB_2018vol001p223"
+    },
+    "MD25": {
+      "title": "majorcadailybulletin.com — caves drach immerse yourself our environment",
+      "url": "https://www.majorcadailybulletin.com/london-fair/what-do/2019/10/31/59217/caves-drach-immerse-yourself-our-environment.html"
+    },
+    "MD26": {
+      "title": "mallorca.com — coves del drach",
+      "url": "https://www.mallorca.com/en/guide/sights/coves-del-drach"
+    },
+    "MD27": {
+      "title": "위키백과(카탈루냐어) — Coves del Drac",
+      "url": "https://ca.wikipedia.org/wiki/Coves_del_Drac"
+    },
+    "MF01": {
+      "title": "위키백과(영어) — Cap de Formentor",
+      "url": "https://en.wikipedia.org/wiki/Cap_de_Formentor"
+    },
+    "MF02": {
+      "title": "barcelo.com — cap de formentor",
+      "url": "https://www.barcelo.com/guia-turismo/es/espana/mallorca/que-ver/cap-de-formentor/"
+    },
+    "MF03": {
+      "title": "위키백과(영어) — Formentor Lighthouse",
+      "url": "https://en.wikipedia.org/wiki/Formentor_Lighthouse"
+    },
+    "MF04": {
+      "title": "위키백과(스페인어) — Faro de Formentor",
+      "url": "https://es.wikipedia.org/wiki/Faro_de_Formentor"
+    },
+    "MF05": {
+      "title": "mallorca.com — far de formentor",
+      "url": "https://www.mallorca.com/en/guide/sights/far-de-formentor"
+    },
+    "MF06": {
+      "title": "yosoymallorca.com — formentor lighthouse",
+      "url": "https://yosoymallorca.com/en/mallorca-lighthouses/formentor-lighthouse/"
+    },
+    "MF07": {
+      "title": "press.fourseasons.com — hotel history",
+      "url": "https://press.fourseasons.com/mallorca/trending-now/hotel-history"
+    },
+    "MF08": {
+      "title": "mallorca.com — antonio parietti coll",
+      "url": "https://www.mallorca.com/en/guide/sights/antonio-parietti-coll"
+    },
+    "MF09": {
+      "title": "wikiwand.com — Talaia d'Albercuix",
+      "url": "https://wikiwand.com/ca/articles/Talaia_d'Albercuix"
+    },
+    "MF10": {
+      "title": "boe.es — BOE A 2021 17657",
+      "url": "https://boe.es/boe/dias/2021/10/29/pdfs/BOE-A-2021-17657.pdf"
+    },
+    "MF11": {
+      "title": "majorcadailybulletin.com — formentor hotel construction mallorca",
+      "url": "https://www.majorcadailybulletin.com/news/local/2021/02/22/79693/formentor-hotel-construction-mallorca.html"
+    },
+    "MF12": {
+      "title": "orf.at — stories",
+      "url": "https://orf.at/stories/3194054/"
+    },
+    "MF13": {
+      "title": "majorcadailybulletin.com — formentor wisdom and tourism mallorca",
+      "url": "https://www.majorcadailybulletin.com/holiday/life-style/2020/04/21/65893/formentor-wisdom-and-tourism-mallorca.html"
+    },
+    "MF14": {
+      "title": "ultimahora.es — muerte montserrat sabater memoria premios formentor",
+      "url": "https://www.ultimahora.es/noticias/cultura/2020/04/19/1158441/muerte-montserrat-sabater-memoria-premios-formentor.html"
+    },
+    "MF15": {
+      "title": "위키백과(영어) — Prix Formentor",
+      "url": "https://en.wikipedia.org/wiki/Prix_Formentor"
+    },
+    "MF16": {
+      "title": "realassets.ipe.com — 10095472.article",
+      "url": "https://realassets.ipe.com/propertyeu/emin-capital-buys-historic-mallorca-hotel-for-165m/10095472.article"
+    },
+    "MF17": {
+      "title": "hospitality-on.com — le four seasons hotel formentor ouvrira en 2023",
+      "url": "https://hospitality-on.com/fr/ouverture/le-four-seasons-hotel-formentor-ouvrira-en-2023"
+    },
+    "MF18": {
+      "title": "위키백과(영어) — The Pine of Formentor",
+      "url": "https://en.wikipedia.org/wiki/The_Pine_of_Formentor"
+    },
+    "MF19": {
+      "title": "lanacion.com.ar — cronica de un refugio literario nid214472",
+      "url": "https://www.lanacion.com.ar/cultura/cronica-de-un-refugio-literario-nid214472/"
+    },
+    "MF20": {
+      "title": "majorcadailybulletin.com — agatha christie new face pollensa the uk",
+      "url": "https://majorcadailybulletin.com/news/local/2008/12/11/19837/agatha-christie-new-face-pollensa-the-uk.html"
+    },
+    "MF21": {
+      "title": "mallorcamagazin.com — ungeloste ratsel agatha christie auf mallorca",
+      "url": "https://www.mallorcamagazin.com/nachrichten/kultur/2020/08/08/82121/ungeloste-ratsel-agatha-christie-auf-mallorca.html"
+    },
+    "MF22": {
+      "title": "hotel-details.com — formentor",
+      "url": "https://hotel-details.com/hotels/formentor"
+    },
+    "MF23": {
+      "title": "mallorca.com — mirador des colomer",
+      "url": "https://www.mallorca.com/en/guide/sights/mirador-des-colomer"
+    },
+    "MF24": {
+      "title": "click-mallorca.com — mirador es colomer",
+      "url": "https://www.click-mallorca.com/blog/rincones/mirador-es-colomer"
+    },
+    "MF25": {
+      "title": "zafirohotels.com — the es colomer viewpoint the formentor lookout",
+      "url": "https://www.zafirohotels.com/en/magazine/the-es-colomer-viewpoint-the-formentor-lookout/"
+    },
+    "MF26": {
+      "title": "vilaweb.cat — pi de formentor ilustrat",
+      "url": "https://www.vilaweb.cat/noticies/pi-de-formentor-ilustrat/"
+    },
+    "MH01": {
+      "title": "위키백과(영어) — History of Mallorca",
+      "url": "https://en.wikipedia.org/wiki/History_of_Mallorca"
+    },
+    "MH02": {
+      "title": "위키백과(카탈루냐어) — Història de Mallorca",
+      "url": "https://ca.wikipedia.org/wiki/Hist%C3%B2ria_de_Mallorca"
+    },
+    "MH03": {
+      "title": "위키백과(영어) — Talaiotic culture",
+      "url": "https://en.wikipedia.org/wiki/Talaiotic_culture"
+    },
+    "MH04": {
+      "title": "enciclopedia.cat — EC GEC 0144785",
+      "url": "https://www.enciclopedia.cat/EC-GEC-0144785"
+    },
+    "MH05": {
+      "title": "alcudia.net — MUSEU cat",
+      "url": "https://www.alcudia.net/export/sites/default/Pollentia/ca/documentos/MUSEU-cat.pdf"
+    },
+    "MH06": {
+      "title": "penelope.uchicago.edu — 5A*",
+      "url": "https://penelope.uchicago.edu/Thayer/E/Roman/Texts/Diodorus_Siculus/5A*.html"
+    },
+    "MH07": {
+      "title": "위키백과(영어) — Balearic slingers",
+      "url": "https://en.wikipedia.org/wiki/Balearic_slingers"
+    },
+    "MH08": {
+      "title": "penelope.uchicago.edu — 3E*",
+      "url": "https://penelope.uchicago.edu/Thayer/E/Roman/Texts/Strabo/3E*.html"
+    },
+    "MH09": {
+      "title": "enciclopedia.cat — EC GEC 0048635",
+      "url": "https://www.enciclopedia.cat/EC-GEC-0048635"
+    },
+    "MH10": {
+      "title": "위키백과(영어) — Pollentia (Mallorca)",
+      "url": "https://en.wikipedia.org/wiki/Pollentia_(Mallorca)"
+    },
+    "MH11": {
+      "title": "위키백과(영어) — Mallorca",
+      "url": "https://en.wikipedia.org/wiki/Mallorca"
+    },
+    "MH12": {
+      "title": "enciclopedia.cat — alcudia",
+      "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/alcudia"
+    },
+    "MH13": {
+      "title": "위키백과(스페인어) — Madina Mayurqa",
+      "url": "https://es.wikipedia.org/wiki/Madina_Mayurqa"
+    },
+    "MH14": {
+      "title": "위키백과(영어) — Conquest of Majorca",
+      "url": "https://en.wikipedia.org/wiki/Conquest_of_Majorca"
+    },
+    "MH15": {
+      "title": "위키백과(카탈루냐어) — Festa de l'Estendard",
+      "url": "https://ca.wikipedia.org/wiki/Festa_de_l%27Estendard"
+    },
+    "MH16": {
+      "title": "위키백과(영어) — Kingdom of Majorca",
+      "url": "https://en.wikipedia.org/wiki/Kingdom_of_Majorca"
+    },
+    "MH17": {
+      "title": "위키백과(영어) — Battle of Llucmajor",
+      "url": "https://en.wikipedia.org/wiki/Battle_of_Llucmajor"
+    },
+    "MH18": {
+      "title": "위키백과(카탈루냐어) — Jaume III de Mallorca",
+      "url": "https://ca.wikipedia.org/wiki/Jaume_III_de_Mallorca"
+    },
+    "MH19": {
+      "title": "위키백과(영어) — Bellver Castle",
+      "url": "https://en.wikipedia.org/wiki/Bellver_Castle"
+    },
+    "MH20": {
+      "title": "위키백과(영어) — A Winter in Majorca",
+      "url": "https://en.wikipedia.org/wiki/A_Winter_in_Majorca"
+    },
+    "MH21": {
+      "title": "mallorca.com — frederic chopin 3",
+      "url": "https://www.mallorca.com/es/guia/lugares-de-interes/frederic-chopin-3"
+    },
+    "MH22": {
+      "title": "위키백과(영어) — Archduke Ludwig Salvator of Austria",
+      "url": "https://en.wikipedia.org/wiki/Archduke_Ludwig_Salvator_of_Austria"
+    },
+    "MH23": {
+      "title": "caib.es — biografia extensa 68918",
+      "url": "https://www.caib.es/sites/lluissalvador/ca/biografia_extensa-68918"
+    },
+    "MH24": {
+      "title": "위키백과(영어) — Palma de Mallorca Airport",
+      "url": "https://en.wikipedia.org/wiki/Palma_de_Mallorca_Airport"
+    },
+    "MH25": {
+      "title": "press.fourseasons.com — hotel history",
+      "url": "https://press.fourseasons.com/mallorca/trending-now/hotel-history"
+    },
+    "MH26": {
+      "title": "위키백과(카탈루냐어) — Article salat",
+      "url": "https://ca.wikipedia.org/wiki/Article_salat"
+    },
+    "MH27": {
+      "title": "ub.edu — enric claraso i daudi",
+      "url": "https://www.ub.edu/modernisme/autors/enric-claraso-i-daudi"
+    },
+    "MH28": {
+      "title": "위키백과(영어) — Ses Païsses",
+      "url": "https://en.wikipedia.org/wiki/Ses_Pa%C3%AFsses"
+    },
+    "MH29": {
+      "title": "위키백과(카탈루냐어) — Talaiot",
+      "url": "https://ca.wikipedia.org/wiki/Talaiot"
+    },
+    "MH30": {
+      "title": "위키백과(영어) — Valldemossa Charterhouse",
+      "url": "https://en.wikipedia.org/wiki/Valldemossa_Charterhouse"
+    },
+    "MH31": {
+      "title": "manueldefalla.com — pdf130316140514 141",
+      "url": "https://www.manueldefalla.com/pdfs/pdf130316140514_141.pdf"
+    },
+    "MH32": {
+      "title": "quisestlullus.narpan.net — miramar",
+      "url": "https://www.quisestlullus.narpan.net/en/miramar"
+    },
+    "MH33": {
+      "title": "위키백과(영어) — Ramon Llull",
+      "url": "https://en.wikipedia.org/wiki/Ramon_Llull"
+    },
+    "MH34": {
+      "title": "위키백과(영어) — Majorca",
+      "url": "https://en.wikipedia.org/wiki/Majorca"
+    },
+    "MH35": {
+      "title": "위키백과(영어) — Hispania Balearica",
+      "url": "https://en.wikipedia.org/wiki/Hispania_Balearica"
+    },
+    "MH36": {
+      "title": "위키백과(영어) — Palma Cathedral",
+      "url": "https://en.wikipedia.org/wiki/Palma_Cathedral"
+    },
+    "MH37": {
+      "title": "barcelo.com — the almudaina royal palace",
+      "url": "https://www.barcelo.com/guia-turismo/en/spain/mallorca/things-to-do/the-almudaina-royal-palace/"
+    },
+    "MH38": {
+      "title": "aena.es — history",
+      "url": "https://www.aena.es/en/palma-de-mallorca/get-to-know-us/history.html"
+    },
+    "MH39": {
+      "title": "위키백과(스페인어) — Aeropuerto de Palma de Mallorca",
+      "url": "https://es.wikipedia.org/wiki/Aeropuerto_de_Palma_de_Mallorca"
+    },
+    "MH40": {
+      "title": "scribd.com — FIELD WORK REPORT",
+      "url": "https://www.scribd.com/document/645738449/FIELD-WORK-REPORT"
+    },
+    "MC01": {
+      "title": "enciclopedia.cat — conquesta de mallorca",
+      "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/conquesta-de-mallorca"
+    },
+    "MC02": {
+      "title": "catedraldemallorca.org — historia",
+      "url": "https://catedraldemallorca.org/catedral/historia/"
+    },
+    "MC03": {
+      "title": "ojs.uv.es — download",
+      "url": "https://ojs.uv.es/index.php/caplletra/article/download/4813/10440"
+    },
+    "MC04": {
+      "title": "aleteia.org — two amazing tricks of light at the cathedral of majorca",
+      "url": "https://aleteia.org/2017/08/11/two-amazing-tricks-of-light-at-the-cathedral-of-majorca"
+    },
+    "MC05": {
+      "title": "위키백과(카탈루냐어) — Catedral de Mallorca",
+      "url": "https://ca.wikipedia.org/wiki/Catedral_de_Mallorca"
+    },
+    "MC06": {
+      "title": "enciclopedia.cat — catedral de mallorca",
+      "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/catedral-de-mallorca"
+    },
+    "MC07": {
+      "title": "catedraldemallorca.org — recorridos",
+      "url": "https://catedraldemallorca.org/visitas/recorridos/"
+    },
+    "MC08": {
+      "title": "forbes.es — not prague or notre dame de paris palma de mallorca has the worlds largest gothic rose win",
+      "url": "https://forbes.es/en/balearic/909018/not-prague-or-notre-dame-de-paris-palma-de-mallorca-has-the-worlds-largest-gothic-rose-window/"
+    },
+    "MC09": {
+      "title": "illesbalears.travel — mallorca cathedrals figure of festa de la llum",
+      "url": "https://www.illesbalears.travel/en/mallorca/mallorca-cathedrals-figure-of-festa-de-la-llum"
+    },
+    "MC10": {
+      "title": "theobjective.com — cientos de personas presencian un fenomeno luminico unico en la catedral de mallorca",
+      "url": "https://theobjective.com/cultura/2018-11-11/cientos-de-personas-presencian-un-fenomeno-luminico-unico-en-la-catedral-de-mallorca/"
+    },
+    "MC11": {
+      "title": "gaudiclub.com — mallorca",
+      "url": "https://gaudiclub.com/ingles/i_vida/mallorca.asp"
+    },
+    "MC12": {
+      "title": "en.fundacionantoniogaudi.org — gaudi restorer the cathedral of mallorca",
+      "url": "https://en.fundacionantoniogaudi.org/gaudi-restorer-the-cathedral-of-mallorca/"
+    },
+    "MC13": {
+      "title": "catedraldemallorca.org — el ano gaudi 2026 reivindica la catedral de mallorca como obra principal y unica del arqui",
+      "url": "https://catedraldemallorca.org/noticias/el-ano-gaudi-2026-reivindica-la-catedral-de-mallorca-como-obra-principal-y-unica-del-arquitecto-catalan"
+    },
+    "MC14": {
+      "title": "bonart.cat — gaudi returns to the cathedral of mallorca with an exhibition that rediscovers his great l",
+      "url": "https://www.bonart.cat/en/n/47027/gaudi-returns-to-the-cathedral-of-mallorca-with-an-exhibition-that-rediscovers-his-great-liturgical-reform"
+    },
+    "MC15": {
+      "title": "위키백과(스페인어) — Catedral de Santa María de Palma de Mallorca",
+      "url": "https://es.wikipedia.org/wiki/Catedral_de_Santa_Mar%C3%ADa_de_Palma_de_Mallorca"
+    },
+    "MC16": {
+      "title": "eldiario.es — els papers gaudi surten llum les cartes factures i tecniques l arquitecte deu mallorca 1 1",
+      "url": "https://www.eldiario.es/illes-balears/cat/els-papers-gaudi-surten-llum-les-cartes-factures-i-tecniques-l-arquitecte-deu-mallorca_1_13300302.html"
+    },
+    "MC17": {
+      "title": "mallorcamagazin.com — magische muster das hat palmas kathedrale auf mallorca vom grossen architekten antoni gaud",
+      "url": "https://www.mallorcamagazin.com/nachrichten/kultur/2026/02/07/146617/magische-muster-das-hat-palmas-kathedrale-auf-mallorca-vom-grossen-architekten-antoni-gaudi-ihrem-innern-bewahrt.html"
+    },
+    "MC18": {
+      "title": "visitpalma.com — the cathedral the crown jewels",
+      "url": "https://visitpalma.com/en/discover/pln523/the-cathedral-the-crown-jewels"
+    },
+    "MC19": {
+      "title": "enciclopedia.cat — miquel barcelo i artigues",
+      "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/miquel-barcelo-i-artigues"
+    },
+    "MC20": {
+      "title": "catedraldemallorca.org",
+      "url": "https://catedraldemallorca.org/en/?p=8022"
+    },
+    "MC21": {
+      "title": "majorcadailybulletin.com — king and queen attend cathedral chapel opening",
+      "url": "https://amp.majorcadailybulletin.com/news/local/2007/01/16/15614/king-and-queen-attend-cathedral-chapel-opening.html"
+    },
+    "MC22": {
+      "title": "위키백과(영어) — Palma Cathedral",
+      "url": "https://en.wikipedia.org/wiki/Palma_Cathedral"
+    },
+    "MC23": {
+      "title": "majorcadailybulletin.com — palma cathedral will stun mallorca with new edition the festa llum next week",
+      "url": "https://www.majorcadailybulletin.com/news/local/2025/11/06/137889/palma-cathedral-will-stun-mallorca-with-new-edition-the-festa-llum-next-week.html"
+    },
+    "MC24": {
+      "title": "spain.info — catedral mallorca",
+      "url": "https://www.spain.info/es/lugares-interes/catedral-mallorca/"
+    },
+    "MC25": {
+      "title": "위키백과(카탈루냐어) — Parc de la Mar",
+      "url": "https://ca.wikipedia.org/wiki/Parc_de_la_Mar"
+    },
+    "MC26": {
+      "title": "majorcadailybulletin.com — popular photography spot mallorca the story behind the lake front palma cathedral",
+      "url": "https://www.majorcadailybulletin.com/holiday/attractions/2025/01/10/130385/popular-photography-spot-mallorca-the-story-behind-the-lake-front-palma-cathedral.html"
+    },
+    "MC27": {
+      "title": "toponhisp.org — node",
+      "url": "https://toponhisp.org/ca/node/4708"
+    },
+    "MC28": {
+      "title": "enciclopedia.cat — castell de lalmudaina",
+      "url": "https://enciclopedia.cat/gran-enciclopedia-catalana/castell-de-lalmudaina"
+    },
+    "MC29": {
+      "title": "위키백과(스페인어) — Palacio Real de La Almudaina",
+      "url": "https://es.wikipedia.org/wiki/Palacio_Real_de_La_Almudaina"
+    },
+    "MC30": {
+      "title": "spain.info — palacio real almudaina",
+      "url": "https://www.spain.info/es/lugares-interes/palacio-real-almudaina/"
+    },
+    "MC31": {
+      "title": "inspain.org — contexto historico",
+      "url": "https://www.inspain.org/es/baleares/palma/palacio-real-almudaina/info/contexto-historico/"
+    },
+    "MC32": {
+      "title": "inspain.org — descripcion artistica",
+      "url": "https://www.inspain.org/es/baleares/palma/palacio-real-almudaina/info/descripcion-artistica/"
+    },
+    "MC33": {
+      "title": "ultimahora.es — historia mallorca angel custodio ciudad del reino mallorca",
+      "url": "https://www.ultimahora.es/xaloc/historia/2023/04/19/1920669/historia-mallorca-angel-custodio-ciudad-del-reino-mallorca.html"
+    },
+    "MC34": {
+      "title": "ultimahora.es — rey felipe arranca audiencias las autoridades islas almudaina",
+      "url": "https://www.ultimahora.es/noticias/local/2026/07/24/2676327/rey-felipe-arranca-audiencias-las-autoridades-islas-almudaina.html"
+    },
+    "MC35": {
+      "title": "lamoncloa.gob.es — 290726 sanchez despacho rey palma",
+      "url": "https://www.lamoncloa.gob.es/multimedia/galeriasfotograficas/presidente/Paginas/2026/290726-sanchez-despacho-rey-palma.aspx"
+    },
+    "MC36": {
+      "title": "lanacion.com.ar — los reyes la princesa leonor la infanta sofia y la reina sofia reciben a la sociedad balea",
+      "url": "https://www.lanacion.com.ar/agencias/los-reyes-la-princesa-leonor-la-infanta-sofia-y-la-reina-sofia-reciben-a-la-sociedad-balear-en-nid05082025"
+    },
+    "MC37": {
+      "title": "hola.com — el rey felipe vi estrena la nueva almudaina tras su regreso de peru asi es por dentro el p",
+      "url": "https://www.hola.com/realeza/casa_espanola/20260729915471/el-rey-felipe-vi-estrena-la-nueva-almudaina-tras-su-regreso-de-peru-asi-es-por-dentro-el-palacio-que-inaugura-el-verano-real/"
+    },
+    "MC38": {
+      "title": "mallorca.com — es drac de na coca",
+      "url": "https://www.mallorca.com/ca/guia/lugares-de-interes/es-drac-de-na-coca"
+    },
+    "MC39": {
+      "title": "catedraldemallorca.org — faqs",
+      "url": "https://catedraldemallorca.org/faqs/"
+    },
+    "MC40": {
+      "title": "학술 논문 — DOI 10.1007/s00004-023-00760-x",
+      "url": "https://doi.org/10.1007/s00004-023-00760-x"
+    },
+    "MC41": {
+      "title": "ccs.saf-astronomie.fr — 2024 Sunlight Mallorca Cathedral",
+      "url": "https://ccs.saf-astronomie.fr/wp-content/uploads/2024/Info-Mail_2024/2024%20Sunlight%20Mallorca%20Cathedral.pdf"
+    },
+    "MC42": {
+      "title": "mallorca.com — drac de na coca palma w4baprnu",
+      "url": "https://www.mallorca.com/es/directorio/empresa/drac-de-na-coca-palma-w4baprnu"
+    },
+    "MC43": {
+      "title": "click-mallorca.com — sabias que el drac de na coca 2",
+      "url": "https://www.click-mallorca.com/blog/rincones/sabias-que-el-drac-de-na-coca-2/"
+    },
+    "MC44": {
+      "title": "ultimahora.es — campanas seu seran sometidas investigaciones cientificas",
+      "url": "https://www.ultimahora.es/noticias/cultura/2013/09/27/109189/campanas-seu-seran-sometidas-investigaciones-cientificas.html"
+    },
+    "MC45": {
+      "title": "majorcadailybulletin.com — bells from palma cathedral being sent germany",
+      "url": "https://amp.majorcadailybulletin.com/news/local/2013/04/20/34243/bells-from-palma-cathedral-being-sent-germany.html"
+    },
+    "MC46": {
+      "title": "mallorcamagazin.com — handarbeit glockenturm der kathedrale von palma",
+      "url": "https://www.mallorcamagazin.com/nachrichten/kultur/2018/05/06/62103/handarbeit-glockenturm-der-kathedrale-von-palma.html"
+    },
+    "MC47": {
+      "title": "publicacions.iec.cat — 00000045",
+      "url": "https://publicacions.iec.cat/repository/pdf/00000319/00000045.pdf"
+    },
+    "MC48": {
+      "title": "menorca.info — espectacular vuit seu ilumina catedral mallorca ano mas",
+      "url": "https://www.menorca.info/balears/noticias/2024/11/11/2273651/espectacular-vuit-seu-ilumina-catedral-mallorca-ano-mas.html"
+    },
+    "MC49": {
+      "title": "majorcadailybulletin.com — palma cathedral festival light",
+      "url": "https://majorcadailybulletin.com/news/local/2020/01/29/61979/palma-cathedral-festival-light.html"
+    },
+    "MT01": {
+      "title": "위키백과(영어) — Serra de Tramuntana",
+      "url": "https://en.wikipedia.org/wiki/Serra_de_Tramuntana"
+    },
+    "MT02": {
+      "title": "whc.unesco.org — list",
+      "url": "https://whc.unesco.org/es/list/1371/"
+    },
+    "MT03": {
+      "title": "위키백과(영어) — Puig Major",
+      "url": "https://en.wikipedia.org/wiki/Puig_Major"
+    },
+    "MT04": {
+      "title": "mallorca.com — dry stone walls of mallorca how pedra en sec shapes the serra",
+      "url": "https://www.mallorca.com/en/magazin/mallorca-society-culture/dry-stone-walls-of-mallorca-how-pedra-en-sec-shapes-the-serra"
+    },
+    "MT05": {
+      "title": "nesnovnadediscina.si — art of dry stone walling knowledge and techniques",
+      "url": "https://nesnovnadediscina.si/en/unesco/art-of-dry-stone-walling-knowledge-and-techniques"
+    },
+    "MT06": {
+      "title": "ich.unesco.org — art of dry stone walling knowledge and techniques 01393",
+      "url": "https://ich.unesco.org/en/RL/art-of-dry-stone-walling-knowledge-and-techniques-01393"
+    },
+    "MT07": {
+      "title": "위키백과(스페인어) — Antonio Parietti",
+      "url": "https://es.wikipedia.org/wiki/Antonio_Parietti"
+    },
+    "MT08": {
+      "title": "위키백과(영어) — Sa Calobra",
+      "url": "https://en.wikipedia.org/wiki/Sa_Calobra"
+    },
+    "MT09": {
+      "title": "mallorca.com — nus de sa corbata",
+      "url": "https://www.mallorca.com/en/guide/sights/nus-de-sa-corbata"
+    },
+    "MT10": {
+      "title": "위키백과(스페인어) — Torrente de Pareis",
+      "url": "https://es.wikipedia.org/wiki/Torrente_de_Pareis"
+    },
+    "MT11": {
+      "title": "intranet.caib.es — LIG TORRENT DE PAREIS CAS",
+      "url": "https://intranet.caib.es/geoturfront/fichero/download/477/LIG%20TORRENT%20DE%20PAREIS%20CAS.pdf"
+    },
+    "MT12": {
+      "title": "majorcadailybulletin.com — the concert the torrent calobra",
+      "url": "https://majorcadailybulletin.com/enjoying-mallorca/whatson/music/the-concert-the-torrent-calobra.html"
+    },
+    "MT13": {
+      "title": "planomato.com — concierto torrent pareis edicion 62",
+      "url": "https://planomato.com/es/palma-de-mallorca/n/concierto-torrent-pareis-edicion-62"
+    },
+    "MT14": {
+      "title": "ultimahora.es — cases neu primeros frigorificos mallorca",
+      "url": "https://www.ultimahora.es/noticias/local/2023/01/27/1871203/cases-neu-primeros-frigorificos-mallorca.html"
+    },
+    "MT15": {
+      "title": "mallorca.com — antonio parietti coll",
+      "url": "https://www.mallorca.com/en/guide/sights/antonio-parietti-coll"
+    },
+    "MT16": {
+      "title": "khan.co.kr — article",
+      "url": "https://www.khan.co.kr/en/article/202610131633007"
+    },
+    "MT17": {
+      "title": "en.gancarczyk.com",
+      "url": "https://en.gancarczyk.com/?p=395"
+    },
+    "MT18": {
+      "title": "위키백과(영어) — Mallorcan midwife toad",
+      "url": "https://en.wikipedia.org/wiki/Mallorcan_midwife_toad"
+    },
+    "MT19": {
+      "title": "caib.es — monumento natural del torrent de pareis",
+      "url": "https://caib.es/sites/espaisnaturalsprotegits/es/monumento_natural_del_torrent_de_pareis/"
+    },
+    "MT20": {
+      "title": "위키백과(카탈루냐어) — Torrent de Pareis",
+      "url": "https://ca.wikipedia.org/wiki/Torrent_de_Pareis"
+    },
+    "MT21": {
+      "title": "intranet.caib.es — LIG TORRENT DE PAREIS EN",
+      "url": "https://intranet.caib.es/geoturfront/fichero/download/478/LIG%20TORRENT%20DE%20PAREIS%20EN.pdf"
+    },
+    "MT22": {
+      "title": "mallorca.com — nus de sa corbata",
+      "url": "https://www.mallorca.com/it/guida/attrazioni/nus-de-sa-corbata"
+    },
+    "MT23": {
+      "title": "mallorca.com — nus de sa corbata",
+      "url": "https://www.mallorca.com/fr/guide/sites-touristiques/nus-de-sa-corbata"
+    },
+    "MS01": {
+      "title": "위키백과(스페인어) — Ferrocarril de Sóller",
+      "url": "https://es.wikipedia.org/wiki/Ferrocarril_de_S%C3%B3ller"
+    },
+    "MS02": {
+      "title": "위키백과(영어) — Ferrocarril de Sóller",
+      "url": "https://en.wikipedia.org/wiki/Ferrocarril_de_S%C3%B3ller"
+    },
+    "MS03": {
+      "title": "trendesoller.com — train",
+      "url": "https://trendesoller.com/eng/train/"
+    },
+    "MS04": {
+      "title": "trendesoller.com — historia",
+      "url": "https://trendesoller.com/historia"
+    },
+    "MS05": {
+      "title": "위키백과(영어) — Sóller",
+      "url": "https://en.wikipedia.org/wiki/S%C3%B3ller"
+    },
+    "MS06": {
+      "title": "trendesoller.com — soller",
+      "url": "https://trendesoller.com/eng/whattosee/soller"
+    },
+    "MS07": {
+      "title": "trendesoller.com — tranvia",
+      "url": "https://trendesoller.com/tranvia"
+    },
+    "MS08": {
+      "title": "위키백과(영어) — Titanic",
+      "url": "https://en.wikipedia.org/wiki/Titanic"
+    },
+    "MS09": {
+      "title": "lonelyplanet.com — sala picasso sala miro",
+      "url": "https://www.lonelyplanet.com/points-of-interest/sala-picasso-sala-miro/1085734"
+    },
+    "MS10": {
+      "title": "mallorcamagazin.com — das paradies vor der haustur sieht orangental und dem hauptort soller aus",
+      "url": "https://www.mallorcamagazin.com/nachrichten/lokales/2026/02/28/148381/das-paradies-vor-der-haustur-sieht-orangental-und-dem-hauptort-soller-aus.html"
+    },
+    "MS11": {
+      "title": "kupi.com — history",
+      "url": "https://kupi.com/en/explore/spain/soller/history"
+    },
+    "MS12": {
+      "title": "mallorca.com — sala picasso y sala miro soller nrgs8ruy",
+      "url": "https://www.mallorca.com/es/directorio/empresa/sala-picasso-y-sala-miro-soller-nrgs8ruy"
+    },
+    "MS13": {
+      "title": "idealpropertymallorca.com — soller train tour",
+      "url": "https://www.idealpropertymallorca.com/blog/soller-train-tour/"
+    },
+    "MS14": {
+      "title": "illesbalears.travel — exhibition space salas del ferrocarril de soller",
+      "url": "https://illesbalears.travel/en/mallorca/exhibition-space-salas-del-ferrocarril-de-soller"
+    },
+    "MS15": {
+      "title": "accesmallorca.com — railway station soller",
+      "url": "https://accesmallorca.com/attractions/railway-station-soller/"
+    },
+    "MS16": {
+      "title": "trendesoller.com — history train de soller",
+      "url": "https://trendesoller.com/eng/company/history-train-de-soller"
+    },
+    "MS17": {
+      "title": "majorcadailybulletin.com — mallorca culture vintage soller train",
+      "url": "https://majorcadailybulletin.com/holiday/life-style/2021/04/16/82589/mallorca-culture-vintage-soller-train.html"
+    },
+    "MS18": {
+      "title": "trendesoller.com — tram",
+      "url": "https://trendesoller.com/eng/routes/tram"
+    },
+    "MV01": {
+      "title": "위키백과(영어) — Valldemossa Charterhouse",
+      "url": "https://en.wikipedia.org/wiki/Valldemossa_Charterhouse"
+    },
+    "MV02": {
+      "title": "위키백과(카탈루냐어) — Cartoixa de Valldemossa",
+      "url": "https://ca.wikipedia.org/wiki/Cartoixa_de_Valldemossa"
+    },
+    "MV03": {
+      "title": "mallorca.com — frederic chopin 3",
+      "url": "https://www.mallorca.com/en/guide/sights/frederic-chopin-3"
+    },
+    "MV04": {
+      "title": "위키백과(영어) — Valldemossa",
+      "url": "https://en.wikipedia.org/wiki/Valldemossa"
+    },
+    "MV05": {
+      "title": "위키백과(영어) — Prelude, Op. 28, No. 15 (Chopin)",
+      "url": "https://en.wikipedia.org/wiki/Prelude,_Op._28,_No._15_(Chopin)"
+    },
+    "MV06": {
+      "title": "majorcadailybulletin.com — judge rules tourists have been looking wrong chopin cell",
+      "url": "https://www.majorcadailybulletin.com/news/local/2013/02/06/27343/judge-rules-tourists-have-been-looking-wrong-chopin-cell.html"
+    },
+    "MV07": {
+      "title": "classicfm.com — paris poland customs",
+      "url": "https://www.classicfm.com/composers/chopin/guides/chopin-facts/paris-poland-customs/"
+    },
+    "MV08": {
+      "title": "legaltoday.com — juicio por los pianos de chopin de mallorca 2021 08 11",
+      "url": "https://www.legaltoday.com/opinion/articulos-de-opinion/juicio-por-los-pianos-de-chopin-de-mallorca-2021-08-11/"
+    },
+    "MV09": {
+      "title": "위키백과(영어) — A Winter in Majorca",
+      "url": "https://en.wikipedia.org/wiki/A_Winter_in_Majorca"
+    },
+    "MV10": {
+      "title": "robertgraves.org — bibliography",
+      "url": "https://robertgraves.org/bibliography/1086"
+    },
+    "MV11": {
+      "title": "위키백과(영어) — Catherine of Palma",
+      "url": "https://en.wikipedia.org/wiki/Catherine_of_Palma"
+    },
+    "MV12": {
+      "title": "illesbalears.travel — discover the unique fiestas de la beata",
+      "url": "https://www.illesbalears.travel/en/mallorca/discover-the-unique-fiestas-de-la-beata"
+    },
+    "MV13": {
+      "title": "rumbo.es — que ver valldemossa",
+      "url": "https://www.rumbo.es/ideas-para-viajar/cultura/que-ver-valldemossa"
+    },
+    "MV14": {
+      "title": "directoalpaladar.com — coca patata valldemossa receta facil dulce para bollo muy tipico mallorca",
+      "url": "https://www.directoalpaladar.com/postres/coca-patata-valldemossa-receta-facil-dulce-para-bollo-muy-tipico-mallorca"
+    },
+    "MV15": {
+      "title": "mallorca.com — coca de patata the sweet yeasted pastry from valldemossa",
+      "url": "https://www.mallorca.com/en/magazin/mallorca-food-drink/coca-de-patata-the-sweet-yeasted-pastry-from-valldemossa"
+    },
+    "MV16": {
+      "title": "en.arabalears.cat — jovellanos from minister to prisoner in bellver 130 5711246",
+      "url": "https://en.arabalears.cat/culture/jovellanos-from-minister-to-prisoner-in-bellver_130_5711246.html"
+    },
+    "MV17": {
+      "title": "위키백과(영어) — Manuel Bayeu",
+      "url": "https://en.wikipedia.org/wiki/Manuel_Bayeu"
+    },
+    "MV18": {
+      "title": "ultimahora.es — parte del legado palmesano jovellanos exhibe casa natal gijon",
+      "url": "https://www.ultimahora.es/noticias/cultura/2013/07/22/104443/parte-del-legado-palmesano-jovellanos-exhibe-casa-natal-gijon.html"
+    },
+    "MV19": {
+      "title": "cartoixadevalldemossa.com — ruben dario en",
+      "url": "https://cartoixadevalldemossa.com/en/ruben-dario-en"
+    },
+    "MV20": {
+      "title": "cervantesvirtual.com — album personal",
+      "url": "https://www.cervantesvirtual.com/portales/ruben_dario/album_personal/3"
+    },
+    "MV21": {
+      "title": "world-in-words.com — tiles of the blessed",
+      "url": "https://world-in-words.com/news/tiles-of-the-blessed"
+    },
+    "MV22": {
+      "title": "album-online.com — baldosa evocando santa catalina thomas pregau per nosaltres valldemossa mallorca alb957979",
+      "url": "https://www.album-online.com/detail/fr/MWI4YzMyMA/baldosa-evocando-santa-catalina-thomas-pregau-per-nosaltres-valldemossa-mallorca-alb9579794"
+    },
+    "MV23": {
+      "title": "위키백과(카탈루냐어) — Valldemossa",
+      "url": "https://ca.wikipedia.org/wiki/Valldemossa"
+    },
+    "MV24": {
+      "title": "위키백과(스페인어) — Cartuja de Valldemosa",
+      "url": "https://es.wikipedia.org/wiki/Cartuja_de_Valldemosa"
+    },
+    "MV25": {
+      "title": "위키백과(스페인어) — Manuel Bayeu",
+      "url": "https://es.wikipedia.org/wiki/Manuel_Bayeu"
+    },
+    "MV26": {
+      "title": "guide.cartoixadevalldemossa.com",
+      "url": "https://guide.cartoixadevalldemossa.com/?p=1030"
+    },
+    "MV27": {
+      "title": "cartoixadevalldemossa.com — the church",
+      "url": "https://cartoixadevalldemossa.com/en/the-church"
+    },
+    "MV28": {
+      "title": "위키백과(영어) — Scherzo No. 3 (Chopin)",
+      "url": "https://en.wikipedia.org/wiki/Scherzo_No._3_(Chopin)"
+    },
+    "MV29": {
+      "title": "위키백과(영어) — Ballade No. 2 (Chopin)",
+      "url": "https://en.wikipedia.org/wiki/Ballade_No._2_(Chopin)"
+    },
+    "MV30": {
+      "title": "위키백과(영어) — Frédéric Chopin",
+      "url": "https://en.wikipedia.org/wiki/Fr%C3%A9d%C3%A9ric_Chopin"
     }
   }
 }
