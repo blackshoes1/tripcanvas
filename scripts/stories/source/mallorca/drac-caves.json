@@ -28,6 +28,7 @@
       "title": "용의 동굴과 바다의 호수",
       "textFile": "mallorca/narration/drac-caves.txt",
       "audio": "mallorca/drac-caves-core.mp3",
+      "audioText": "f56007ac702c08b4",
       "sources": [
         "MD01",
         "MD02",
@@ -44,14 +45,10 @@
         "MD13",
         "MD14",
         "MD15",
-        "MD16",
         "MD17",
         "MD18",
         "MD19",
         "MD20",
-        "MD21",
-        "MD22",
-        "MD23",
         "MD24",
         "MD25",
         "MD26",
@@ -61,7 +58,7 @@
   ],
   "sources": {
     "MD01": {
-      "title": "spain.info — mallorca concierto cueva",
+      "title": "스페인 관광청·마요르카의 드라크 동굴",
       "url": "https://www.spain.info/es/descubrir-espana/mallorca-concierto-cueva/"
     },
     "MD02": {
@@ -73,43 +70,43 @@
       "url": "https://en.wikipedia.org/wiki/Caves_of_Drach"
     },
     "MD04": {
-      "title": "showcaves.com — Drac",
+      "title": "쇼 케이브·스페인의 관광 동굴, 드라크 동굴",
       "url": "https://showcaves.com/english/es/showcaves/Drac.html"
     },
     "MD05": {
-      "title": "cuevasdeldrach.com — la cueva",
+      "title": "드라크 동굴 공식·동굴과 관람",
       "url": "https://www.cuevasdeldrach.com/la-cueva.php"
     },
     "MD06": {
-      "title": "cuevasdeldrach.com — historia",
+      "title": "드라크 동굴 공식·역사",
       "url": "https://www.cuevasdeldrach.com/historia.php"
     },
     "MD07": {
-      "title": "ibdigital.uib.es — PapersSEB 2018vol001p021",
+      "title": "발레아레스 동굴학회지(2018, 1권 21쪽)",
       "url": "https://ibdigital.uib.es/greenstone/library/collection/papersSocietatEspeleologica/document/PapersSEB_2018vol001p021"
     },
     "MD08": {
-      "title": "raco.cat — download",
+      "title": "발레아레스 동굴학회지 논문 요약(RACO)",
       "url": "https://raco.cat/index.php/PapersSeb/article/download/393077/486575"
     },
     "MD09": {
-      "title": "mallorca.com — coves del drach",
+      "title": "마요르카닷컴·드라크 동굴, 관람과 마르텔 호수 음악회",
       "url": "https://www.mallorca.com/ca/guia/lugares-de-interes/coves-del-drach"
     },
     "MD10": {
-      "title": "ibdigital.uib.es — PapersSEB 2020vol003p033",
+      "title": "발레아레스 동굴학회지(2020, 3권 33쪽)",
       "url": "https://ibdigital.uib.es/greenstone/library/collection/papersSocietatEspeleologica/document/PapersSEB_2020vol003p033"
     },
     "MD11": {
-      "title": "cuevasdeldrach.com",
+      "title": "드라크 동굴 공식 사이트",
       "url": "https://www.cuevasdeldrach.com/"
     },
     "MD12": {
-      "title": "legacy.caves.org — cave 79 01 59",
+      "title": "동굴·카르스트 연구지 79권 1호(59~72쪽)",
       "url": "https://legacy.caves.org/pub/journal/PDF/V79/cave-79-01-59.pdf"
     },
     "MD13": {
-      "title": "pmc.ncbi.nlm.nih.gov — PMC7820252",
+      "title": "PMC 논문·지난 650만 년 서지중해의 해수면 기록",
       "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7820252"
     },
     "MD14": {
@@ -117,12 +114,8 @@
       "url": "https://en.wikipedia.org/wiki/Magic_Fountain_of_Montju%C3%AFc"
     },
     "MD15": {
-      "title": "digitalcommons.usf.edu — Geology and Hydrology",
+      "title": "미국 국립 동굴·카르스트 관리 심포지엄(2013)·마요르카 관광 동굴 물기둥의 변화",
       "url": "https://digitalcommons.usf.edu/nckms_2013/Proceedings/Geology_and_Hydrology/7"
-    },
-    "MD16": {
-      "title": "위키백과(영어) — Clovis Dardentor",
-      "url": "https://en.wikipedia.org/wiki/Clovis_Dardentor"
     },
     "MD17": {
       "title": "위키백과(카탈루냐어) — Història de Mallorca",
@@ -133,35 +126,23 @@
       "url": "https://en.wikipedia.org/wiki/History_of_Mallorca"
     },
     "MD19": {
-      "title": "aida.de — drachenhoehle mallorca",
+      "title": "아이다 크루즈·드라크 동굴 이야기",
       "url": "https://aida.de/willkommen/aida-stories/drachenhoehle-mallorca"
     },
     "MD20": {
-      "title": "hoteles.net — porto cristo mallorca",
+      "title": "오텔레스닷넷·포르토 크리스토에서 보고 할 것",
       "url": "https://www.hoteles.net/mallorca/porto-cristo/porto-cristo-mallorca.html"
     },
-    "MD21": {
-      "title": "mallorca.com — marques del reguer",
-      "url": "https://www.mallorca.com/es/guia/lugares-de-interes/marques-del-reguer"
-    },
-    "MD22": {
-      "title": "cuevasdeldrach.com — historia",
-      "url": "https://www.cuevasdeldrach.com/en/historia.php"
-    },
-    "MD23": {
-      "title": "pmc.ncbi.nlm.nih.gov — PMC7820252",
-      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7820252/"
-    },
     "MD24": {
-      "title": "ibdigital.uib.es — PapersSEB 2018vol001p223",
+      "title": "발레아레스 동굴학회지(2018, 1권 223쪽)",
       "url": "https://ibdigital.uib.es/greenstone/library/collection/papersSocietatEspeleologica/document/PapersSEB_2018vol001p223"
     },
     "MD25": {
-      "title": "majorcadailybulletin.com — caves drach immerse yourself our environment",
+      "title": "마요르카 데일리 불레틴·드라크 동굴(2019)",
       "url": "https://www.majorcadailybulletin.com/london-fair/what-do/2019/10/31/59217/caves-drach-immerse-yourself-our-environment.html"
     },
     "MD26": {
-      "title": "mallorca.com — coves del drach",
+      "title": "마요르카닷컴·드라크 동굴 관람 안내",
       "url": "https://www.mallorca.com/en/guide/sights/coves-del-drach"
     },
     "MD27": {
@@ -174,7 +155,7 @@
     {
       "claim": "천장에 매달린 종유석을 보세요. 백 년에 1센티미터쯤 자란다고 합니다.",
       "sources": [
-        "MD22"
+        "MD06"
       ],
       "status": "WRONG",
       "resolution": "OMITTED"
@@ -182,7 +163,7 @@
     {
       "claim": "지금 보이는 긴 종유석 하나하나가 수만 년의 시간인 셈입니다.",
       "sources": [
-        "MD22"
+        "MD06"
       ],
       "status": "UNCONFIRMED",
       "resolution": "OMITTED"
@@ -190,7 +171,7 @@
     {
       "claim": "그때 이곳의 물이 지금보다 4미터쯤 높은 곳까지 차 있었다는 것을, 이 동굴이 기억하고 있는 셈입니다.",
       "sources": [
-        "MD23"
+        "MD13"
       ],
       "status": "CONFIRMED"
     },

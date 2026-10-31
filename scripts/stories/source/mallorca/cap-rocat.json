@@ -14,7 +14,11 @@
     "Hotel Cap Rocat",
     "엔데로캇 요새",
     "Fort d'Enderrocat",
-    "Fuerte de Enderrocat"
+    "Fuerte de Enderrocat",
+    "Fort del Cap Enderrocat",
+    "Fuerte del Cabo Enderrocat",
+    "Cap Enderrocat",
+    "엔데로캇 곶 요새"
   ],
   "placeIds": [],
   "voice": {
@@ -28,6 +32,7 @@
       "title": "팔마만을 지키던 요새",
       "textFile": "mallorca/narration/cap-rocat.txt",
       "audio": "mallorca/cap-rocat-core.mp3",
+      "audioText": "c2e0fd1a3e649799",
       "sources": [
         "MR01",
         "MR02",
@@ -60,51 +65,51 @@
       "url": "https://ca.wikipedia.org/wiki/Cap_Enderrocat"
     },
     "MR03": {
-      "title": "eldebate.com — fortaleza militar espana siglo xix reconvertida hotel recondito privado mediterraneo 40009",
+      "title": "엘 데바테·19세기 군사 요새를 고친 지중해의 호텔(2026)",
       "url": "https://www.eldebate.com/estilo-vida/viajar/20260326/fortaleza-militar-espana-siglo-xix-reconvertida-hotel-recondito-privado-mediterraneo_400094.html"
     },
     "MR04": {
-      "title": "europeanheritageawards.eu — cap enderrocat fortress",
+      "title": "유럽 문화유산상(유로파 노스트라)·엔데로캇 곶 요새",
       "url": "https://www.europeanheritageawards.eu/winners/cap-enderrocat-fortress/"
     },
     "MR05": {
-      "title": "hotels-insolites.com — cap rocat.hotel",
+      "title": "오텔 앵솔리트·캡 로캣",
       "url": "https://www.hotels-insolites.com/en/cap-rocat.hotel"
     },
     "MR06": {
-      "title": "europeanheritageawards-archive.eu — cap enderrocat fortress mallorca",
+      "title": "유럽 문화유산상 기록관·엔데로캇 곶 요새, 마요르카",
       "url": "https://europeanheritageawards-archive.eu/laureates-1978-2022/detail/cap-enderrocat-fortress-mallorca"
     },
     "MR07": {
-      "title": "ultimahora.es — proyecto mallorca sido galardonado los premios patrimonio cultural 2017",
+      "title": "울티마 오라·마요르카 사업 유럽 문화유산상 수상(2017)",
       "url": "https://www.ultimahora.es/noticias/local/2017/04/05/259640/proyecto-mallorca-sido-galardonado-los-premios-patrimonio-cultural-2017.html"
     },
     "MR08": {
-      "title": "seemallorca.com — new luxury hotel in the bay of palma",
+      "title": "시 마요르카·팔마만의 새 고급 호텔",
       "url": "https://www.seemallorca.com/events/news/new-luxury-hotel-in-the-bay-of-palma"
     },
     "MR09": {
-      "title": "guide.michelin.com — cap rocat mallorca spain key hotel michelin guide signature space",
+      "title": "미쉐린 가이드·바닷가 요새 호텔 캡 로캣의 스위트",
       "url": "https://guide.michelin.com/en/article/travel/cap-rocat-mallorca-spain-key-hotel-michelin-guide-signature-space"
     },
     "MR10": {
-      "title": "tablethotels.com — the war is over",
+      "title": "태블릿 호텔·마요르카 요새를 고친 캡 로캣",
       "url": "https://www.tablethotels.com/magazine/en/2024/04/the-war-is-over/"
     },
     "MR11": {
-      "title": "caprocat.com — once upon a time in majorca",
+      "title": "캡 로캣 공식·보도 자료 「마요르카의 옛날 옛적에」",
       "url": "https://caprocat.com/en/press/once-upon-a-time-in-majorca/"
     },
     "MR12": {
-      "title": "caprocat.com — culture and heritage",
+      "title": "캡 로캣 공식·문화와 유산",
       "url": "https://caprocat.com/en/sustainability/culture-and-heritage"
     },
     "MR13": {
-      "title": "caib.es — es0000081 cap enderrocat cap blanc zepa",
+      "title": "발레아레스 주정부 나투라 2000·엔데로캇 곶~블랑 곶 조류 특별 보호 구역(ZEPA)",
       "url": "https://www.caib.es/sites/xarxanatura/ca/es0000081_cap_enderrocat-cap_blanc_zepa"
     },
     "MR14": {
-      "title": "mallorca.com — bateria alfons xiii",
+      "title": "마요르카닷컴·알폰소 13세 포대",
       "url": "https://www.mallorca.com/fr/guide/sites-touristiques/bateria-alfons-xiii"
     },
     "MR15": {
@@ -112,11 +117,11 @@
       "url": "https://ca.wikipedia.org/wiki/Badia_de_Palma"
     },
     "MR16": {
-      "title": "llucmajor.org — print",
+      "title": "유크마요르시·해안 방어 망루",
       "url": "https://llucmajor.org/es/node/2196/printable/print"
     },
     "MR17": {
-      "title": "caprocat.com — cap rocat",
+      "title": "캡 로캣 공식·호텔과 주변",
       "url": "https://caprocat.com/cap-rocat/"
     },
     "MR18": {
@@ -177,7 +182,16 @@
         "MR17"
       ],
       "status": "UNCONFIRMED",
-      "resolution": "OMITTED"
+      "resolution": "HEDGED"
+    },
+    {
+      "claim": "이 곶 일대는 오랫동안 군사 구역이었고, 지금은 자연 보호 구역이자 새들을 위한 특별 보호 구역으로 지정되어 해안 풍경을 지키고 있습니다.",
+      "sources": [
+        "MR13",
+        "MR06",
+        "MR17"
+      ],
+      "status": "CONFIRMED"
     },
     {
       "claim": "바다 쪽 테라스에 서면, 만 건너 북서쪽으로 팔마가 보입니다.",

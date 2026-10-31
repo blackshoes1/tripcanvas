@@ -16,7 +16,12 @@
     "Tren de Sóller",
     "Estació de Sóller",
     "Tranvía de Sóller",
-    "Tramvia de Sóller"
+    "Tramvia de Sóller",
+    "Sóller Train",
+    "Train to Sóller",
+    "Orange Express",
+    "소예르 철도",
+    "오렌지 급행"
   ],
   "placeIds": [],
   "voice": {
@@ -30,6 +35,7 @@
       "title": "오렌지가 놓은 철길",
       "textFile": "mallorca/narration/soller-train.txt",
       "audio": "mallorca/soller-train-core.mp3",
+      "audioText": "b4db49658855d0a8",
       "sources": [
         "MS01",
         "MS02",
@@ -62,11 +68,11 @@
       "url": "https://en.wikipedia.org/wiki/Ferrocarril_de_S%C3%B3ller"
     },
     "MS03": {
-      "title": "trendesoller.com — train",
+      "title": "소예르 기차 공식·기차 여행",
       "url": "https://trendesoller.com/eng/train/"
     },
     "MS04": {
-      "title": "trendesoller.com — historia",
+      "title": "소예르 기차 공식·역사(스페인어)",
       "url": "https://trendesoller.com/historia"
     },
     "MS05": {
@@ -74,11 +80,11 @@
       "url": "https://en.wikipedia.org/wiki/S%C3%B3ller"
     },
     "MS06": {
-      "title": "trendesoller.com — soller",
+      "title": "소예르 기차 공식·소예르에서 놓치면 안 될 다섯 곳",
       "url": "https://trendesoller.com/eng/whattosee/soller"
     },
     "MS07": {
-      "title": "trendesoller.com — tranvia",
+      "title": "소예르 기차 공식·트램 여행(스페인어)",
       "url": "https://trendesoller.com/tranvia"
     },
     "MS08": {
@@ -86,43 +92,43 @@
       "url": "https://en.wikipedia.org/wiki/Titanic"
     },
     "MS09": {
-      "title": "lonelyplanet.com — sala picasso sala miro",
+      "title": "론리 플래닛·피카소실과 미로실",
       "url": "https://www.lonelyplanet.com/points-of-interest/sala-picasso-sala-miro/1085734"
     },
     "MS10": {
-      "title": "mallorcamagazin.com — das paradies vor der haustur sieht orangental und dem hauptort soller aus",
+      "title": "마요르카 마가진·오렌지 골짜기와 소예르(2026)",
       "url": "https://www.mallorcamagazin.com/nachrichten/lokales/2026/02/28/148381/das-paradies-vor-der-haustur-sieht-orangental-und-dem-hauptort-soller-aus.html"
     },
     "MS11": {
-      "title": "kupi.com — history",
+      "title": "쿠피·소예르의 역사",
       "url": "https://kupi.com/en/explore/spain/soller/history"
     },
     "MS12": {
-      "title": "mallorca.com — sala picasso y sala miro soller nrgs8ruy",
+      "title": "마요르카닷컴·소예르 피카소실과 미로실",
       "url": "https://www.mallorca.com/es/directorio/empresa/sala-picasso-y-sala-miro-soller-nrgs8ruy"
     },
     "MS13": {
-      "title": "idealpropertymallorca.com — soller train tour",
+      "title": "아이디얼 프로퍼티 블로그·소예르 기차 여행",
       "url": "https://www.idealpropertymallorca.com/blog/soller-train-tour/"
     },
     "MS14": {
-      "title": "illesbalears.travel — exhibition space salas del ferrocarril de soller",
+      "title": "발레아레스 관광청·소예르 철도 전시실",
       "url": "https://illesbalears.travel/en/mallorca/exhibition-space-salas-del-ferrocarril-de-soller"
     },
     "MS15": {
-      "title": "accesmallorca.com — railway station soller",
+      "title": "악세스 마요르카·소예르역",
       "url": "https://accesmallorca.com/attractions/railway-station-soller/"
     },
     "MS16": {
-      "title": "trendesoller.com — history train de soller",
+      "title": "소예르 기차 공식·회사의 역사",
       "url": "https://trendesoller.com/eng/company/history-train-de-soller"
     },
     "MS17": {
-      "title": "majorcadailybulletin.com — mallorca culture vintage soller train",
+      "title": "마요르카 데일리 불레틴·옛 소예르 기차(2021)",
       "url": "https://majorcadailybulletin.com/holiday/life-style/2021/04/16/82589/mallorca-culture-vintage-soller-train.html"
     },
     "MS18": {
-      "title": "trendesoller.com — tram",
+      "title": "소예르 기차 공식·트램 노선",
       "url": "https://trendesoller.com/eng/routes/tram"
     }
   },
@@ -139,6 +145,15 @@
       "resolution": "OMITTED"
     },
     {
+      "claim": "역 건물 안에는 작은 전시실이 있어서, 피카소의 도자기와 미로의 판화를 볼 수 있습니다.",
+      "sources": [
+        "MS12",
+        "MS13",
+        "MS14"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
       "claim": "소예르역 건물은 원래 1606년에 지은, 해적을 막도록 단단하게 지은 저택이었습니다.",
       "sources": [
         "MS02",
@@ -146,6 +161,14 @@
       ],
       "status": "UNCONFIRMED",
       "resolution": "OMITTED"
+    },
+    {
+      "claim": "소예르역 건물은 원래 1606년에 요새처럼 단단하게 지은 저택이었습니다.",
+      "sources": [
+        "MS02",
+        "MS15"
+      ],
+      "status": "CONFIRMED"
     },
     {
       "claim": "기차는 1911년 가을 처음 소예르역까지 들어왔고, 그해 10월 비공식 개통 운행에는 마요르카 출신의 전 총리 안토니오 마우라도 기차에 올랐습니다.",

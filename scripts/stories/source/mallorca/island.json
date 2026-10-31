@@ -24,8 +24,9 @@
       "title": "더 큰 섬, 마요르카의 역사",
       "textFile": "mallorca/narration/island.txt",
       "audio": "mallorca/island-core.mp3",
+      "audioText": "03138506208f31db",
       "sources": [
-        "MH01",
+        "MH11",
         "MH02",
         "MH03",
         "MH04",
@@ -35,7 +36,6 @@
         "MH08",
         "MH09",
         "MH10",
-        "MH11",
         "MH12",
         "MH13",
         "MH14",
@@ -51,28 +51,21 @@
         "MH24",
         "MH25",
         "MH26",
-        "MH27",
         "MH28",
         "MH29",
         "MH30",
         "MH31",
         "MH32",
         "MH33",
-        "MH34",
         "MH35",
         "MH36",
         "MH37",
         "MH38",
-        "MH39",
-        "MH40"
+        "MH39"
       ]
     }
   ],
   "sources": {
-    "MH01": {
-      "title": "위키백과(영어) — History of Mallorca",
-      "url": "https://en.wikipedia.org/wiki/History_of_Mallorca"
-    },
     "MH02": {
       "title": "위키백과(카탈루냐어) — Història de Mallorca",
       "url": "https://ca.wikipedia.org/wiki/Hist%C3%B2ria_de_Mallorca"
@@ -82,15 +75,15 @@
       "url": "https://en.wikipedia.org/wiki/Talaiotic_culture"
     },
     "MH04": {
-      "title": "enciclopedia.cat — EC GEC 0144785",
+      "title": "카탈루냐 대백과·탈라요트",
       "url": "https://www.enciclopedia.cat/EC-GEC-0144785"
     },
     "MH05": {
-      "title": "alcudia.net — MUSEU cat",
+      "title": "알쿠디아시·폴렌티아 단원 박물관 안내(카탈루냐어)",
       "url": "https://www.alcudia.net/export/sites/default/Pollentia/ca/documentos/MUSEU-cat.pdf"
     },
     "MH06": {
-      "title": "penelope.uchicago.edu — 5A*",
+      "title": "디오도로스 「역사 총서」 5권(영역 · 시카고 대학교 세이어 문고)",
       "url": "https://penelope.uchicago.edu/Thayer/E/Roman/Texts/Diodorus_Siculus/5A*.html"
     },
     "MH07": {
@@ -98,11 +91,11 @@
       "url": "https://en.wikipedia.org/wiki/Balearic_slingers"
     },
     "MH08": {
-      "title": "penelope.uchicago.edu — 3E*",
+      "title": "스트라본 「지리지」 3권(영역 · 시카고 대학교 세이어 문고)",
       "url": "https://penelope.uchicago.edu/Thayer/E/Roman/Texts/Strabo/3E*.html"
     },
     "MH09": {
-      "title": "enciclopedia.cat — EC GEC 0048635",
+      "title": "카탈루냐 대백과·팔마",
       "url": "https://www.enciclopedia.cat/EC-GEC-0048635"
     },
     "MH10": {
@@ -114,7 +107,7 @@
       "url": "https://en.wikipedia.org/wiki/Mallorca"
     },
     "MH12": {
-      "title": "enciclopedia.cat — alcudia",
+      "title": "카탈루냐 대백과·알쿠디아",
       "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/alcudia"
     },
     "MH13": {
@@ -150,7 +143,7 @@
       "url": "https://en.wikipedia.org/wiki/A_Winter_in_Majorca"
     },
     "MH21": {
-      "title": "mallorca.com — frederic chopin 3",
+      "title": "마요르카닷컴·발데모사의 쇼팽 박물관",
       "url": "https://www.mallorca.com/es/guia/lugares-de-interes/frederic-chopin-3"
     },
     "MH22": {
@@ -158,7 +151,7 @@
       "url": "https://en.wikipedia.org/wiki/Archduke_Ludwig_Salvator_of_Austria"
     },
     "MH23": {
-      "title": "caib.es — biografia extensa 68918",
+      "title": "발레아레스 주정부·루이스 살바도르 대공 상세 전기",
       "url": "https://www.caib.es/sites/lluissalvador/ca/biografia_extensa-68918"
     },
     "MH24": {
@@ -166,16 +159,12 @@
       "url": "https://en.wikipedia.org/wiki/Palma_de_Mallorca_Airport"
     },
     "MH25": {
-      "title": "press.fourseasons.com — hotel history",
+      "title": "포시즌스 보도 자료·호텔 포르멘토르의 역사",
       "url": "https://press.fourseasons.com/mallorca/trending-now/hotel-history"
     },
     "MH26": {
       "title": "위키백과(카탈루냐어) — Article salat",
       "url": "https://ca.wikipedia.org/wiki/Article_salat"
-    },
-    "MH27": {
-      "title": "ub.edu — enric claraso i daudi",
-      "url": "https://www.ub.edu/modernisme/autors/enric-claraso-i-daudi"
     },
     "MH28": {
       "title": "위키백과(영어) — Ses Païsses",
@@ -190,20 +179,16 @@
       "url": "https://en.wikipedia.org/wiki/Valldemossa_Charterhouse"
     },
     "MH31": {
-      "title": "manueldefalla.com — pdf130316140514 141",
+      "title": "마누엘 데 파야 재단·음악회 소책자 「섬의 두 작곡가」(쇼팽·파야)",
       "url": "https://www.manueldefalla.com/pdfs/pdf130316140514_141.pdf"
     },
     "MH32": {
-      "title": "quisestlullus.narpan.net — miramar",
+      "title": "라몬 률 연구 사이트·미라마르",
       "url": "https://www.quisestlullus.narpan.net/en/miramar"
     },
     "MH33": {
       "title": "위키백과(영어) — Ramon Llull",
       "url": "https://en.wikipedia.org/wiki/Ramon_Llull"
-    },
-    "MH34": {
-      "title": "위키백과(영어) — Majorca",
-      "url": "https://en.wikipedia.org/wiki/Majorca"
     },
     "MH35": {
       "title": "위키백과(영어) — Hispania Balearica",
@@ -214,11 +199,11 @@
       "url": "https://en.wikipedia.org/wiki/Palma_Cathedral"
     },
     "MH37": {
-      "title": "barcelo.com — the almudaina royal palace",
+      "title": "바르셀로 여행 안내·알무다이나 왕궁",
       "url": "https://www.barcelo.com/guia-turismo/en/spain/mallorca/things-to-do/the-almudaina-royal-palace/"
     },
     "MH38": {
-      "title": "aena.es — history",
+      "title": "아에나·팔마 데 마요르카 공항의 역사",
       "url": "https://www.aena.es/en/palma-de-mallorca/get-to-know-us/history.html"
     },
     "MH39": {
@@ -226,7 +211,7 @@
       "url": "https://es.wikipedia.org/wiki/Aeropuerto_de_Palma_de_Mallorca"
     },
     "MH40": {
-      "title": "scribd.com — FIELD WORK REPORT",
+      "title": "스크리브드·출처가 밝혀지지 않은 현장 보고서",
       "url": "https://www.scribd.com/document/645738449/FIELD-WORK-REPORT"
     }
   },
@@ -235,7 +220,7 @@
     {
       "claim": "서지중해에 놓인 이 섬에는 수천 년 동안 여러 민족이 차례로 머물렀고, 그 흔적이 섬 곳곳에 겹겹이 남아 있습니다.",
       "sources": [
-        "MH34",
+        "MH11",
         "MH35"
       ],
       "status": "CONFIRMED"
@@ -244,7 +229,7 @@
       "claim": "5세기에 로마의 힘이 기울자 섬은 반달족의 손에 넘어갔고, 6세기에는 비잔티움 제국이 섬을 차지합니다.",
       "sources": [
         "MH35",
-        "MH34"
+        "MH11"
       ],
       "status": "CONFIRMED"
     },
@@ -273,8 +258,7 @@
       "sources": [
         "MH38",
         "MH39",
-        "MH24",
-        "MH40"
+        "MH24"
       ],
       "status": "CONFIRMED"
     }

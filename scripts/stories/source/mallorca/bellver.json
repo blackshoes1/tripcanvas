@@ -25,6 +25,7 @@
       "title": "둥근 성과 그 안의 수감자들",
       "textFile": "mallorca/narration/bellver.txt",
       "audio": "mallorca/bellver-core.mp3",
+      "audioText": "a4f7375ea0c10ace",
       "sources": [
         "MB01",
         "MB02",
@@ -48,7 +49,7 @@
       "url": "https://en.wikipedia.org/wiki/Bellver_Castle"
     },
     "MB02": {
-      "title": "illesbalears.travel — castle bellver",
+      "title": "발레아레스 관광청·벨베르 성",
       "url": "https://www.illesbalears.travel/en/mallorca/castle-bellver"
     },
     "MB03": {
@@ -56,7 +57,7 @@
       "url": "https://ca.wikipedia.org/wiki/Castell_de_Bellver"
     },
     "MB04": {
-      "title": "enciclopedia.cat — castell de bellver",
+      "title": "카탈루냐 대백과·벨베르 성",
       "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/castell-de-bellver"
     },
     "MB05": {
@@ -64,19 +65,19 @@
       "url": "https://es.wikipedia.org/wiki/Gaspar_Melchor_de_Jovellanos"
     },
     "MB06": {
-      "title": "spain.info — castillo bellver",
+      "title": "스페인 관광청·팔마의 벨베르 성",
       "url": "https://www.spain.info/es/lugares-interes/castillo-bellver/"
     },
     "MB07": {
-      "title": "barcelo.com — castell de bellver",
+      "title": "바르셀로 여행 안내·벨베르 성 — 팔마만 위의 요새",
       "url": "https://www.barcelo.com/guia-turismo/es/espana/mallorca/que-ver/castell-de-bellver/"
     },
     "MB08": {
-      "title": "castelldebellver.palma.es — exposiciones permanentes",
+      "title": "벨베르 성 공식·상설 전시 — 도시의 변천·데스푸치 컬렉션·호베야노스실",
       "url": "https://castelldebellver.palma.es/exposiciones-permanentes"
     },
     "MB09": {
-      "title": "visitpalma.com — castell de bellver les millors vistes de palma",
+      "title": "팔마 관광청·벨베르 성, 팔마에서 가장 좋은 전망",
       "url": "https://visitpalma.com/ca/dir/castell-de-bellver-les-millors-vistes-de-palma/"
     },
     "MB10": {
@@ -88,7 +89,7 @@
       "url": "https://es.wikipedia.org/wiki/Castillo_de_Bellver"
     },
     "MB12": {
-      "title": "majorcadailybulletin.com — bellver castle civil war exhibition opens",
+      "title": "마요르카 데일리 불레틴·벨베르 성 스페인 내전 전시 개막(2017)",
       "url": "https://majorcadailybulletin.com/news/local/2017/12/21/50327/bellver-castle-civil-war-exhibition-opens.html"
     },
     "MB13": {

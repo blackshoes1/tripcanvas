@@ -29,6 +29,7 @@
       "title": "사람이 만든 풍경과 넥타이 매듭 길",
       "textFile": "mallorca/narration/sa-calobra.txt",
       "audio": "mallorca/sa-calobra-core.mp3",
+      "audioText": "94cf2b9df25ccc60",
       "sources": [
         "MT01",
         "MT02",
@@ -46,13 +47,10 @@
         "MT14",
         "MT15",
         "MT16",
-        "MT17",
         "MT18",
         "MT19",
         "MT20",
-        "MT21",
-        "MT22",
-        "MT23"
+        "MT21"
       ]
     }
   ],
@@ -62,7 +60,7 @@
       "url": "https://en.wikipedia.org/wiki/Serra_de_Tramuntana"
     },
     "MT02": {
-      "title": "whc.unesco.org — list",
+      "title": "유네스코 세계유산·트라문타나 산맥 문화경관",
       "url": "https://whc.unesco.org/es/list/1371/"
     },
     "MT03": {
@@ -70,15 +68,15 @@
       "url": "https://en.wikipedia.org/wiki/Puig_Major"
     },
     "MT04": {
-      "title": "mallorca.com — dry stone walls of mallorca how pedra en sec shapes the serra",
+      "title": "마요르카닷컴·마요르카의 돌담, 트라문타나를 빚은 「페드라 엔 섹」",
       "url": "https://www.mallorca.com/en/magazin/mallorca-society-culture/dry-stone-walls-of-mallorca-how-pedra-en-sec-shapes-the-serra"
     },
     "MT05": {
-      "title": "nesnovnadediscina.si — art of dry stone walling knowledge and techniques",
+      "title": "슬로베니아 무형유산·돌담 쌓기 지식과 기술",
       "url": "https://nesnovnadediscina.si/en/unesco/art-of-dry-stone-walling-knowledge-and-techniques"
     },
     "MT06": {
-      "title": "ich.unesco.org — art of dry stone walling knowledge and techniques 01393",
+      "title": "유네스코 무형유산·돌담 쌓기 지식과 기술",
       "url": "https://ich.unesco.org/en/RL/art-of-dry-stone-walling-knowledge-and-techniques-01393"
     },
     "MT07": {
@@ -90,7 +88,7 @@
       "url": "https://en.wikipedia.org/wiki/Sa_Calobra"
     },
     "MT09": {
-      "title": "mallorca.com — nus de sa corbata",
+      "title": "마요르카닷컴·넥타이 매듭 길(누스 데 사 코르바타)",
       "url": "https://www.mallorca.com/en/guide/sights/nus-de-sa-corbata"
     },
     "MT10": {
@@ -98,39 +96,35 @@
       "url": "https://es.wikipedia.org/wiki/Torrente_de_Pareis"
     },
     "MT11": {
-      "title": "intranet.caib.es — LIG TORRENT DE PAREIS CAS",
+      "title": "발레아레스 주정부 지질명소 카드·토렌트 데 파레이스(스페인어)",
       "url": "https://intranet.caib.es/geoturfront/fichero/download/477/LIG%20TORRENT%20DE%20PAREIS%20CAS.pdf"
     },
     "MT12": {
-      "title": "majorcadailybulletin.com — the concert the torrent calobra",
+      "title": "마요르카 데일리 불레틴·토렌트 데 파레이스 음악회",
       "url": "https://majorcadailybulletin.com/enjoying-mallorca/whatson/music/the-concert-the-torrent-calobra.html"
     },
     "MT13": {
-      "title": "planomato.com — concierto torrent pareis edicion 62",
+      "title": "플라노마토·토렌트 데 파레이스 음악회 62회",
       "url": "https://planomato.com/es/palma-de-mallorca/n/concierto-torrent-pareis-edicion-62"
     },
     "MT14": {
-      "title": "ultimahora.es — cases neu primeros frigorificos mallorca",
+      "title": "울티마 오라·눈의 집, 마요르카의 첫 냉장고(2023)",
       "url": "https://www.ultimahora.es/noticias/local/2023/01/27/1871203/cases-neu-primeros-frigorificos-mallorca.html"
     },
     "MT15": {
-      "title": "mallorca.com — antonio parietti coll",
+      "title": "마요르카닷컴·안토니오 파리에티 기념비",
       "url": "https://www.mallorca.com/en/guide/sights/antonio-parietti-coll"
     },
     "MT16": {
-      "title": "khan.co.kr — article",
+      "title": "경향신문(영문)·제주 돌담 쌓기, 2028년 유네스코 등재 추진",
       "url": "https://www.khan.co.kr/en/article/202610131633007"
-    },
-    "MT17": {
-      "title": "en.gancarczyk.com",
-      "url": "https://en.gancarczyk.com/?p=395"
     },
     "MT18": {
       "title": "위키백과(영어) — Mallorcan midwife toad",
       "url": "https://en.wikipedia.org/wiki/Mallorcan_midwife_toad"
     },
     "MT19": {
-      "title": "caib.es — monumento natural del torrent de pareis",
+      "title": "발레아레스 주정부 보호구역·토렌트 데 파레이스 자연기념물",
       "url": "https://caib.es/sites/espaisnaturalsprotegits/es/monumento_natural_del_torrent_de_pareis/"
     },
     "MT20": {
@@ -138,16 +132,8 @@
       "url": "https://ca.wikipedia.org/wiki/Torrent_de_Pareis"
     },
     "MT21": {
-      "title": "intranet.caib.es — LIG TORRENT DE PAREIS EN",
+      "title": "발레아레스 주정부 지질명소 카드·토렌트 데 파레이스(영어)",
       "url": "https://intranet.caib.es/geoturfront/fichero/download/478/LIG%20TORRENT%20DE%20PAREIS%20EN.pdf"
-    },
-    "MT22": {
-      "title": "mallorca.com — nus de sa corbata",
-      "url": "https://www.mallorca.com/it/guida/attrazioni/nus-de-sa-corbata"
-    },
-    "MT23": {
-      "title": "mallorca.com — nus de sa corbata",
-      "url": "https://www.mallorca.com/fr/guide/sites-touristiques/nus-de-sa-corbata"
     }
   },
   "factCheckNote": "2026-10-30 독립 검증 — 주장 36개를 출처와 맞춰 보고 지적 3건을 모두 고쳤다. 여기에는 고친 곳만 적는다",
@@ -162,20 +148,18 @@
       "status": "CONFIRMED"
     },
     {
-      "claim": "협곡 안쪽에는 '어둠'이라는 뜻의 '사 포스카' 구간이 있는데, 벽이 너무 가까워 한낮에도 해가 바로 들지 않습니다.",
+      "claim": "두 개울이 만나는 협곡 위쪽에서 한쪽 개울을 따라 조금 거슬러 오르면, '어둠'이라는 뜻의 '사 포스카' 구간이 있는데, 벽이 너무 가까워 한낮에도 해가 바로 들지 않습니다.",
       "sources": [
         "MT21",
         "MT19",
         "MT20"
       ],
-      "status": "WRONG",
-      "resolution": "OMITTED"
+      "status": "CONFIRMED"
     },
     {
       "claim": "터널을 뚫는 대신 길을 이렇게 감아 돌려 높이를 낮춘 것입니다.",
       "sources": [
-        "MT22",
-        "MT23"
+        "MT09"
       ],
       "status": "UNCONFIRMED",
       "resolution": "OMITTED"
@@ -183,8 +167,7 @@
     {
       "claim": "좁은 비탈에서 더 급한 굽잇길을 만드는 대신, 길을 이렇게 감아 돌려 길이를 늘리고 경사를 누그러뜨린 것입니다.",
       "sources": [
-        "MT22",
-        "MT23"
+        "MT09"
       ],
       "status": "CONFIRMED"
     }

@@ -13,7 +13,9 @@
     "폴렌티아 유적",
     "Pollentia",
     "Pol·lèntia",
-    "Alcudia"
+    "Alcudia",
+    "Teatre romà de Pol·lèntia",
+    "폴렌티아 로마 극장"
   ],
   "placeIds": [],
   "voice": {
@@ -27,11 +29,11 @@
       "title": "두 개의 도시, 알쿠디아와 폴렌티아",
       "textFile": "mallorca/narration/alcudia.txt",
       "audio": "mallorca/alcudia-core.mp3",
+      "audioText": "972f7b8c5a177393",
       "sources": [
         "MA01",
         "MA02",
         "MA03",
-        "MA04",
         "MA05",
         "MA06",
         "MA07",
@@ -51,23 +53,19 @@
   ],
   "sources": {
     "MA01": {
-      "title": "alcudia.net — POLLENTIA FULLETO nou 2019 20",
+      "title": "알쿠디아시·폴렌티아 안내 책자(2019~2020) — 로마 도시 폴렌티아",
       "url": "https://www.alcudia.net/export/sites/default/Pollentia/ca/documentos/destacats/POLLENTIA-FULLETO-nou-2019-20.pdf"
     },
     "MA02": {
-      "title": "alcudia.net — MUSEU cat",
+      "title": "알쿠디아시·폴렌티아 단원 박물관 안내(카탈루냐어)",
       "url": "https://www.alcudia.net/export/sites/default/Pollentia/ca/documentos/MUSEU-cat.pdf"
     },
     "MA03": {
       "title": "위키백과(카탈루냐어) — Alcúdia",
       "url": "https://ca.wikipedia.org/wiki/Alc%C3%BAdia"
     },
-    "MA04": {
-      "title": "latindictionary.io — pollentia",
-      "url": "https://www.latindictionary.io/word/pollentia"
-    },
     "MA05": {
-      "title": "enciclopedia.cat — EC GEC 0051819",
+      "title": "카탈루냐 대백과·폴렌티아",
       "url": "https://www.enciclopedia.cat/EC-GEC-0051819"
     },
     "MA06": {
@@ -75,23 +73,23 @@
       "url": "https://en.wikipedia.org/wiki/Pollentia_(Mallorca)"
     },
     "MA07": {
-      "title": "illesbalears.travel — archaeological site ciutat romana de pollentia",
+      "title": "발레아레스 관광청·폴렌티아 로마 도시 유적",
       "url": "https://illesbalears.travel/en/mallorca/archaeological-site-ciutat-romana-de-pollentia"
     },
     "MA08": {
-      "title": "illesbalears.travel — theater pollentia",
+      "title": "발레아레스 관광청·폴렌티아 로마 극장",
       "url": "https://illesbalears.travel/tourist-resource/en/mallorca/theater-pollentia"
     },
     "MA09": {
-      "title": "es.hispanopedia.com — Teatro romano de Pollentia",
+      "title": "이스파노페디아·폴렌티아 로마 극장",
       "url": "https://es.hispanopedia.com/wiki/Teatro_romano_de_Pollentia"
     },
     "MA10": {
-      "title": "enciclopedia.cat — alcudia",
+      "title": "카탈루냐 대백과·알쿠디아",
       "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/alcudia"
     },
     "MA11": {
-      "title": "illesbalears.travel — walls muralles dalcudia",
+      "title": "발레아레스 관광청·알쿠디아 성벽",
       "url": "https://www.illesbalears.travel/en/mallorca/walls-muralles-dalcudia"
     },
     "MA12": {
@@ -99,7 +97,7 @@
       "url": "https://en.wikipedia.org/wiki/Alc%C3%BAdia"
     },
     "MA13": {
-      "title": "enciclopedia.cat — EC GEC 0048635",
+      "title": "카탈루냐 대백과·팔마",
       "url": "https://www.enciclopedia.cat/EC-GEC-0048635"
     },
     "MA14": {
@@ -107,19 +105,19 @@
       "url": "https://en.wikipedia.org/wiki/Church_of_St._Jaume"
     },
     "MA15": {
-      "title": "dipositint.ub.edu — handle",
+      "title": "바르셀로나 대학교 학술 저장소·폴렌티아 관련 논문",
       "url": "https://dipositint.ub.edu/dspace/handle/2445/42649"
     },
     "MA16": {
-      "title": "mallorca.com — teatre roma de pollentia",
+      "title": "마요르카닷컴·폴렌티아 로마 극장 — 관람과 역사",
       "url": "https://www.mallorca.com/en/guide/sights/teatre-roma-de-pollentia"
     },
     "MA17": {
-      "title": "alcudia.net — CAMPANYA DEXCAVACIO 2019",
+      "title": "알쿠디아시·폴렌티아 2019년 발굴 보고",
       "url": "https://www.alcudia.net/export/sites/default/Pollentia/ca/documentos/destacats/CAMPANYA-DEXCAVACIO-2019.pdf"
     },
     "MA18": {
-      "title": "aespa.revistas.csic.es — download",
+      "title": "스페인 고고학 학술지(AEspA)·폴렌티아 발굴 논문",
       "url": "https://aespa.revistas.csic.es/index.php/aespa/article/download/298/299"
     }
   },

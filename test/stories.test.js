@@ -129,6 +129,12 @@ test('배포되는 마요르카 이야기도 이름만 같은 곳에는 붙지 �
   // 팔마에서 타는 소예르 기차는 팔마 종점에, 소예르에 내리면 소예르역에 — 같은 음성이다
   assert.equal(at('소예르 기차', 39.5767, 2.6538), 'mallorca-soller-train-palma');
   assert.equal(at('Tren de Sóller', 39.7649, 2.7152), 'mallorca-soller-train');
+  // 원고가 부르는 이름·현지 정식 이름·원고의 중심인 곳으로도 붙는다(2026-10-31 검토 — 전에는 모두 빠졌다)
+  assert.equal(at('엔데로캇 곶 요새', 39.4761, 2.7247), 'mallorca-cap-rocat');
+  assert.equal(at('Fort del Cap Enderrocat', 39.4761, 2.7247), 'mallorca-cap-rocat');
+  assert.equal(at('Teatre Romà', 39.8461, 3.1200), 'mallorca-alcudia');
+  assert.equal(at('쇼팽 박물관', 39.7095, 2.6220), 'mallorca-valldemossa');
+  assert.equal(at('오렌지 급행', 39.5767, 2.6538), 'mallorca-soller-train-palma');
   // 바로 옆이어도 이름이 다르면(알무다이나 궁전), 이름이 같아도 멀면(폴렌사 항구의 '포르멘토르') 붙지 않는다
   assert.equal(at('알무다이나 궁전', 39.5677, 2.6466), null);
   assert.equal(at('포르멘토르', 39.904, 3.085), null);

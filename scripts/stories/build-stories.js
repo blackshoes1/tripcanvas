@@ -257,16 +257,33 @@ function loadPlaces() {
     const dir = path.join(SOURCE, region);
     for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.json')).sort()) {
       const p = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
-      for (const t of p.tracks) {
+      for (const t of p.tracks || []) {
         if (t.textFile) t.text = fs.readFileSync(path.join(SOURCE, t.textFile), 'utf8');
         // '다음 이동:'은 편집용 라벨이라 읽지 않는다(pronunciation-notes.txt) — 마지막 트랙의 '마지막 트랙입니다' 앞에 '다음 장소로 갑니다'가 붙었다
         t.text = String(t.text || '').replace(/^다음 이동:\s*/m, '').trim();
       }
-      places.push({ file: f, region, ...p });
+      // 폴더가 이긴다 — 음성 경로와 검사가 폴더 이름을 쓴다
+      places.push({ ...p, file: f, region });
     }
+  }
+  return resolveSameStory(places);
+}
+
+// 같은 이야기를 다른 자리에도 붙일 때(소예르 기차의 팔마 종점) — 원고·음성·출처·검수는 원본(sameStoryAs) 하나에서 물려받는다.
+// 따로 들고 있으면 원본의 검수만 지우거나 한쪽 출처만 고쳐도 다른 쪽이 옛 음성·옛 출처를 그대로 내보낸다
+const SHARED_STORY_KEYS = ['tracks', 'sources', 'factCheck', 'factCheckNote', 'reviewedAt', 'voice'];
+function resolveSameStory(places) {
+  const byId = new Map(places.map((p) => [p.id, p]));
+  for (const p of places) {
+    const from = p.sameStoryAs ? byId.get(p.sameStoryAs) : null;
+    if (!from || from.sameStoryAs) continue;   // 없는 원본·이어진 참조는 check()가 말한다
+    for (const k of SHARED_STORY_KEYS) { if (k in from) p[k] = from[k]; else delete p[k]; }
   }
   return places;
 }
+
+/** 이미 만든 음성의 원고 지문 — 음성을 만든 원고와 지금 원고가 같은지 본다(카탈로그에는 원고가 실리지 않는다) */
+const textHash = (text) => sha256(String(text)).slice(0, 16);
 
 /** 트랙의 음성 경로(stories/ 아래) — 이미 만든 음성(audio)은 그 경로, 아니면 '<지역>/<장소>-<트랙>.mp3' */
 function trackSrc(p, t) {
@@ -277,8 +294,12 @@ function trackSrc(p, t) {
 function check(places) {
   const errors = [];
   const ids = new Set();
+  const byId = new Map(places.map((p) => [p.id, p]));
+  const seenSources = new Map();
   for (const p of places) {
     const where = p.file;
+    if (p.sameStoryAs && !(byId.has(p.sameStoryAs) && !byId.get(p.sameStoryAs).sameStoryAs))
+      errors.push(`${where}: sameStoryAs(${p.sameStoryAs})가 가리키는 원본이 없거나, 원본도 다른 이야기를 가리킵니다`);
     if (!/^[a-z0-9-]+$/.test(p.id || '')) errors.push(`${where}: id가 올바르지 않습니다`);
     if (ids.has(p.id)) errors.push(`${where}: 같은 id(${p.id})가 또 있습니다`);
     ids.add(p.id);
@@ -297,12 +318,23 @@ function check(places) {
       for (const s of t.sources || []) if (!p.sources || !p.sources[s]) errors.push(`${tw}: 출처 ${s}가 sources에 없습니다`);
       if (!(t.sources || []).length) errors.push(`${tw}: 출처가 하나도 없습니다`);
       if (t.role === 'STOP' && !(t.stop && Number.isInteger(t.stop.n))) errors.push(`${tw}: 관람 지점 번호가 없습니다`);
-      // 이미 만든 음성 — 그 지역 폴더 안의 mp3이고 저장소에 있어야 한다(합성하지 않으니 없으면 만들 길이 없다)
-      if (t.audio && !(new RegExp(`^${p.region}/[a-z0-9-]+\\.mp3$`).test(t.audio) && fs.existsSync(path.join(ROOT, 'stories', t.audio))))
-        errors.push(`${tw}: 이미 만든 음성(audio) stories/${t.audio}가 없거나 ${p.region}/ 밖에 있습니다`);
+      if (t.audio) {
+        // 이미 만든 음성 — 그 지역 폴더 안의 mp3(이름 규칙은 stories.js SRC_RE와 같다)이고 저장소에 있어야 한다(합성하지 않으니 없으면 만들 길이 없다)
+        if (!new RegExp(`^${p.region}/[a-z0-9][a-z0-9-]*\\.mp3$`).test(t.audio)) errors.push(`${tw}: 이미 만든 음성(audio) ${t.audio}는 ${p.region}/ 안의 소문자·숫자·- 이름이어야 합니다`);
+        else if (!fs.existsSync(path.join(ROOT, 'stories', t.audio))) errors.push(`${tw}: 이미 만든 음성(audio) stories/${t.audio}가 없습니다`);
+        // 원고를 고쳤는데 음성이 그대로면 고친 사실이 앱에 닿지 않는다 — 음성을 다시 만든 뒤에 지문을 바꾼다
+        if (t.audioText !== textHash(t.text || '')) errors.push(`${tw}: 원고가 음성(audio)을 만든 원고와 다릅니다 — 음성을 다시 만든 뒤 audioText를 ${textHash(t.text || '')}(으)로 바꾸세요`);
+        if (!(p.voice && p.voice.engine && p.voice.name)) errors.push(`${tw}: 이미 만든 음성은 장소에 목소리(voice.engine·name)를 적어야 합니다 — 안 적으면 카탈로그가 Chirp 3 HD로 적힙니다`);
+      }
       try { sentencePlan(spokenText(t.text)); } catch (e) { errors.push(`${tw}: ${e.message}`); }
     }
-    for (const [k, v] of Object.entries(p.sources || {})) if (!/^https:\/\//.test(v.url || '')) errors.push(`${where}: 출처 ${k}의 주소가 https가 아닙니다`);
+    for (const [k, v] of Object.entries(p.sources || {})) {
+      if (!/^https:\/\//.test(v.url || '')) errors.push(`${where}: 출처 ${k}의 주소가 https가 아닙니다`);
+      // 카탈로그의 출처는 ID 하나로 모인다 — 장소마다 다른 것을 가리키면 앞 장소의 출처가 말없이 바뀐다
+      const seen = seenSources.get(k);
+      if (seen && (seen.v.title !== v.title || seen.v.url !== v.url)) errors.push(`${where}: 출처 ${k}가 ${seen.file}의 ${k}와 다릅니다 — 출처 ID는 장소끼리 겹치지 않게 씁니다`);
+      else if (!seen) seenSources.set(k, { v, file: where });
+    }
     // 확인하지 못한 사실은 검수 전에 처리를 적는다 — 본문에서 뺐거나(OMITTED) 단정하지 않게 고쳤거나(HEDGED).
     // CONFIRMED로 바꾸지 않는다: 확인하지 못한 것을 확인했다고 적는 셈이다
     for (const fc of p.factCheck || []) {
@@ -425,6 +457,6 @@ async function main() {
   console.log(`${draft ? '검수용 ' : ''}카탈로그: ${catalog.places.length}곳 · 이번에 합성한 글자 ${spent.toLocaleString()}자 → ${path.relative(ROOT, outDir)}/`);
 }
 
-module.exports = { sinoKorean, spokenText, withJosa, sentencePlan, mp3Seconds, speechRate, RATE_BAND, PAUSE, check, loadPlaces, trackSrc,
+module.exports = { sinoKorean, spokenText, withJosa, sentencePlan, mp3Seconds, speechRate, RATE_BAND, PAUSE, check, loadPlaces, trackSrc, resolveSameStory, textHash,
   wavSamples, trimSilence, innerPauses, joinTrack, sentenceProblem, synthesizeTrack, SAMPLE_RATE };
 if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });

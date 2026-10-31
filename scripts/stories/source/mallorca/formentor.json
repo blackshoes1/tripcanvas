@@ -29,6 +29,7 @@
       "title": "바람이 만나는 곳",
       "textFile": "mallorca/narration/formentor.txt",
       "audio": "mallorca/formentor-core.mp3",
+      "audioText": "daf7d9617e435ccc",
       "sources": [
         "MF01",
         "MF02",
@@ -65,7 +66,7 @@
       "url": "https://en.wikipedia.org/wiki/Cap_de_Formentor"
     },
     "MF02": {
-      "title": "barcelo.com — cap de formentor",
+      "title": "바르셀로 여행 안내·포르멘토르 곶, 마요르카의 땅끝",
       "url": "https://www.barcelo.com/guia-turismo/es/espana/mallorca/que-ver/cap-de-formentor/"
     },
     "MF03": {
@@ -77,43 +78,43 @@
       "url": "https://es.wikipedia.org/wiki/Faro_de_Formentor"
     },
     "MF05": {
-      "title": "mallorca.com — far de formentor",
+      "title": "마요르카닷컴·포르멘토르 등대",
       "url": "https://www.mallorca.com/en/guide/sights/far-de-formentor"
     },
     "MF06": {
-      "title": "yosoymallorca.com — formentor lighthouse",
+      "title": "요 소이 마요르카·포르멘토르 등대",
       "url": "https://yosoymallorca.com/en/mallorca-lighthouses/formentor-lighthouse/"
     },
     "MF07": {
-      "title": "press.fourseasons.com — hotel history",
+      "title": "포시즌스 보도 자료·호텔 포르멘토르의 역사",
       "url": "https://press.fourseasons.com/mallorca/trending-now/hotel-history"
     },
     "MF08": {
-      "title": "mallorca.com — antonio parietti coll",
+      "title": "마요르카닷컴·안토니오 파리에티 기념비",
       "url": "https://www.mallorca.com/en/guide/sights/antonio-parietti-coll"
     },
     "MF09": {
-      "title": "wikiwand.com — Talaia d'Albercuix",
+      "title": "위키왠드(카탈루냐어)·알베르쿠츠 망루",
       "url": "https://wikiwand.com/ca/articles/Talaia_d'Albercuix"
     },
     "MF10": {
-      "title": "boe.es — BOE A 2021 17657",
+      "title": "스페인 관보(BOE) 2021년 10월 29일 — 알베르쿠츠 망루 기념물 지정 절차",
       "url": "https://boe.es/boe/dias/2021/10/29/pdfs/BOE-A-2021-17657.pdf"
     },
     "MF11": {
-      "title": "majorcadailybulletin.com — formentor hotel construction mallorca",
+      "title": "마요르카 데일리 불레틴·포르멘토르 호텔 공사(2021)",
       "url": "https://www.majorcadailybulletin.com/news/local/2021/02/22/79693/formentor-hotel-construction-mallorca.html"
     },
     "MF12": {
-      "title": "orf.at — stories",
+      "title": "오스트리아 방송 ORF·호텔 포르멘토르 1억 6,500만 유로에 매각",
       "url": "https://orf.at/stories/3194054/"
     },
     "MF13": {
-      "title": "majorcadailybulletin.com — formentor wisdom and tourism mallorca",
+      "title": "마요르카 데일리 불레틴·포르멘토르, 지혜와 관광(2020)",
       "url": "https://www.majorcadailybulletin.com/holiday/life-style/2020/04/21/65893/formentor-wisdom-and-tourism-mallorca.html"
     },
     "MF14": {
-      "title": "ultimahora.es — muerte montserrat sabater memoria premios formentor",
+      "title": "울티마 오라·몬세라트 사바테르와 포르멘토르 문학상의 기억",
       "url": "https://www.ultimahora.es/noticias/cultura/2020/04/19/1158441/muerte-montserrat-sabater-memoria-premios-formentor.html"
     },
     "MF15": {
@@ -121,11 +122,11 @@
       "url": "https://en.wikipedia.org/wiki/Prix_Formentor"
     },
     "MF16": {
-      "title": "realassets.ipe.com — 10095472.article",
+      "title": "IPE 리얼 애셋·에민 캐피털, 호텔 포르멘토르 인수",
       "url": "https://realassets.ipe.com/propertyeu/emin-capital-buys-historic-mallorca-hotel-for-165m/10095472.article"
     },
     "MF17": {
-      "title": "hospitality-on.com — le four seasons hotel formentor ouvrira en 2023",
+      "title": "오스피탈리티 온·포시즌스 호텔 포르멘토르 2023년 개장",
       "url": "https://hospitality-on.com/fr/ouverture/le-four-seasons-hotel-formentor-ouvrira-en-2023"
     },
     "MF18": {
@@ -133,35 +134,35 @@
       "url": "https://en.wikipedia.org/wiki/The_Pine_of_Formentor"
     },
     "MF19": {
-      "title": "lanacion.com.ar — cronica de un refugio literario nid214472",
+      "title": "라 나시온·문학의 피난처 연대기",
       "url": "https://www.lanacion.com.ar/cultura/cronica-de-un-refugio-literario-nid214472/"
     },
     "MF20": {
-      "title": "majorcadailybulletin.com — agatha christie new face pollensa the uk",
+      "title": "마요르카 데일리 불레틴·폴렌사의 애거사 크리스티",
       "url": "https://majorcadailybulletin.com/news/local/2008/12/11/19837/agatha-christie-new-face-pollensa-the-uk.html"
     },
     "MF21": {
-      "title": "mallorcamagazin.com — ungeloste ratsel agatha christie auf mallorca",
+      "title": "마요르카 마가진·마요르카의 애거사 크리스티, 풀리지 않은 수수께끼",
       "url": "https://www.mallorcamagazin.com/nachrichten/kultur/2020/08/08/82121/ungeloste-ratsel-agatha-christie-auf-mallorca.html"
     },
     "MF22": {
-      "title": "hotel-details.com — formentor",
+      "title": "호텔 디테일스·호텔 포르멘토르",
       "url": "https://hotel-details.com/hotels/formentor"
     },
     "MF23": {
-      "title": "mallorca.com — mirador des colomer",
+      "title": "마요르카닷컴·에스 콜로메르 전망대",
       "url": "https://www.mallorca.com/en/guide/sights/mirador-des-colomer"
     },
     "MF24": {
-      "title": "click-mallorca.com — mirador es colomer",
+      "title": "클릭 마요르카·에스 콜로메르 전망대",
       "url": "https://www.click-mallorca.com/blog/rincones/mirador-es-colomer"
     },
     "MF25": {
-      "title": "zafirohotels.com — the es colomer viewpoint the formentor lookout",
+      "title": "사피로 호텔·에스 콜로메르 전망대",
       "url": "https://www.zafirohotels.com/en/magazine/the-es-colomer-viewpoint-the-formentor-lookout/"
     },
     "MF26": {
-      "title": "vilaweb.cat — pi de formentor ilustrat",
+      "title": "빌라웹·카탈루냐 문학의 가장 유명한 나무, 포르멘토르 소나무",
       "url": "https://www.vilaweb.cat/noticies/pi-de-formentor-ilustrat/"
     }
   },
