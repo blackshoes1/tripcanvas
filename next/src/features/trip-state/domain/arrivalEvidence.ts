@@ -9,7 +9,7 @@ export interface ArrivalEvidence {
   observedAtISO: string;
 }
 
-/** 일정 수정·자정·완료·예정 종료 뒤에는 옛 구역 관측을 재사용하지 않는다. */
+/** 일정 수정·자정·완료·이탈 뒤에는 옛 구역 관측을 재사용하지 않는다. 예정 종료는 실제 이탈이 아니다. */
 export function resolveArrivedActivityId(input: {
   trip: TripDoc; revision: number; todayISO: string; nowMinutes: number;
   arrival: ArrivalEvidence | null | undefined; legCache?: LegCache;
@@ -27,5 +27,5 @@ export function resolveArrivedActivityId(input: {
     todayISO: input.todayISO, nowMinutes: input.nowMinutes, dayIndex,
     arrivedActivityId: activityId, legCache: input.legCache
   });
-  return state.live && state.arrivedActivityId === activityId ? activityId : null;
+  return state.live && state.currentStay?.id === activityId ? activityId : null;
 }

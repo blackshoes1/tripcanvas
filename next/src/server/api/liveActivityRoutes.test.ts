@@ -101,6 +101,19 @@ describe('Live Activity 도착 근거 API', () => {
     expect((await routes.arrival(request(arrival))).status).toBe(404);
     expect(repo.recordArrival).not.toHaveBeenCalled();
   });
+  it.each([true, false])('예정 체류가 끝난 장소의 새 관측도 세션·일정 검사 후 기록한다: %s', async arrived => {
+    tripFor.mockResolvedValue({ record: { id: 'trip-row-uuid', clientId: 'trip', revision: 1,
+      updatedAt: now.toISOString(), data: { start: '2026-10-27', timeZone: 'UTC',
+        days: [{ startAt: '08:00', spots: [
+          { name: '머무는 곳', at: '08:00', stayMin: 30, lat: 40, lng: -3 },
+          { name: '다음 예약', at: '12:00', stayMin: 60, lat: 40.01, lng: -3 }
+        ] }] } } } as TripView);
+    expect((await routes.arrival(request({ ...arrival, arrived }))).status).toBe(200);
+    expect(repo.recordArrival).toHaveBeenCalledWith(expect.objectContaining({
+      userId: ctx.userId, sessionId: ctx.sessionId, tripId: 'trip-row-uuid',
+      arrival: { target: arrival.target, arrived, observedAtISO: arrival.observedAtISO }
+    }));
+  });
   it.each([
     { target: { ...arrival.target, revision: 2 } },
     { target: { ...arrival.target, dayIndex: 1 } },

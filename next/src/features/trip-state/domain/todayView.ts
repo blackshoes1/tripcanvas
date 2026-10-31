@@ -14,7 +14,7 @@ import type { TransportMode } from '@/features/trip/domain/types';
 
 import type {
   ActivitySummary, CommitmentType, DaySummary, EnergyLevel, Flexibility, GeoPoint,
-  FixedCommitmentSummary, IntentEcho, NextAction, PlanningMode, ReplanPreview, SuggestionActionKind,
+  FixedCommitmentSummary, IntentEcho, NextAction, NowFocus, PlanningMode, ReplanPreview, SuggestionActionKind,
   TodayResponse, TravelActivityState, TravelStatus, TripStateSummary, TripSuggestion, TripSummary
 } from './contract';
 import { CONTRACT_SCHEMA_VERSION } from './contract';
@@ -23,7 +23,7 @@ import { buildTomorrowBrief } from './tomorrowBrief';
 export interface SpotDoc {
   choice?: { version: 1; state: 'PENDING' | 'SELECTED'; alternative: SpotDoc; decideBy?: string };
   name?: string; city?: string; desc?: string; lat?: number | null; lng?: number | null;
-  at?: string; bookAt?: string; stayMin?: number; stay?: boolean; nights?: number;
+  at?: string; bookAt?: string; stayMin?: number; bufferMin?: number; stay?: boolean; nights?: number;
   opt?: boolean; must?: boolean; status?: string; legMode?: string;
   bookingId?: string; bookUrl?: string; placeId?: string; hours?: unknown; cost?: number; cur?: string;
 }
@@ -145,6 +145,8 @@ export interface TodayComputation {
   dayIndex: number;
   /** 엔진 원본 — Travel State 계층이 그대로 이어 쓴다(다시 계산하지 않기 위해) */
   state: ReturnType<typeof adapt.buildTripState>;
+  /** 출발 문구의 분별 변화와 달리, 준비·권장 출발·실제 늦음은 갱신해야 하는 경계다. */
+  focusDeparturePhase: string | null;
   replan: ReturnType<typeof adapt.generateReplan>;
   /** 그 시점의 첫 빈 시간 — 옮겨온 일정을 어디에 끼울지의 기준 */
   windowAfterId: string | null;
@@ -265,6 +267,26 @@ export function computeToday(input: TodayInput): TodayComputation {
     }
     : null;
 
+  const focus = adapt.buildNowFocus(state, {
+    legMin: (a, b, item) => legMinutesOf(a, b, legModeOf(day, item.spot), true)
+  });
+  const targetOf = (activityId: string) => ({ dayIndex, activityId, revision: input.revision });
+  const isoAt = (minutes: number) => lib.zonedMinutesToISOString(dayISO, Math.round(minutes), timeZone);
+  const nowFocus: NowFocus | null = focus ? {
+    kind: focus.kind,
+    currentStay: focus.currentStay ? {
+      target: targetOf(focus.currentStay.id), title: focus.currentStay.name,
+      status: state.nowMin < focus.currentStay.depart ? 'ARRIVED' : 'IN_PROGRESS',
+      expiresAtISO: isoAt(1440)
+    } : null,
+    next: focus.next && focus.departure ? {
+      target: targetOf(focus.next.id), title: focus.next.name,
+      startAtISO: isoAt(focus.next.depart), leaveAtISO: isoAt(focus.departure.leaveMin),
+      travelMinutes: focus.departure.travelMin, departureText: focus.departure.text
+    } : null,
+    switchAtISO: focus.switchMin == null ? null : isoAt(focus.switchMin)
+  } : null;
+
   const suggestions: TripSuggestion[] = built.suggestions.map((s) => {
     const kind = actionKindOf(s);
     const si = s.action?.si;
@@ -363,6 +385,7 @@ export function computeToday(input: TodayInput): TodayComputation {
   };
 
   const response: TodayResponse = {
+    nowFocus,
     schemaVersion: CONTRACT_SCHEMA_VERSION,
     generatedAt: input.generatedAt ?? new Date().toISOString(),
     // 하나라도 추정이면 추정이라고 말한다 — 절반만 도로인 하루를 "실제 경로"라 하지 않는다.
@@ -390,6 +413,7 @@ export function computeToday(input: TodayInput): TodayComputation {
     response,
     dayIndex,
     state,
+    focusDeparturePhase: focus?.departure ? `${focus.departure.stage}:${focus.departure.level}` : null,
     replan: replanRaw,
     windowAfterId: built.window?.afterId ?? null,
     rawSuggestions: built.suggestions.map((s) => ({ id: s.id, type: s.type, title: s.title, action: s.action as unknown as Record<string, unknown> }))

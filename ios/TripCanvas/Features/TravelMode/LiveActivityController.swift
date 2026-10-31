@@ -30,6 +30,7 @@ enum LiveActivityRecovery {
                               latest: TripCanvasActivityAttributes.ContentState, changed: Bool) -> Bool {
         // 분마다 달라지는 안내 문구는 서버의 상태 지문을 따른다. 새 링크만 별도로 복구한다.
         changed || current.stateVersion != latest.stateVersion || current.target != latest.target
+            || (current.nowFocus == nil) != (latest.nowFocus == nil)
     }
     #endif
 }

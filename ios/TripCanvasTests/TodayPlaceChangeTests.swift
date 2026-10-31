@@ -2,6 +2,54 @@ import XCTest
 @testable import TripCanvas
 
 @MainActor final class TodayPlaceChangeTests: XCTestCase {
+    func testConfirmedStayAndDepartureFocusCanReplaceWhenLegacyNextPointsElsewhere() async throws {
+        for kind in [NowFocus.Kind.currentStay, .departure] {
+            let source = try PlaceChangeSource()
+            source.todayFailure = "id"
+            let target = LiveActivityTarget(dayIndex: 0, activityId: "d0s0", revision: 7)
+            source.nowFocus = .init(kind: kind, currentStay: .init(target: target, title: "미술관", status: .inProgress, expiresAtISO: nil),
+                next: .init(target: target, title: "미술관", startAtISO: nil, leaveAtISO: nil, travelMinutes: 0, departureText: nil), switchAtISO: nil)
+            let model = make(source)
+            await model.load()
+            XCTAssertFalse(model.requiresRefresh)
+            await model.review(TripSpot(name: "새 장소", city: "서울"))
+            XCTAssertTrue(model.canSave, "서버 focus가 선택한 장소는 옛 nextAction과 달라도 검토할 수 있다")
+        }
+    }
+
+    func testFocusChangeWhileReviewingCannotSaveThePreviousPlace() async throws {
+        let source = try PlaceChangeSource(), target = LiveActivityTarget(dayIndex: 0, activityId: "d0s0", revision: 7)
+        source.nowFocus = .init(kind: .currentStay, currentStay: .init(target: target, title: "미술관", status: .inProgress, expiresAtISO: nil), next: nil, switchAtISO: nil)
+        let model = make(source)
+        await model.load(); await model.review(TripSpot(name: "새 장소", city: "서울"))
+        XCTAssertTrue(model.canSave)
+        source.nowFocus = .init(kind: .freeTime, currentStay: nil, next: nil, switchAtISO: nil)
+        let saved = await model.save()
+        XCTAssertNil(saved); XCTAssertTrue(source.saves.isEmpty)
+        XCTAssertTrue(model.requiresRefresh)
+    }
+
+    func testGPSOnlyStayUsesFreshValidationAndRejectsAnOutsideObservationBeforeSave() async throws {
+        let source = try PlaceChangeSource(), target = LiveActivityTarget(dayIndex: 0, activityId: "d0s0", revision: 7)
+        let free = NowFocus(kind: .freeTime, currentStay: nil, next: nil, switchAtISO: nil)
+        let staying = NowFocus(kind: .currentStay,
+            currentStay: .init(target: target, title: "미술관", status: .inProgress, expiresAtISO: nil), next: nil, switchAtISO: nil)
+        source.nowFocus = free // 영구 저장된 geofence 근거 없는 일반 today 조회다.
+        var inside = true, checks = 0
+        let model = TodayPlaceChangeModel(tripID: "trip", day: 0, activity: Self.activity(), revision: 7, source: source,
+            currentToday: {
+                checks += 1
+                var today = try await source.today(tripId: "trip", dayIndex: nil, intent: nil, energy: nil).value
+                today.nowFocus = inside ? staying : free
+                return .init(value: today, cachedAt: nil)
+            })
+        await model.load(); await model.review(TripSpot(name: "새 장소", city: "서울"))
+        XCTAssertTrue(model.canSave)
+        inside = false
+        let saved = await model.save()
+        XCTAssertNil(saved); XCTAssertTrue(source.saves.isEmpty)
+        XCTAssertEqual(checks, 3, "열기·검토·확인마다 신선한 위치 맥락을 서버에 다시 묻는다")
+    }
     func testReplacementKeepsOneSlotAndOriginalRawPlaceWithServerPreview() async throws {
         let source = try PlaceChangeSource(), model = make(source)
         await model.load()
@@ -290,6 +338,7 @@ import XCTest
     var saves: [(document: TripDocument, revision: Int)] = []
     var previews: [TripDocument] = []
     var todayFailure: String?
+    var nowFocus: NowFocus?
     var previewWrongDay = false
     var canonicalPreview = false
     var loseResponse = false
@@ -326,6 +375,7 @@ import XCTest
     }
     func today(tripId: String, dayIndex: Int?, intent: String?, energy: EnergyLevel?) async throws -> TripService.Fetched<TodayResponse> {
         var raw = try fixture("today")
+        raw["nowFocus"] = try nowFocus.map { try JSONSerialization.jsonObject(with: JSONEncoder().encode($0)) }
         var trip = raw["trip"] as! [String: Any]
         trip["id"] = "trip"; trip["revision"] = todayFailure == "revision" ? 8 : snapshot.revision
         trip["role"] = todayFailure == "viewer" ? "VIEWER" : "OWNER"

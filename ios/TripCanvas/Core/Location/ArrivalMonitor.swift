@@ -125,19 +125,32 @@ final class ArrivalMonitor: NSObject, ArrivalMonitoring, CLLocationManagerDelega
     func update(_ response: TravelStateResponse, context: ArrivalMonitoringContext?) {
         guard let context, response.today.currentState.live, response.liveActivity.shouldEnd != true else { stop(); return }
         let today = response.today
-        let candidates = today.activities.enumerated().filter {
-            !$0.element.status.isDone && $0.element.choiceState != "PENDING" && $0.element.location != nil
-                && $0.element.endMinutes > today.currentState.nowMinutes
-        }.sorted {
-            $0.element.startMinutes == $1.element.startMinutes ? $0.offset < $1.offset : $0.element.startMinutes < $1.element.startMinutes
-        }
         let previous = plan
         let sameContext = previous?.context == context && previous?.tripID == today.trip.id
+        var retainedTargets = sameContext ? (previous?.pending.map(\.target) ?? []) : []
+        if sameContext, let reported = previous?.destinations.first(where: { $0.regionID == previous?.reportedRegionID }) {
+            retainedTargets.append(reported.target)
+        }
+        let stay = today.nowFocus?.currentStay
+        let candidates = today.activities.enumerated().filter { candidate in
+            let activity = candidate.element
+            return !activity.status.isDone && activity.choiceState != "PENDING" && activity.location != nil
+                && (activity.endMinutes > today.currentState.nowMinutes
+                    || (activity.id == stay?.target.activityId && stay?.target.dayIndex == today.day.index && stay?.target.revision == today.trip.revision)
+                    || retainedTargets.contains(where: { $0.activityId == activity.id
+                        && $0.dayIndex == today.day.index && $0.revision == today.trip.revision }))
+        }.sorted { left, right in
+            let leftProtected = left.element.id == stay?.target.activityId || retainedTargets.contains(where: { $0.activityId == left.element.id })
+            let rightProtected = right.element.id == stay?.target.activityId || retainedTargets.contains(where: { $0.activityId == right.element.id })
+            if leftProtected != rightProtected { return leftProtected }
+            return left.element.startMinutes == right.element.startMinutes ? left.offset < right.offset : left.element.startMinutes < right.element.startMinutes
+        }
         var destinations: [Destination] = []
         for (_, activity) in candidates {
             guard destinations.count < 20, let point = activity.location,
                   point.lat.isFinite, point.lng.isFinite, abs(point.lat) <= 90, abs(point.lng) <= 180,
-                  let expiry = expiry(for: activity.endMinutes, today: today), expiry > now() else { continue }
+                  let expiry = (activity.id == stay?.target.activityId ? ISO8601DateFormatter.tripCanvasDate(stay?.expiresAtISO) : nil)
+                    ?? expiry(for: 1440, today: today), expiry > now() else { continue }
             let target = LiveActivityTarget(dayIndex: today.day.index, activityId: activity.id, revision: today.trip.revision)
             guard target.spotIndex != nil else { continue }
             let retained = sameContext ? previous?.destinations.first { $0.target == target && $0.point == point } : nil
@@ -157,7 +170,9 @@ final class ArrivalMonitor: NSObject, ArrivalMonitoring, CLLocationManagerDelega
                 plan?.reportedAtISO = nil
             }
         }
-        preferred = response.liveActivity.target
+        if let focus = response.liveActivity.nowFocus, focus.kind == .currentStay || focus.kind == .departure {
+            preferred = focus.focusedTarget
+        } else { preferred = response.liveActivity.target }
         isRestored = true
         reconcileFreshLocation(response)
         save()

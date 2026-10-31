@@ -1,7 +1,24 @@
 {
   "schemaVersion": 1,
-  "stateVersion": "v1l5k0uk-r2",
+  "stateVersion": "v1o5vn5d-r2",
   "today": {
+    "nowFocus": {
+      "kind": "FREE_TIME",
+      "currentStay": null,
+      "next": {
+        "target": {
+          "dayIndex": 0,
+          "activityId": "d0s1",
+          "revision": 2
+        },
+        "title": "저녁 예약",
+        "startAtISO": "2026-09-01T10:00:00Z",
+        "leaveAtISO": "2026-09-01T09:48:00Z",
+        "travelMinutes": 2,
+        "departureText": "18:48쯤 움직이면 여유가 있어 (약 2분 거리, 지금부터 5시간 48분 남음)"
+      },
+      "switchAtISO": "2026-09-01T09:36:00Z"
+    },
     "schemaVersion": 1,
     "generatedAt": "2026-09-01T04:00:00Z",
     "travelTimeSource": "STRAIGHT_LINE_ESTIMATE",
@@ -357,6 +374,23 @@
   },
   "notifications": [],
   "liveActivity": {
+    "nowFocus": {
+      "kind": "FREE_TIME",
+      "currentStay": null,
+      "next": {
+        "target": {
+          "dayIndex": 0,
+          "activityId": "d0s1",
+          "revision": 2
+        },
+        "title": "저녁 예약",
+        "startAtISO": "2026-09-01T10:00:00Z",
+        "leaveAtISO": "2026-09-01T09:48:00Z",
+        "travelMinutes": 2,
+        "departureText": "18:48쯤 움직이면 여유가 있어 (약 2분 거리, 지금부터 5시간 48분 남음)"
+      },
+      "switchAtISO": "2026-09-01T09:36:00Z"
+    },
     "target": {
       "dayIndex": 0,
       "activityId": "d0s1",
@@ -372,7 +406,7 @@
     "fixedTitle": "저녁 예약",
     "fixedStartISO": "2026-09-01T10:00:00Z",
     "pulseText": "지금은 쉬어가는 중이야",
-    "stateVersion": "v1l5k0uk-r2"
+    "stateVersion": "v1o5vn5d-r2"
   },
   "widget": {
     "tripId": "parity",
@@ -408,7 +442,7 @@
       }
     ],
     "updatedAtISO": "2026-09-01T04:00:00Z",
-    "stateVersion": "v1l5k0uk-r2"
+    "stateVersion": "v1o5vn5d-r2"
   },
   "suggestionsExpireAtISO": "2026-09-01T05:30:00Z",
   "suggestionsExpireMinutes": 870,
