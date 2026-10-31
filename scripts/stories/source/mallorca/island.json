@@ -1,0 +1,267 @@
+{
+  "id": "mallorca-island",
+  "kind": "CITY",
+  "name": "마요르카",
+  "localName": "Mallorca",
+  "city": "마요르카",
+  "lat": 39.61,
+  "lng": 2.92,
+  "radiusM": 50000,
+  "aliases": [
+    "마요르카 섬",
+    "Mallorca",
+    "Majorca"
+  ],
+  "placeIds": [],
+  "voice": {
+    "engine": "Gemini 3.8 Flash TTS",
+    "name": "Sulafat"
+  },
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "더 큰 섬, 마요르카의 역사",
+      "textFile": "mallorca/narration/island.txt",
+      "audio": "mallorca/island-core.mp3",
+      "audioText": "03138506208f31db",
+      "sources": [
+        "MH11",
+        "MH02",
+        "MH03",
+        "MH04",
+        "MH05",
+        "MH06",
+        "MH07",
+        "MH08",
+        "MH09",
+        "MH10",
+        "MH12",
+        "MH13",
+        "MH14",
+        "MH15",
+        "MH16",
+        "MH17",
+        "MH18",
+        "MH19",
+        "MH20",
+        "MH21",
+        "MH22",
+        "MH23",
+        "MH24",
+        "MH25",
+        "MH26",
+        "MH28",
+        "MH29",
+        "MH30",
+        "MH31",
+        "MH32",
+        "MH33",
+        "MH35",
+        "MH36",
+        "MH37",
+        "MH38",
+        "MH39"
+      ]
+    }
+  ],
+  "sources": {
+    "MH02": {
+      "title": "위키백과(카탈루냐어) — Història de Mallorca",
+      "url": "https://ca.wikipedia.org/wiki/Hist%C3%B2ria_de_Mallorca"
+    },
+    "MH03": {
+      "title": "위키백과(영어) — Talaiotic culture",
+      "url": "https://en.wikipedia.org/wiki/Talaiotic_culture"
+    },
+    "MH04": {
+      "title": "카탈루냐 대백과·탈라요트",
+      "url": "https://www.enciclopedia.cat/EC-GEC-0144785"
+    },
+    "MH05": {
+      "title": "알쿠디아시·폴렌티아 단원 박물관 안내(카탈루냐어)",
+      "url": "https://www.alcudia.net/export/sites/default/Pollentia/ca/documentos/MUSEU-cat.pdf"
+    },
+    "MH06": {
+      "title": "디오도로스 「역사 총서」 5권(영역 · 시카고 대학교 세이어 문고)",
+      "url": "https://penelope.uchicago.edu/Thayer/E/Roman/Texts/Diodorus_Siculus/5A*.html"
+    },
+    "MH07": {
+      "title": "위키백과(영어) — Balearic slingers",
+      "url": "https://en.wikipedia.org/wiki/Balearic_slingers"
+    },
+    "MH08": {
+      "title": "스트라본 「지리지」 3권(영역 · 시카고 대학교 세이어 문고)",
+      "url": "https://penelope.uchicago.edu/Thayer/E/Roman/Texts/Strabo/3E*.html"
+    },
+    "MH09": {
+      "title": "카탈루냐 대백과·팔마",
+      "url": "https://www.enciclopedia.cat/EC-GEC-0048635"
+    },
+    "MH10": {
+      "title": "위키백과(영어) — Pollentia (Mallorca)",
+      "url": "https://en.wikipedia.org/wiki/Pollentia_(Mallorca)"
+    },
+    "MH11": {
+      "title": "위키백과(영어) — Mallorca",
+      "url": "https://en.wikipedia.org/wiki/Mallorca"
+    },
+    "MH12": {
+      "title": "카탈루냐 대백과·알쿠디아",
+      "url": "https://www.enciclopedia.cat/gran-enciclopedia-catalana/alcudia"
+    },
+    "MH13": {
+      "title": "위키백과(스페인어) — Madina Mayurqa",
+      "url": "https://es.wikipedia.org/wiki/Madina_Mayurqa"
+    },
+    "MH14": {
+      "title": "위키백과(영어) — Conquest of Majorca",
+      "url": "https://en.wikipedia.org/wiki/Conquest_of_Majorca"
+    },
+    "MH15": {
+      "title": "위키백과(카탈루냐어) — Festa de l'Estendard",
+      "url": "https://ca.wikipedia.org/wiki/Festa_de_l%27Estendard"
+    },
+    "MH16": {
+      "title": "위키백과(영어) — Kingdom of Majorca",
+      "url": "https://en.wikipedia.org/wiki/Kingdom_of_Majorca"
+    },
+    "MH17": {
+      "title": "위키백과(영어) — Battle of Llucmajor",
+      "url": "https://en.wikipedia.org/wiki/Battle_of_Llucmajor"
+    },
+    "MH18": {
+      "title": "위키백과(카탈루냐어) — Jaume III de Mallorca",
+      "url": "https://ca.wikipedia.org/wiki/Jaume_III_de_Mallorca"
+    },
+    "MH19": {
+      "title": "위키백과(영어) — Bellver Castle",
+      "url": "https://en.wikipedia.org/wiki/Bellver_Castle"
+    },
+    "MH20": {
+      "title": "위키백과(영어) — A Winter in Majorca",
+      "url": "https://en.wikipedia.org/wiki/A_Winter_in_Majorca"
+    },
+    "MH21": {
+      "title": "마요르카닷컴·발데모사의 쇼팽 박물관",
+      "url": "https://www.mallorca.com/es/guia/lugares-de-interes/frederic-chopin-3"
+    },
+    "MH22": {
+      "title": "위키백과(영어) — Archduke Ludwig Salvator of Austria",
+      "url": "https://en.wikipedia.org/wiki/Archduke_Ludwig_Salvator_of_Austria"
+    },
+    "MH23": {
+      "title": "발레아레스 주정부·루이스 살바도르 대공 상세 전기",
+      "url": "https://www.caib.es/sites/lluissalvador/ca/biografia_extensa-68918"
+    },
+    "MH24": {
+      "title": "위키백과(영어) — Palma de Mallorca Airport",
+      "url": "https://en.wikipedia.org/wiki/Palma_de_Mallorca_Airport"
+    },
+    "MH25": {
+      "title": "포시즌스 보도 자료·호텔 포르멘토르의 역사",
+      "url": "https://press.fourseasons.com/mallorca/trending-now/hotel-history"
+    },
+    "MH26": {
+      "title": "위키백과(카탈루냐어) — Article salat",
+      "url": "https://ca.wikipedia.org/wiki/Article_salat"
+    },
+    "MH28": {
+      "title": "위키백과(영어) — Ses Païsses",
+      "url": "https://en.wikipedia.org/wiki/Ses_Pa%C3%AFsses"
+    },
+    "MH29": {
+      "title": "위키백과(카탈루냐어) — Talaiot",
+      "url": "https://ca.wikipedia.org/wiki/Talaiot"
+    },
+    "MH30": {
+      "title": "위키백과(영어) — Valldemossa Charterhouse",
+      "url": "https://en.wikipedia.org/wiki/Valldemossa_Charterhouse"
+    },
+    "MH31": {
+      "title": "라 오피니온 데 그라나다(2004년 9월 11일)·이반 놈미크 「섬의 두 작곡가」 — 쇼팽과 파야의 마요르카(파야 기록원 협력 칼럼)",
+      "url": "https://www.manueldefalla.com/pdfs/pdf130316140514_141.pdf"
+    },
+    "MH32": {
+      "title": "라몬 률 연구 사이트·미라마르",
+      "url": "https://www.quisestlullus.narpan.net/en/miramar"
+    },
+    "MH33": {
+      "title": "위키백과(영어) — Ramon Llull",
+      "url": "https://en.wikipedia.org/wiki/Ramon_Llull"
+    },
+    "MH35": {
+      "title": "위키백과(영어) — Hispania Balearica",
+      "url": "https://en.wikipedia.org/wiki/Hispania_Balearica"
+    },
+    "MH36": {
+      "title": "위키백과(영어) — Palma Cathedral",
+      "url": "https://en.wikipedia.org/wiki/Palma_Cathedral"
+    },
+    "MH37": {
+      "title": "바르셀로 여행 안내·알무다이나 왕궁",
+      "url": "https://www.barcelo.com/guia-turismo/en/spain/mallorca/things-to-do/the-almudaina-royal-palace/"
+    },
+    "MH38": {
+      "title": "아에나·팔마 데 마요르카 공항의 역사",
+      "url": "https://www.aena.es/en/palma-de-mallorca/get-to-know-us/history.html"
+    },
+    "MH39": {
+      "title": "위키백과(스페인어) — Aeropuerto de Palma de Mallorca",
+      "url": "https://es.wikipedia.org/wiki/Aeropuerto_de_Palma_de_Mallorca"
+    },
+    "MH40": {
+      "title": "스크리브드·출처가 밝혀지지 않은 현장 보고서",
+      "url": "https://www.scribd.com/document/645738449/FIELD-WORK-REPORT"
+    }
+  },
+  "factCheckNote": "2026-10-30 독립 검증 — 주장 52개를 출처와 맞춰 보고 지적 4건을 모두 고쳤다. 여기에는 고친 곳만 적는다",
+  "factCheck": [
+    {
+      "claim": "서지중해에 놓인 이 섬에는 수천 년 동안 여러 민족이 차례로 머물렀고, 그 흔적이 섬 곳곳에 겹겹이 남아 있습니다.",
+      "sources": [
+        "MH11",
+        "MH35"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "5세기에 로마의 힘이 기울자 섬은 반달족의 손에 넘어갔고, 6세기에는 비잔티움 제국이 섬을 차지합니다.",
+      "sources": [
+        "MH35",
+        "MH11"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "둥근 벨베르 성은 하우메 2세가 새로 지었고, 알무다이나 궁전은 이슬람 시대의 성채를 이 왕국의 왕궁으로 고친 것입니다. 정복 직후 첫 삽을 뜬 팔마 대성당도 이 시절에 공사가 이어졌습니다.",
+      "sources": [
+        "MH36",
+        "MH19",
+        "MH37"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "그해 60만 명 남짓이던 항공 승객은 13년 만에 7백만 명을 넘었고, 지금은 한 해 3천만 명이 넘는 사람들이 이 공항을 오갑니다.",
+      "sources": [
+        "MH38",
+        "MH39",
+        "MH24",
+        "MH40"
+      ],
+      "status": "UNCONFIRMED",
+      "resolution": "OMITTED"
+    },
+    {
+      "claim": "공항이 문을 연 지 2년 만인 1962년에 한 해 승객이 백만 명을 넘었고, 1980년에는 7백만 명을 넘었으며, 지금은 한 해 3천만 명이 넘는 사람들이 이 공항을 오갑니다.",
+      "sources": [
+        "MH38",
+        "MH39",
+        "MH24"
+      ],
+      "status": "CONFIRMED"
+    }
+  ],
+  "reviewedAt": "2026-10-31"
+}

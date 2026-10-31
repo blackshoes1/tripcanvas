@@ -1,0 +1,201 @@
+{
+  "id": "mallorca-cap-rocat",
+  "kind": "PLACE",
+  "name": "캡 로캣",
+  "localName": "Cap Rocat",
+  "city": "마요르카",
+  "lat": 39.4759,
+  "lng": 2.7247,
+  "radiusM": 500,
+  "aliases": [
+    "캡로캣",
+    "캡 로캇",
+    "캅 로캇",
+    "Hotel Cap Rocat",
+    "엔데로캇 요새",
+    "Fort d'Enderrocat",
+    "Fuerte de Enderrocat",
+    "Fort del Cap Enderrocat",
+    "Fuerte del Cabo Enderrocat",
+    "Cap Enderrocat",
+    "엔데로캇 곶 요새"
+  ],
+  "placeIds": [],
+  "voice": {
+    "engine": "Gemini 3.8 Flash TTS",
+    "name": "Sulafat"
+  },
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "팔마만을 지키던 요새",
+      "textFile": "mallorca/narration/cap-rocat.txt",
+      "audio": "mallorca/cap-rocat-core.mp3",
+      "audioText": "c2e0fd1a3e649799",
+      "sources": [
+        "MR01",
+        "MR02",
+        "MR03",
+        "MR04",
+        "MR05",
+        "MR06",
+        "MR07",
+        "MR08",
+        "MR09",
+        "MR10",
+        "MR12",
+        "MR13",
+        "MR14",
+        "MR15",
+        "MR16",
+        "MR17",
+        "MR18"
+      ]
+    }
+  ],
+  "sources": {
+    "MR01": {
+      "title": "위키백과(스페인어) — Fuerte del Cabo Enderrocat",
+      "url": "https://es.wikipedia.org/wiki/Fuerte_del_Cabo_Enderrocat"
+    },
+    "MR02": {
+      "title": "위키백과(카탈루냐어) — Cap Enderrocat",
+      "url": "https://ca.wikipedia.org/wiki/Cap_Enderrocat"
+    },
+    "MR03": {
+      "title": "엘 데바테·19세기 군사 요새를 고친 지중해의 호텔(2026)",
+      "url": "https://www.eldebate.com/estilo-vida/viajar/20260326/fortaleza-militar-espana-siglo-xix-reconvertida-hotel-recondito-privado-mediterraneo_400094.html"
+    },
+    "MR04": {
+      "title": "유럽 문화유산상(유로파 노스트라)·엔데로캇 곶 요새",
+      "url": "https://www.europeanheritageawards.eu/winners/cap-enderrocat-fortress/"
+    },
+    "MR05": {
+      "title": "오텔 앵솔리트·캡 로캣",
+      "url": "https://www.hotels-insolites.com/en/cap-rocat.hotel"
+    },
+    "MR06": {
+      "title": "유럽 문화유산상 기록관·엔데로캇 곶 요새, 마요르카",
+      "url": "https://europeanheritageawards-archive.eu/laureates-1978-2022/detail/cap-enderrocat-fortress-mallorca"
+    },
+    "MR07": {
+      "title": "울티마 오라·마요르카 사업 유럽 문화유산상 수상(2017)",
+      "url": "https://www.ultimahora.es/noticias/local/2017/04/05/259640/proyecto-mallorca-sido-galardonado-los-premios-patrimonio-cultural-2017.html"
+    },
+    "MR08": {
+      "title": "시 마요르카·팔마만의 새 고급 호텔",
+      "url": "https://www.seemallorca.com/events/news/new-luxury-hotel-in-the-bay-of-palma"
+    },
+    "MR09": {
+      "title": "미쉐린 가이드·바닷가 요새 호텔 캡 로캣의 스위트",
+      "url": "https://guide.michelin.com/en/article/travel/cap-rocat-mallorca-spain-key-hotel-michelin-guide-signature-space"
+    },
+    "MR10": {
+      "title": "태블릿 호텔·마요르카 요새를 고친 캡 로캣",
+      "url": "https://www.tablethotels.com/magazine/en/2024/04/the-war-is-over/"
+    },
+    "MR12": {
+      "title": "캡 로캣 공식·문화와 유산",
+      "url": "https://caprocat.com/en/sustainability/culture-and-heritage"
+    },
+    "MR13": {
+      "title": "발레아레스 주정부 나투라 2000·엔데로캇 곶~블랑 곶 조류 특별 보호 구역(ZEPA)",
+      "url": "https://www.caib.es/sites/xarxanatura/ca/es0000081_cap_enderrocat-cap_blanc_zepa"
+    },
+    "MR14": {
+      "title": "마요르카닷컴·알폰소 13세 포대",
+      "url": "https://www.mallorca.com/fr/guide/sites-touristiques/bateria-alfons-xiii"
+    },
+    "MR15": {
+      "title": "위키백과(카탈루냐어) — Badia de Palma",
+      "url": "https://ca.wikipedia.org/wiki/Badia_de_Palma"
+    },
+    "MR16": {
+      "title": "유크마요르시·해안 방어 망루",
+      "url": "https://llucmajor.org/es/node/2196/printable/print"
+    },
+    "MR17": {
+      "title": "캡 로캣 공식·호텔과 주변",
+      "url": "https://caprocat.com/cap-rocat/"
+    },
+    "MR18": {
+      "title": "위키백과(영어) — Palma Cathedral",
+      "url": "https://en.wikipedia.org/wiki/Palma_Cathedral"
+    }
+  },
+  "factCheckNote": "2026-10-30 독립 검증 — 주장 32개를 출처와 맞춰 보고 지적 6건을 모두 고쳤다. 여기에는 고친 곳만 적는다",
+  "factCheck": [
+    {
+      "claim": "팔마만 동쪽 해안의 곶에 자리 잡고, 만 건너편의 산 카를로스 요새와 함께 팔마 항구로 들어오는 바닷길을 지키도록 지었습니다.",
+      "sources": [
+        "MR15",
+        "MR02",
+        "MR01"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "그해 미국과 전쟁이 터지자 계획이 바뀌어, 우선은 팔마에 있던 대포 네 문을 두는 임시 포대로 짓기로 했다고 합니다.",
+      "sources": [
+        "MR01"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "마지막 경비병들이 떠난 것은 1990년대 중반이고, 1996년에 국가 문화재로 지정됐습니다.",
+      "sources": [
+        "MR01",
+        "MR06",
+        "MR04"
+      ],
+      "status": "UNCONFIRMED",
+      "resolution": "OMITTED"
+    },
+    {
+      "claim": "1996년 여름까지도 아주 적은 수의 경비병이 남아 있었고, 같은 해 국가 문화재로 지정됐습니다.",
+      "sources": [
+        "MR01",
+        "MR06",
+        "MR04"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "16세기 말에는 근처에 해적의 습격을 살피던 망루가 서 있었는데, 지금의 요새를 지을 때 허물어진 것으로 보여 남아 있지 않습니다.",
+      "sources": [
+        "MR02",
+        "MR16"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "요새가 오랫동안 사람의 발길을 막아 준 덕분에, 해안 풍경이 이렇게 남을 수 있었습니다.",
+      "sources": [
+        "MR13",
+        "MR06",
+        "MR17"
+      ],
+      "status": "UNCONFIRMED",
+      "resolution": "HEDGED"
+    },
+    {
+      "claim": "이 곶 일대는 오랫동안 군사 구역이었고, 지금은 자연 보호 구역이자 새들을 위한 특별 보호 구역으로 지정되어 해안 풍경을 지키고 있습니다.",
+      "sources": [
+        "MR13",
+        "MR06",
+        "MR17"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "바다 쪽 테라스에 서면, 만 건너 북서쪽으로 팔마가 보입니다.",
+      "sources": [
+        "MR02",
+        "MR18"
+      ],
+      "status": "CONFIRMED"
+    }
+  ],
+  "reviewedAt": "2026-10-31"
+}

@@ -146,3 +146,78 @@ test('검수 표시는 확인하지 못한 사실마다 처리(뺐음·단정 �
 test('저장소의 원고는 검사를 통과한다', () => {
   assert.deepEqual(B.check(B.loadPlaces()), []);
 });
+
+test('이미 만든 음성(audio)은 그 경로를 쓰고, 저장소의 그 지역 폴더에 있어야 한다 — 합성하지 않으니 없으면 만들 길이 없다', () => {
+  assert.equal(B.trackSrc({ region: 'seville', id: 'seville-alcazar' }, { id: 'more' }), 'seville/alcazar-more.mp3');
+  assert.equal(B.trackSrc({ region: 'mallorca', id: 'mallorca-soller-train-palma' }, { id: 'core', audio: 'mallorca/soller-train-core.mp3' }), 'mallorca/soller-train-core.mp3');
+  const text = '이 문장은 충분히 긴 원고입니다. '.repeat(8);
+  const place = (audio, extra = {}) => ({ file: 'x.json', region: 'mallorca', id: 'mallorca-x', kind: 'PLACE', lat: 1, lng: 1, radiusM: 100,
+    voice: { engine: 'Gemini', name: 'Sulafat' }, sources: { P01: { title: 't', url: 'https://a.example/' } },
+    tracks: [{ id: 'core', role: 'CORE', title: 't', text, sources: ['P01'], audio, audioText: B.textHash(text) }], ...extra });
+  assert.deepEqual(B.check([place('mallorca/bellver-core.mp3')]), []);
+  assert.ok(B.check([place('mallorca/none-core.mp3')]).some((e) => /stories\/mallorca\/none-core\.mp3가 없습니다/.test(e)));
+  assert.ok(B.check([place('seville/alcazar-core.mp3')]).some((e) => /mallorca\/ 안의/.test(e)));
+  assert.ok(B.check([place('mallorca/-x.mp3')]).some((e) => /mallorca\/ 안의/.test(e)));   // stories.js SRC_RE가 버리는 이름
+  // 목소리를 안 적으면 카탈로그가 Chirp 3 HD로 적는다
+  assert.ok(B.check([place('mallorca/bellver-core.mp3', { voice: undefined })]).some((e) => /목소리\(voice/.test(e)));
+  // 폴더가 이긴다 — 원고 JSON에 region·file이 적혀 있어도 음성 경로는 폴더 이름을 따른다
+  const rec = B.placeRecord({ id: 'mallorca-x', region: 'seville', file: 'y.json' }, 'x.json', 'mallorca');
+  assert.equal(rec.region, 'mallorca');
+  assert.equal(rec.file, 'x.json');
+  assert.equal(B.trackSrc(rec, { id: 'core' }), 'mallorca/x-core.mp3');
+  // 마요르카는 지역 폴더를 읽고, 원자료 폴더(source/cathedral)는 원고로 읽지 않는다
+  const ids = B.loadPlaces().map((p) => p.id);
+  assert.ok(ids.includes('mallorca-palma-cathedral') && ids.includes('seville-cathedral'));
+  assert.ok(!B.loadPlaces().some((p) => p.region === 'cathedral'));
+});
+
+test('원고를 고치면 이미 만든 음성은 검사를 통과하지 못한다 — 고친 사실이 앱에 닿지 않은 채 배포되지 않게', () => {
+  const text = '이 문장은 충분히 긴 원고입니다. '.repeat(8);
+  const place = (t) => ({ file: 'x.json', region: 'mallorca', id: 'mallorca-x', kind: 'PLACE', lat: 1, lng: 1, radiusM: 100,
+    voice: { engine: 'Gemini', name: 'Sulafat' }, sources: { P01: { title: 't', url: 'https://a.example/' } },
+    tracks: [{ id: 'core', role: 'CORE', title: 't', text: t, sources: ['P01'], audio: 'mallorca/bellver-core.mp3', audioText: B.textHash(text) }] });
+  assert.deepEqual(B.check([place(text)]), []);
+  const errors = B.check([place(text.replace('충분히', '아주'))]);
+  assert.ok(errors.some((e) => /음성\(audio\)을 만든 원고와 다릅니다/.test(e)));
+  // 저장소의 이미 만든 음성은 모두 지금 원고로 만든 것이다
+  for (const p of B.loadPlaces()) for (const t of p.tracks) if (t.audio) assert.equal(t.audioText, B.textHash(t.text), `${p.id}/${t.id}`);
+});
+
+test('같은 이야기를 다른 자리에 붙이면 원고·음성·출처·검수를 원본 하나에서 물려받는다', () => {
+  const text = '이 문장은 충분히 긴 원고입니다. '.repeat(8);
+  const original = { file: 'a.json', region: 'mallorca', id: 'mallorca-a', kind: 'PLACE', lat: 1, lng: 1, radiusM: 100, reviewedAt: '2026-10-31',
+    voice: { engine: 'Gemini', name: 'Sulafat' }, sources: { P01: { title: 't', url: 'https://a.example/' } }, factCheck: [],
+    tracks: [{ id: 'core', role: 'CORE', title: 't', text, sources: ['P01'], audio: 'mallorca/bellver-core.mp3', audioText: B.textHash(text) }] };
+  const copy = { file: 'b.json', region: 'mallorca', id: 'mallorca-b', kind: 'PLACE', lat: 2, lng: 2, radiusM: 100, sameStoryAs: 'mallorca-a' };
+  const [, b] = B.resolveSameStory([{ ...original }, { ...copy }]);
+  assert.equal(b.tracks, original.tracks);
+  assert.equal(b.reviewedAt, '2026-10-31');
+  assert.deepEqual(B.check([original, b]), []);
+  // 원본의 검수를 지우면 복사본도 검수 표시가 없어 카탈로그에서 함께 빠진다
+  const { reviewedAt: _gone, ...unreviewed } = original;
+  assert.equal(B.resolveSameStory([unreviewed, { ...copy, reviewedAt: '2026-10-31' }])[1].reviewedAt, undefined);
+  // 원본이 없거나 원본도 다른 이야기를 가리키면 검사가 말한다
+  assert.ok(B.check(B.resolveSameStory([{ ...copy, sameStoryAs: 'mallorca-none' }])).some((e) => /가리키는 원본이 없거나/.test(e)));
+  assert.ok(B.check(B.resolveSameStory([{ ...original, sameStoryAs: 'mallorca-b' }, { ...copy }])).some((e) => /원본도 다른 이야기/.test(e)));
+  // 합성하는 트랙(audio 없음)도 원본의 음성 경로를 쓴다 — 사본 이름으로 같은 원고를 한 번 더 합성하지 않는다
+  const synth = { file: 'c.json', region: 'seville', id: 'seville-alcazar', kind: 'PLACE', lat: 1, lng: 1, radiusM: 100,
+    sources: { P01: { title: 't', url: 'https://a.example/' } }, tracks: [{ id: 'core', role: 'CORE', title: 't', text, sources: ['P01'] }] };
+  const gate = B.resolveSameStory([{ ...synth }, { file: 'd.json', region: 'seville', id: 'seville-alcazar-gate', kind: 'PLACE', lat: 2, lng: 2, radiusM: 80, sameStoryAs: 'seville-alcazar' }])[1];
+  assert.equal(B.trackSrc(gate, gate.tracks[0]), 'seville/alcazar-core.mp3');
+  // 음성은 지역 폴더에 있다 — 다른 지역의 이야기는 가리키지 않는다
+  assert.ok(B.check(B.resolveSameStory([{ ...synth }, { ...copy, sameStoryAs: 'seville-alcazar' }])).some((e) => /같은 지역 폴더/.test(e)));
+  // 배포되는 팔마 종점은 소예르역의 것을 그대로 쓴다
+  const places = B.loadPlaces();
+  const palma = places.find((p) => p.id === 'mallorca-soller-train-palma');
+  const soller = places.find((p) => p.id === 'mallorca-soller-train');
+  assert.equal(palma.tracks, soller.tracks);
+  assert.equal(palma.sources, soller.sources);
+});
+
+test('출처 ID는 장소끼리 다른 것을 가리키지 않는다 — 카탈로그에서는 ID 하나로 모인다', () => {
+  const text = '이 문장은 충분히 긴 원고입니다. '.repeat(8);
+  const place = (id, title) => ({ file: `${id}.json`, id: `seville-${id}`, kind: 'PLACE', lat: 1, lng: 1, radiusM: 100,
+    sources: { P01: { title, url: 'https://a.example/' } }, tracks: [{ id: 'core', role: 'CORE', title: 't', text, sources: ['P01'] }] });
+  assert.deepEqual(B.check([place('a', '같은 제목'), place('b', '같은 제목')]), []);
+  assert.ok(B.check([place('a', '제목 하나'), place('b', '제목 둘')]).some((e) => /출처 P01가 a\.json의 P01와 다릅니다/.test(e)));
+});

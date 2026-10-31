@@ -1,0 +1,189 @@
+{
+  "id": "mallorca-drac-caves",
+  "kind": "PLACE",
+  "name": "드라크 동굴",
+  "localName": "Coves del Drac",
+  "city": "마요르카",
+  "lat": 39.5357,
+  "lng": 3.3306,
+  "radiusM": 500,
+  "aliases": [
+    "드라크",
+    "드라흐 동굴",
+    "드락 동굴",
+    "Cuevas del Drach",
+    "Cuevas del Drac",
+    "Caves of Drach",
+    "용의 동굴"
+  ],
+  "placeIds": [],
+  "voice": {
+    "engine": "Gemini 3.8 Flash TTS",
+    "name": "Sulafat"
+  },
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "용의 동굴과 바다의 호수",
+      "textFile": "mallorca/narration/drac-caves.txt",
+      "audio": "mallorca/drac-caves-core.mp3",
+      "audioText": "f56007ac702c08b4",
+      "sources": [
+        "MD01",
+        "MD02",
+        "MD03",
+        "MD04",
+        "MD05",
+        "MD06",
+        "MD07",
+        "MD26",
+        "MD10",
+        "MD11",
+        "MD12",
+        "MD13",
+        "MD14",
+        "MD15",
+        "MD17",
+        "MD18",
+        "MD19",
+        "MD20",
+        "MD24",
+        "MD25",
+        "MD27"
+      ]
+    }
+  ],
+  "sources": {
+    "MD01": {
+      "title": "스페인 관광청·마요르카의 드라크 동굴",
+      "url": "https://www.spain.info/es/descubrir-espana/mallorca-concierto-cueva/"
+    },
+    "MD02": {
+      "title": "위키백과(스페인어) — Cuevas del Drach",
+      "url": "https://es.wikipedia.org/wiki/Cuevas_del_Drach"
+    },
+    "MD03": {
+      "title": "위키백과(영어) — Caves of Drach",
+      "url": "https://en.wikipedia.org/wiki/Caves_of_Drach"
+    },
+    "MD04": {
+      "title": "쇼 케이브·스페인의 관광 동굴, 드라크 동굴",
+      "url": "https://showcaves.com/english/es/showcaves/Drac.html"
+    },
+    "MD05": {
+      "title": "드라크 동굴 공식·동굴과 관람",
+      "url": "https://www.cuevasdeldrach.com/la-cueva.php"
+    },
+    "MD06": {
+      "title": "드라크 동굴 공식·역사",
+      "url": "https://www.cuevasdeldrach.com/historia.php"
+    },
+    "MD07": {
+      "title": "발레아레스 동굴학회지(2018)·드라크 동굴의 역사와 문헌",
+      "url": "https://ibdigital.uib.es/greenstone/library/collection/papersSocietatEspeleologica/document/PapersSEB_2018vol001p021"
+    },
+    "MD10": {
+      "title": "발레아레스 동굴학회지(2020, 3권 33쪽)",
+      "url": "https://ibdigital.uib.es/greenstone/library/collection/papersSocietatEspeleologica/document/PapersSEB_2020vol003p033"
+    },
+    "MD11": {
+      "title": "드라크 동굴 공식 사이트",
+      "url": "https://www.cuevasdeldrach.com/"
+    },
+    "MD12": {
+      "title": "동굴·카르스트 연구지 79권 1호(59~72쪽)",
+      "url": "https://legacy.caves.org/pub/journal/PDF/V79/cave-79-01-59.pdf"
+    },
+    "MD13": {
+      "title": "PMC 논문·지난 650만 년 서지중해의 해수면 기록",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7820252"
+    },
+    "MD14": {
+      "title": "위키백과(영어) — Magic Fountain of Montjuïc",
+      "url": "https://en.wikipedia.org/wiki/Magic_Fountain_of_Montju%C3%AFc"
+    },
+    "MD15": {
+      "title": "미국 국립 동굴·카르스트 관리 심포지엄(2013)·마요르카 관광 동굴 물기둥의 변화",
+      "url": "https://digitalcommons.usf.edu/nckms_2013/Proceedings/Geology_and_Hydrology/7"
+    },
+    "MD17": {
+      "title": "위키백과(카탈루냐어) — Història de Mallorca",
+      "url": "https://ca.wikipedia.org/wiki/Hist%C3%B2ria_de_Mallorca"
+    },
+    "MD18": {
+      "title": "위키백과(영어) — History of Mallorca",
+      "url": "https://en.wikipedia.org/wiki/History_of_Mallorca"
+    },
+    "MD19": {
+      "title": "아이다 크루즈·드라크 동굴 이야기",
+      "url": "https://aida.de/willkommen/aida-stories/drachenhoehle-mallorca"
+    },
+    "MD20": {
+      "title": "오텔레스닷넷·포르토 크리스토에서 보고 할 것",
+      "url": "https://www.hoteles.net/mallorca/porto-cristo/porto-cristo-mallorca.html"
+    },
+    "MD24": {
+      "title": "발레아레스 동굴학회지(2018, 1권 223쪽)",
+      "url": "https://ibdigital.uib.es/greenstone/library/collection/papersSocietatEspeleologica/document/PapersSEB_2018vol001p223"
+    },
+    "MD25": {
+      "title": "마요르카 데일리 불레틴·드라크 동굴(2019)",
+      "url": "https://www.majorcadailybulletin.com/london-fair/what-do/2019/10/31/59217/caves-drach-immerse-yourself-our-environment.html"
+    },
+    "MD26": {
+      "title": "마요르카닷컴·드라크 동굴 관람 안내",
+      "url": "https://www.mallorca.com/en/guide/sights/coves-del-drach"
+    },
+    "MD27": {
+      "title": "위키백과(카탈루냐어) — Coves del Drac",
+      "url": "https://ca.wikipedia.org/wiki/Coves_del_Drac"
+    }
+  },
+  "factCheckNote": "2026-10-30 독립 검증 — 주장 39개를 출처와 맞춰 보고 지적 5건을 모두 고쳤다. 여기에는 고친 곳만 적는다",
+  "factCheck": [
+    {
+      "claim": "천장에 매달린 종유석을 보세요. 백 년에 1센티미터쯤 자란다고 합니다.",
+      "sources": [
+        "MD06"
+      ],
+      "status": "WRONG",
+      "resolution": "OMITTED"
+    },
+    {
+      "claim": "지금 보이는 긴 종유석 하나하나가 수만 년의 시간인 셈입니다.",
+      "sources": [
+        "MD06"
+      ],
+      "status": "UNCONFIRMED",
+      "resolution": "OMITTED"
+    },
+    {
+      "claim": "그때 이곳의 물이 지금보다 4미터쯤 높은 곳까지 차 있었다는 것을, 이 동굴이 기억하고 있는 셈입니다.",
+      "sources": [
+        "MD13"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "동굴이 지금 같은 관광지로 꾸며진 것은 1920년대입니다.",
+      "sources": [
+        "MD24",
+        "MD04",
+        "MD25"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "검은 동굴, 흰 동굴, 그리고 이 동굴의 탐사를 후원한 대공과 탐사에 나선 프랑스인들의 이름을 딴 루이스 살바도르 동굴과 프랑스인 동굴입니다.",
+      "sources": [
+        "MD02",
+        "MD26",
+        "MD27"
+      ],
+      "status": "UNCONFIRMED",
+      "resolution": "HEDGED"
+    }
+  ],
+  "reviewedAt": "2026-10-31"
+}

@@ -1,0 +1,24 @@
+{
+  "id": "mallorca-soller-train-palma",
+  "kind": "PLACE",
+  "name": "소예르 기차",
+  "localName": "Ferrocarril de Sóller",
+  "city": "마요르카",
+  "lat": 39.5767,
+  "lng": 2.6538,
+  "radiusM": 250,
+  "aliases": [
+    "소예르 열차",
+    "소예르 기차역",
+    "Tren de Sóller",
+    "Estació de Sóller",
+    "솔레르 기차",
+    "Sóller Train",
+    "Train to Sóller",
+    "Orange Express",
+    "소예르 철도",
+    "오렌지 급행"
+  ],
+  "placeIds": [],
+  "sameStoryAs": "mallorca-soller-train"
+}
