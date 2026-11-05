@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-31",
+  "updated": "2026-11-05",
   "voice": {
     "engine": "Google Cloud TTS Chirp 3 HD",
     "name": "ko-KR-Chirp3-HD-Despina",
@@ -1266,6 +1266,355 @@
             "MV30"
           ],
           "reviewedAt": "2026-10-31"
+        }
+      ]
+    },
+    {
+      "id": "cordoba-alcazar",
+      "kind": "PLACE",
+      "name": "코르도바 알카사르",
+      "localName": "Alcázar de los Reyes Cristianos",
+      "city": "코르도바",
+      "lat": 37.8767,
+      "lng": -4.7829,
+      "radiusM": 230,
+      "aliases": [
+        "기독교 왕들의 알카사르",
+        "그리스도교 왕들의 알카사르",
+        "가톨릭 왕들의 알카사르",
+        "알카사르 데 로스 레예스 크리스티아노스",
+        "Alcázar de Córdoba",
+        "Alcazar of the Christian Monarchs",
+        "Alcázar of the Christian Kings",
+        "코르도바 알카사르 정원",
+        "Jardines del Alcázar de los Reyes Cristianos"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "강을 지키던 성, 알카사르",
+          "src": "cordoba/alcazar-core.mp3",
+          "seconds": 397,
+          "bytes": 2384784,
+          "sha256": "721327539adf774c95dfe054f98bfe433fe7f1a8bbb950728ebe595dac580e16",
+          "sources": [
+            "KA01",
+            "KA02",
+            "KA03",
+            "KA04",
+            "KA05",
+            "KA06",
+            "KA07",
+            "KA08",
+            "KA09",
+            "KA10",
+            "KA11",
+            "KA12",
+            "KA13",
+            "KA14",
+            "KA15",
+            "KA16",
+            "KA17",
+            "KA18",
+            "KA19",
+            "KA20",
+            "KA21"
+          ],
+          "reviewedAt": "2026-11-05"
+        }
+      ]
+    },
+    {
+      "id": "cordoba-city",
+      "kind": "CITY",
+      "name": "코르도바",
+      "localName": "Córdoba",
+      "city": "코르도바",
+      "lat": 37.8847,
+      "lng": -4.7792,
+      "radiusM": 12000,
+      "aliases": [
+        "코르도바",
+        "Córdoba",
+        "Cordoba",
+        "Córdoba, España"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "겹겹이 쌓인 시간, 코르도바",
+          "src": "cordoba/city-core.mp3",
+          "seconds": 434,
+          "bytes": 2605968,
+          "sha256": "b774a4cc4b8226199e986db3fb711ebc89476186c3068fdef9eba0354b1dbaa0",
+          "sources": [
+            "KC01",
+            "KC02",
+            "KC03",
+            "KC04",
+            "KC05",
+            "KC06",
+            "KC07",
+            "KC08",
+            "KC09",
+            "KC10",
+            "KC11",
+            "KC12",
+            "KC13",
+            "KC14",
+            "KC15",
+            "KC16",
+            "KC17",
+            "KC18",
+            "KC19",
+            "KC20",
+            "KC21",
+            "KC22",
+            "KC23",
+            "KC24",
+            "KC25",
+            "KC26"
+          ],
+          "reviewedAt": "2026-11-05"
+        }
+      ]
+    },
+    {
+      "id": "cordoba-juderia",
+      "kind": "PLACE",
+      "name": "유대인 거리",
+      "localName": "Judería de Córdoba",
+      "city": "코르도바",
+      "lat": 37.8805,
+      "lng": -4.7826,
+      "radiusM": 300,
+      "aliases": [
+        "코르도바 유대인 거리",
+        "유대인 지구",
+        "후데리아",
+        "코르도바 후데리아",
+        "Judería",
+        "Jewish Quarter",
+        "Jewish Quarter of Córdoba",
+        "코르도바 시나고그",
+        "시나고그",
+        "Sinagoga de Córdoba",
+        "Córdoba Synagogue",
+        "마이모니데스 동상",
+        "마이모니데스 상",
+        "Estatua de Maimónides",
+        "Plaza de Tiberiades",
+        "티베리아데스 광장",
+        "후디오스 거리",
+        "Calle Judíos",
+        "알모도바르 문",
+        "Puerta de Almodóvar",
+        "세네카 동상",
+        "카사 데 세파라드",
+        "Casa de Sefarad",
+        "꽃의 골목",
+        "Calleja de las Flores"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "작은 성소의 거리, 후데리아",
+          "src": "cordoba/juderia-core.mp3",
+          "seconds": 425,
+          "bytes": 2552688,
+          "sha256": "adc4c3e358d81c49af5ca925a6b5a8d04cf95350bf995644722ac146bc11e769",
+          "sources": [
+            "KJ01",
+            "KJ02",
+            "KJ03",
+            "KJ04",
+            "KJ05",
+            "KJ06",
+            "KJ07",
+            "KJ08",
+            "KJ09",
+            "KJ10",
+            "KJ11",
+            "KJ12",
+            "KJ13",
+            "KJ14",
+            "KJ15",
+            "KJ16",
+            "KJ17",
+            "KJ18",
+            "KJ19",
+            "KJ20",
+            "KJ21",
+            "KJ22",
+            "KJ23"
+          ],
+          "reviewedAt": "2026-11-05"
+        }
+      ]
+    },
+    {
+      "id": "cordoba-mezquita",
+      "kind": "PLACE",
+      "name": "메스키타 대성당",
+      "localName": "Mezquita-Catedral de Córdoba",
+      "city": "코르도바",
+      "lat": 37.8789,
+      "lng": -4.7794,
+      "radiusM": 200,
+      "aliases": [
+        "메스키타",
+        "코르도바 메스키타",
+        "메스키타 카테드랄",
+        "코르도바 대성당",
+        "코르도바 대모스크",
+        "성모 승천 대성당",
+        "Mezquita",
+        "Mezquita de Córdoba",
+        "Mezquita-Catedral",
+        "Mosque–Cathedral of Córdoba",
+        "Mosque-Cathedral of Cordoba",
+        "Great Mosque of Córdoba",
+        "Catedral de Córdoba",
+        "Catedral de Nuestra Señora de la Asunción",
+        "오렌지 안뜰",
+        "Patio de los Naranjos",
+        "메스키타 종탑",
+        "Torre campanario de la Mezquita"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "기둥의 숲, 메스키타 대성당",
+          "src": "cordoba/mezquita-core.mp3",
+          "seconds": 515,
+          "bytes": 3087504,
+          "sha256": "8c8f830646dbaf4d62adbc416c92a5068436dc90eac21a8f07fb35fa69e64ca1",
+          "sources": [
+            "KM01",
+            "KM02",
+            "KM03",
+            "KM04",
+            "KM05",
+            "KM06",
+            "KM07",
+            "KM08",
+            "KM09",
+            "KM10",
+            "KM11",
+            "KM12",
+            "KM13",
+            "KM14",
+            "KM15",
+            "KM16",
+            "KM17",
+            "KM18",
+            "KM19",
+            "KM20",
+            "KM21",
+            "KM22",
+            "KM23",
+            "KM24",
+            "KM25"
+          ],
+          "reviewedAt": "2026-11-05"
+        }
+      ]
+    },
+    {
+      "id": "cordoba-roman-bridge",
+      "kind": "PLACE",
+      "name": "로마교",
+      "localName": "Puente Romano de Córdoba",
+      "city": "코르도바",
+      "lat": 37.8766,
+      "lng": -4.7779,
+      "radiusM": 250,
+      "aliases": [
+        "코르도바 로마교",
+        "로마 다리",
+        "코르도바 로마 다리",
+        "푸엔테 로마노",
+        "Puente Romano",
+        "Roman Bridge",
+        "Roman Bridge of Córdoba",
+        "칼라오라 탑",
+        "칼라오라 타워",
+        "Torre de la Calahorra",
+        "Calahorra Tower",
+        "Museo Vivo de Al-Ándalus",
+        "다리 문",
+        "푸에르타 델 푸엔테",
+        "Puerta del Puente",
+        "Bridge Gate",
+        "산 라파엘 승리상",
+        "Triunfo de San Rafael",
+        "알볼라피아 물레방아",
+        "알볼라피아 수차",
+        "Molino de la Albolafia",
+        "Noria de la Albolafia",
+        "Albolafia Water Mill"
+      ],
+      "placeIds": [],
+      "voice": {
+        "engine": "Gemini 3.8 Flash TTS",
+        "name": "Sulafat"
+      },
+      "tracks": [
+        {
+          "id": "core",
+          "role": "CORE",
+          "title": "하나뿐이던 다리, 로마교",
+          "src": "cordoba/roman-bridge-core.mp3",
+          "seconds": 462,
+          "bytes": 2773872,
+          "sha256": "715c899659b275c637fefb83cd3f40b1ba23537a21ea53ee330d5b5caf32865a",
+          "sources": [
+            "KB01",
+            "KB02",
+            "KB03",
+            "KB04",
+            "KB05",
+            "KB06",
+            "KB07",
+            "KB08",
+            "KB09",
+            "KB10",
+            "KB11",
+            "KB12",
+            "KB13",
+            "KB14",
+            "KB15",
+            "KB16",
+            "KB17",
+            "KB18",
+            "KB19",
+            "KB20"
+          ],
+          "reviewedAt": "2026-11-05"
         }
       ]
     }
@@ -2618,6 +2967,466 @@
     "MV30": {
       "title": "위키백과(영어) — Frédéric Chopin",
       "url": "https://en.wikipedia.org/wiki/Fr%C3%A9d%C3%A9ric_Chopin"
+    },
+    "KA01": {
+      "title": "위키백과(스페인어) — 기독교 왕들의 알카사르",
+      "url": "https://es.wikipedia.org/wiki/Alc%C3%A1zar_de_los_Reyes_Cristianos"
+    },
+    "KA02": {
+      "title": "위키백과(영어) — 기독교 왕들의 알카사르",
+      "url": "https://en.wikipedia.org/wiki/Alc%C3%A1zar_de_los_Reyes_Cristianos"
+    },
+    "KA03": {
+      "title": "아르테 엔 코르도바·알카사르의 역사",
+      "url": "https://www.artencordoba.com/en/?p=735"
+    },
+    "KA04": {
+      "title": "위키백과(스페인어) — 마리아 데 아라곤",
+      "url": "https://es.wikipedia.org/wiki/Mar%C3%ADa_de_Arag%C3%B3n_(1482-1517)"
+    },
+    "KA05": {
+      "title": "위키백과(스페인어) — 카탈리나 페르난데스 구아나르테메",
+      "url": "https://es.wikipedia.org/wiki/Catalina_Fern%C3%A1ndez_Guanarteme"
+    },
+    "KA06": {
+      "title": "위키백과(스페인어) — 테네소르 세미단",
+      "url": "https://es.wikipedia.org/wiki/Tenesor_Semid%C3%A1n"
+    },
+    "KA07": {
+      "title": "위키백과(스페인어) — 보압딜",
+      "url": "https://es.wikipedia.org/wiki/Boabdil"
+    },
+    "KA08": {
+      "title": "스페인 관광청·회견의 집",
+      "url": "https://www.spain.info/es/lugares-interes/casa-entrevista/"
+    },
+    "KA09": {
+      "title": "비오그라피아스 이 비다스·콜럼버스",
+      "url": "https://www.biografiasyvidas.com/monografia/colon/fotos2.htm"
+    },
+    "KA10": {
+      "title": "위키백과(스페인어) — 베아트리스 엔리케스 데 아라나",
+      "url": "https://es.wikipedia.org/wiki/Beatriz_Enr%C3%ADquez_de_Arana"
+    },
+    "KA11": {
+      "title": "위키백과(스페인어) — 에르난도 콜론",
+      "url": "https://es.wikipedia.org/wiki/Hernando_Col%C3%B3n"
+    },
+    "KA12": {
+      "title": "위키백과(영어) — 디에고 로드리게스 데 루세로",
+      "url": "https://en.wikipedia.org/wiki/Diego_Rodr%C3%ADguez_de_Lucero"
+    },
+    "KA13": {
+      "title": "위키백과(영어) — 에르난도 데 탈라베라",
+      "url": "https://en.wikipedia.org/wiki/Hernando_de_Talavera"
+    },
+    "KA14": {
+      "title": "위키백과(스페인어) — 에르난도 데 탈라베라",
+      "url": "https://es.wikipedia.org/wiki/Hernando_de_Talavera"
+    },
+    "KA15": {
+      "title": "위키백과(스페인어) — 엔리케 2세",
+      "url": "https://es.wikipedia.org/wiki/Enrique_II_de_Castilla"
+    },
+    "KA16": {
+      "title": "위키백과(스페인어) — 페드로 1세",
+      "url": "https://es.wikipedia.org/wiki/Pedro_I_de_Castilla"
+    },
+    "KA17": {
+      "title": "위키백과(영어) — 트라스타마라 왕가",
+      "url": "https://en.wikipedia.org/wiki/House_of_Trast%C3%A1mara"
+    },
+    "KA18": {
+      "title": "위키백과(스페인어) — 알볼라피아 물레방아",
+      "url": "https://es.wikipedia.org/wiki/Molino_de_la_Albolafia_(C%C3%B3rdoba)"
+    },
+    "KA19": {
+      "title": "위키백과(스페인어) — 코르도바 문장",
+      "url": "https://es.wikipedia.org/wiki/Escudo_de_C%C3%B3rdoba_(Espa%C3%B1a)"
+    },
+    "KA20": {
+      "title": "위키백과(스페인어) — 폴리페모와 갈라테아의 우화",
+      "url": "https://es.wikipedia.org/wiki/F%C3%A1bula_de_Polifemo_y_Galatea"
+    },
+    "KA21": {
+      "title": "위키백과(스페인어) — 루이스 데 공고라",
+      "url": "https://es.wikipedia.org/wiki/Luis_de_G%C3%B3ngora"
+    },
+    "KC01": {
+      "title": "위키백과(영어) — Guadalquivir",
+      "url": "https://en.wikipedia.org/wiki/Guadalquivir"
+    },
+    "KC02": {
+      "title": "위키백과(스페인어) — Corduba",
+      "url": "https://es.wikipedia.org/wiki/Corduba"
+    },
+    "KC03": {
+      "title": "위키백과(영어) — Córdoba, Spain",
+      "url": "https://en.wikipedia.org/wiki/C%C3%B3rdoba,_Spain"
+    },
+    "KC04": {
+      "title": "위키백과(스페인어) — Historia de Córdoba (España)",
+      "url": "https://es.wikipedia.org/wiki/Historia_de_C%C3%B3rdoba_(Espa%C3%B1a)"
+    },
+    "KC05": {
+      "title": "위키백과(영어) — Seneca the Younger",
+      "url": "https://en.wikipedia.org/wiki/Seneca_the_Younger"
+    },
+    "KC06": {
+      "title": "위키백과(스페인어) — Puerta de Almodóvar",
+      "url": "https://es.wikipedia.org/wiki/Puerta_de_Almod%C3%B3var"
+    },
+    "KC07": {
+      "title": "위키백과(영어) — Abd al-Rahman I",
+      "url": "https://en.wikipedia.org/wiki/Abd_al-Rahman_I"
+    },
+    "KC08": {
+      "title": "위키백과(스페인어) — Abderramán I",
+      "url": "https://es.wikipedia.org/wiki/Abderram%C3%A1n_I"
+    },
+    "KC09": {
+      "title": "케임브리지 대학 출판부·The Literature of al-Andalus' 중 'Madinat al-Zahra and the Umayyad palace",
+      "url": "https://www.cambridge.org/core/product/identifier/CBO9781139177870A007/type/BOOK_PART"
+    },
+    "KC10": {
+      "title": "하퍼스 매거진 스콧 호턴·Abd al-Rahman's Palm Tree",
+      "url": "https://harpers.org/2007/10/abd-al-rahmans-palm-tree/"
+    },
+    "KC11": {
+      "title": "위키백과(영어) — Abd al-Rahman III",
+      "url": "https://en.wikipedia.org/wiki/Abd_al-Rahman_III"
+    },
+    "KC12": {
+      "title": "위키백과(스페인어) — Abderramán III",
+      "url": "https://es.wikipedia.org/wiki/Abderram%C3%A1n_III"
+    },
+    "KC13": {
+      "title": "위키백과(영어) — Madinat al-Zahra",
+      "url": "https://en.wikipedia.org/wiki/Madinat_al-Zahra"
+    },
+    "KC14": {
+      "title": "위키백과(영어) — Hasdai ibn Shaprut",
+      "url": "https://en.wikipedia.org/wiki/Hasdai_ibn_Shaprut"
+    },
+    "KC15": {
+      "title": "위키백과(영어) — Averroes",
+      "url": "https://en.wikipedia.org/wiki/Averroes"
+    },
+    "KC16": {
+      "title": "위키백과(영어) — Maimonides",
+      "url": "https://en.wikipedia.org/wiki/Maimonides"
+    },
+    "KC17": {
+      "title": "위키백과(영어) — Martyrs of Córdoba",
+      "url": "https://en.wikipedia.org/wiki/Martyrs_of_C%C3%B3rdoba"
+    },
+    "KC18": {
+      "title": "위키백과(영어) — Dhimmi",
+      "url": "https://en.wikipedia.org/wiki/Dhimmi"
+    },
+    "KC19": {
+      "title": "위키백과(영어) — La Convivencia",
+      "url": "https://en.wikipedia.org/wiki/La_Convivencia"
+    },
+    "KC20": {
+      "title": "위키백과(스페인어) — Conquista de Córdoba",
+      "url": "https://es.wikipedia.org/wiki/Conquista_de_C%C3%B3rdoba"
+    },
+    "KC21": {
+      "title": "위키백과(영어) — Siege of Córdoba (1236)",
+      "url": "https://en.wikipedia.org/wiki/Siege_of_C%C3%B3rdoba_(1236)"
+    },
+    "KC22": {
+      "title": "위키백과(영어) — Mosque–Cathedral of Córdoba",
+      "url": "https://en.wikipedia.org/wiki/Mosque%E2%80%93Cathedral_of_C%C3%B3rdoba"
+    },
+    "KC23": {
+      "title": "위키백과(스페인어) — Judería de Córdoba",
+      "url": "https://es.wikipedia.org/wiki/Juder%C3%ADa_de_C%C3%B3rdoba"
+    },
+    "KC24": {
+      "title": "위키백과(스페인어) — Puente romano de Córdoba",
+      "url": "https://es.wikipedia.org/wiki/Puente_romano_de_C%C3%B3rdoba"
+    },
+    "KC25": {
+      "title": "위키백과(영어) — Roman bridge of Córdoba",
+      "url": "https://en.wikipedia.org/wiki/Roman_bridge_of_C%C3%B3rdoba"
+    },
+    "KC26": {
+      "title": "위키백과(스페인어) — Alcázar de los Reyes Cristianos",
+      "url": "https://es.wikipedia.org/wiki/Alc%C3%A1zar_de_los_Reyes_Cristianos"
+    },
+    "KJ01": {
+      "title": "위키백과(스페인어) — 알모도바르 문",
+      "url": "https://es.wikipedia.org/wiki/Puerta_de_Almod%C3%B3var"
+    },
+    "KJ02": {
+      "title": "코르도바24·알모도바르 문",
+      "url": "https://www.cordoba24.info/english/html/almodovar_gate.html"
+    },
+    "KJ03": {
+      "title": "위키백과(영어) — 세네카",
+      "url": "https://en.wikipedia.org/wiki/Seneca_the_Younger"
+    },
+    "KJ04": {
+      "title": "위키백과(스페인어) — 코르도바 유대인 거리",
+      "url": "https://es.wikipedia.org/wiki/Juder%C3%ADa_de_C%C3%B3rdoba"
+    },
+    "KJ05": {
+      "title": "안달루시아 자치정부 문화유산·코르도바 시나고그",
+      "url": "https://www.juntadeandalucia.es/aaiicc/enclaves/enclave-monumental-sinagoga-de-cordoba"
+    },
+    "KJ06": {
+      "title": "위키백과(스페인어) — 코르도바 시나고그",
+      "url": "https://es.wikipedia.org/wiki/Sinagoga_de_C%C3%B3rdoba"
+    },
+    "KJ07": {
+      "title": "위키백과(영어) — 코르도바 시나고그",
+      "url": "https://en.wikipedia.org/wiki/C%C3%B3rdoba_Synagogue"
+    },
+    "KJ08": {
+      "title": "위키백과(영어) — 우트레라 시나고그",
+      "url": "https://en.wikipedia.org/wiki/Synagogue_of_Utrera"
+    },
+    "KJ09": {
+      "title": "위키백과(스페인어) — 성녀 키테리아",
+      "url": "https://es.wikipedia.org/wiki/Quiteria"
+    },
+    "KJ10": {
+      "title": "위키백과(스페인어) — 마이모니데스",
+      "url": "https://es.wikipedia.org/wiki/Maim%C3%B3nides"
+    },
+    "KJ11": {
+      "title": "위키백과(영어) — 마이모니데스",
+      "url": "https://en.wikipedia.org/wiki/Maimonides"
+    },
+    "KJ12": {
+      "title": "노매즈 트래블 가이드·마이모니데스 상",
+      "url": "https://www.nomads-travel-guide.com/places/maimonides-statue/"
+    },
+    "KJ13": {
+      "title": "GPSmyCity·마이모니데스 광장과 동상",
+      "url": "https://gpsmycity.com/attractions/maimonides-square-and-statue-60737.html"
+    },
+    "KJ14": {
+      "title": "위키백과(영어) — 하스다이 이븐 샤프루트",
+      "url": "https://en.wikipedia.org/wiki/Hasdai_ibn_Shaprut"
+    },
+    "KJ15": {
+      "title": "위키백과(스페인어) — 레온의 산초 1세",
+      "url": "https://es.wikipedia.org/wiki/Sancho_I_de_Le%C3%B3n"
+    },
+    "KJ16": {
+      "title": "엘제비어 『내분비·영양학』 논문·10세기 하스다이의 비만 치료",
+      "url": "https://www.elsevier.es/en-revista-endocrinologia-nutricion-english-edition--412-articulo-hasday-treatment-obesity-in-10th-S2173509316000222"
+    },
+    "KJ17": {
+      "title": "위키백과(스페인어) — 1391년 반유대 폭동",
+      "url": "https://es.wikipedia.org/wiki/Revuelta_antijud%C3%ADa_de_1391"
+    },
+    "KJ18": {
+      "title": "위키백과(스페인어) — 스페인 종교재판",
+      "url": "https://es.wikipedia.org/wiki/Inquisici%C3%B3n_espa%C3%B1ola"
+    },
+    "KJ19": {
+      "title": "위키백과(스페인어) — 그리스도교 군주의 알카사르",
+      "url": "https://es.wikipedia.org/wiki/Alc%C3%A1zar_de_los_Reyes_Cristianos"
+    },
+    "KJ20": {
+      "title": "위키백과(스페인어) — 카사 데 세파라드",
+      "url": "https://es.wikipedia.org/wiki/Casa_de_Sefarad_(C%C3%B3rdoba)"
+    },
+    "KJ21": {
+      "title": "주이시 프레스·유대인들도 열쇠를 간직해 왔다",
+      "url": "https://jewishpress.com/jews-have-also-been-holding-onto-their-keys/"
+    },
+    "KJ22": {
+      "title": "엘 데레초(스페인 법무부 발표 인용)",
+      "url": "https://elderecho.com/justicia-cierra-procedimiento-solicitud-nacionalidad-sefardies-mas-132-000-peticiones"
+    },
+    "KJ23": {
+      "title": "위키백과(스페인어) — 꽃의 골목",
+      "url": "https://es.wikipedia.org/wiki/Calleja_de_las_Flores_(C%C3%B3rdoba)"
+    },
+    "KM01": {
+      "title": "위키백과(영어) — Mosque–Cathedral of Córdoba",
+      "url": "https://en.wikipedia.org/wiki/Mosque%E2%80%93Cathedral_of_C%C3%B3rdoba"
+    },
+    "KM02": {
+      "title": "위키백과(스페인어) — Mezquita-catedral de Córdoba",
+      "url": "https://es.wikipedia.org/wiki/Mezquita-catedral_de_C%C3%B3rdoba"
+    },
+    "KM03": {
+      "title": "메스키타 대성당 공식 사이트·역사",
+      "url": "https://www.mezquita-catedraldecordoba.es/descubre-el-monumento/la-historia/"
+    },
+    "KM04": {
+      "title": "메스키타 대성당 공식 사이트·빌라비시오사 예배당",
+      "url": "https://www.mezquita-catedraldecordoba.es/descubre-el-monumento/el-edificio/capilla-de-villaviciosa/"
+    },
+    "KM05": {
+      "title": "메스키타 대성당 공식 사이트·알만소르의 증축",
+      "url": "https://www.mezquita-catedraldecordoba.es/descubre-el-monumento/el-edificio/ampliacion-de-almanzor/"
+    },
+    "KM06": {
+      "title": "메스키타 대성당 공식 사이트·미흐라브",
+      "url": "https://www.mezquita-catedraldecordoba.es/descubre-el-monumento/el-edificio/mihrab/"
+    },
+    "KM07": {
+      "title": "메스키타 대성당 공식 사이트·오렌지 안뜰",
+      "url": "https://www.mezquita-catedraldecordoba.es/descubre-el-monumento/el-edificio/patio-de-los-naranjos/"
+    },
+    "KM08": {
+      "title": "메스키타 대성당 공식 사이트·종탑",
+      "url": "https://www.mezquita-catedraldecordoba.es/descubre-el-monumento/el-edificio/torre-campanario/"
+    },
+    "KM09": {
+      "title": "메스키타 대성당 공식 사이트·산 비센테 서고트 성당",
+      "url": "https://www.mezquita-catedraldecordoba.es/descubre-el-monumento/el-edificio/basilica-visigoda-de-san-vicente/"
+    },
+    "KM10": {
+      "title": "메스키타 대성당 공식 사이트·압드 알라흐만 3세의 공사",
+      "url": "https://www.mezquita-catedraldecordoba.es/descubre-el-monumento/el-edificio/intervencion-de-abderraman-iii/"
+    },
+    "KM11": {
+      "title": "메스키타 대성당 공식 안내서",
+      "url": "https://www.mezquita-catedraldecordoba.es/site/assets/files/20355/folleto_espanol_a.pdf"
+    },
+    "KM12": {
+      "title": "후안 A. 수토, 알칸타라 23권 2002년",
+      "url": "https://al-qantara.revistas.csic.es/index.php/al-qantara/article/download/186/179/179"
+    },
+    "KM13": {
+      "title": "헤수스 파디야 곤살레스, 코르도바 시의회 목수 조례 연구 2019년",
+      "url": "https://dialnet.unirioja.es/descarga/libro/923888.pdf"
+    },
+    "KM14": {
+      "title": "마누엘 가르시아 파로디·이사벨 카바예로 리바스 · 카를 5세의 코르도바 방문 1526년 2018년",
+      "url": "https://dialnet.unirioja.es/descarga/articulo/7042473.pdf"
+    },
+    "KM15": {
+      "title": "후안 루이스 히메네스, 역사의 소리 풍경 2024년",
+      "url": "https://historicalsoundscapes.com/pdf/1670/cordoba"
+    },
+    "KM16": {
+      "title": "위키백과(스페인어) — 알만소르",
+      "url": "https://es.wikipedia.org/wiki/Almanzor"
+    },
+    "KM17": {
+      "title": "히스파노페디아·산티아고 데 콤포스텔라 원정",
+      "url": "https://es.hispanopedia.com/wiki/Campa%C3%B1a_de_Santiago_de_Compostela"
+    },
+    "KM18": {
+      "title": "위키백과(스페인어) — 코르도바 로마교",
+      "url": "https://es.wikipedia.org/wiki/Puente_romano_de_C%C3%B3rdoba"
+    },
+    "KM19": {
+      "title": "위키백과(스페인어) — 코르도바 옛 왕궁",
+      "url": "https://es.wikipedia.org/wiki/Alc%C3%A1zar_andalus%C3%AD_de_C%C3%B3rdoba"
+    },
+    "KM20": {
+      "title": "위키백과(스페인어) — 기독교 왕들의 알카사르",
+      "url": "https://es.wikipedia.org/wiki/Alc%C3%A1zar_de_los_Reyes_Cristianos"
+    },
+    "KM21": {
+      "title": "위키백과(스페인어) — 코르도바 유대인 거리",
+      "url": "https://es.wikipedia.org/wiki/Juder%C3%ADa_de_C%C3%B3rdoba"
+    },
+    "KM22": {
+      "title": "스페인 덴 앤드 나우",
+      "url": "https://www.spainthenandnow.com/spanish-architecture/cordobas-cathedral-is-a-mosque"
+    },
+    "KM23": {
+      "title": "인포코르도바 사진첩",
+      "url": "https://infocordoba.com/spain/andalusia/cordoba/photos/mosque_2/pages/mosque_interior_190_jpg.htm"
+    },
+    "KM24": {
+      "title": "메스키타 전설 소개 글",
+      "url": "https://mezquitacms.turify.net/en/discover-legends-most-incredible-of-the-mosque-of-cordoba"
+    },
+    "KM25": {
+      "title": "엘코르테잉글레스 여행 블로그",
+      "url": "https://www.viajeselcorteingles.es/blog/destinos/curiosidades-de-la-mezquita-de-cordoba/"
+    },
+    "KB01": {
+      "title": "위키백과(스페인어) — Puente romano de Córdoba",
+      "url": "https://es.wikipedia.org/wiki/Puente_romano_de_C%C3%B3rdoba"
+    },
+    "KB02": {
+      "title": "위키백과(영어) — Roman bridge of Córdoba",
+      "url": "https://en.wikipedia.org/wiki/Roman_bridge_of_C%C3%B3rdoba"
+    },
+    "KB03": {
+      "title": "시카고 대학 빌 세이어 사이트·「히스파니아 전쟁기」 영역본",
+      "url": "https://penelope.uchicago.edu/Thayer/E/Roman/Texts/Caesar/Spanish_War/text*.html"
+    },
+    "KB04": {
+      "title": "위키백과(스페인어) — Torre de la Calahorra (Córdoba)",
+      "url": "https://es.wikipedia.org/wiki/Torre_de_la_Calahorra_(C%C3%B3rdoba)"
+    },
+    "KB05": {
+      "title": "칼라오라 탑 박물관 공식·역사",
+      "url": "https://www.torrecalahorra.es/historia/"
+    },
+    "KB06": {
+      "title": "위키백과(영어) — Joanna of Castile",
+      "url": "https://en.wikipedia.org/wiki/Joanna_of_Castile"
+    },
+    "KB07": {
+      "title": "위키백과(스페인어) — Puerta del Puente (Córdoba)",
+      "url": "https://es.wikipedia.org/wiki/Puerta_del_Puente_(C%C3%B3rdoba)"
+    },
+    "KB08": {
+      "title": "위키백과(스페인어) — Mezquita-catedral de Córdoba",
+      "url": "https://es.wikipedia.org/wiki/Mezquita-catedral_de_C%C3%B3rdoba"
+    },
+    "KB09": {
+      "title": "위키백과(스페인어) — Arcángel Rafael",
+      "url": "https://es.wikipedia.org/wiki/Arc%C3%A1ngel_Rafael"
+    },
+    "KB10": {
+      "title": "위키백과(스페인어) — Triunfo de San Rafael (Córdoba)",
+      "url": "https://es.wikipedia.org/wiki/Triunfo_de_San_Rafael_(C%C3%B3rdoba)"
+    },
+    "KB11": {
+      "title": "위키백과(스페인어) — Triunfo de San Rafael (Puente romano de Córdoba)",
+      "url": "https://es.wikipedia.org/wiki/Triunfo_de_San_Rafael_(Puente_romano_de_C%C3%B3rdoba)"
+    },
+    "KB12": {
+      "title": "아르텐코르도바·코르도바의 산 라파엘 승리상",
+      "url": "https://www.artencordoba.com/en/triumph-san-rafael-cordoba/"
+    },
+    "KB13": {
+      "title": "오픈스트리트맵 지명 검색·다리 위 산 라파엘상 위치",
+      "url": "https://nominatim.openstreetmap.org/search?q=Triunfo%20de%20San%20Rafael&format=json&viewbox=-4.7820,37.8800,-4.7750,37.8740&bounded=1"
+    },
+    "KB14": {
+      "title": "오픈스트리트맵·로마교 다리 윤곽",
+      "url": "https://www.openstreetmap.org/way/403272673"
+    },
+    "KB15": {
+      "title": "위키백과(스페인어) — Molino de la Albolafia (Córdoba)",
+      "url": "https://es.wikipedia.org/wiki/Molino_de_la_Albolafia_(C%C3%B3rdoba)"
+    },
+    "KB16": {
+      "title": "위키백과(영어) — Albolafia",
+      "url": "https://en.wikipedia.org/wiki/Albolafia"
+    },
+    "KB17": {
+      "title": "코르도폴리스·알볼라피아 물레방아의 알모아데 기원 확인(2025)",
+      "url": "https://cordopolis.eldiario.es/cultura/patrimonio/descubren-origen-almohade-molino-albolafia-limpieza-integral_1_12062578.html"
+    },
+    "KB18": {
+      "title": "코르도바 오이·알볼라피아 물레바퀴는 12세기 알모아데 시대(2025)",
+      "url": "https://www.cordobahoy.es/articulo/cultura/noria-albolafia/20250218144850172257.html"
+    },
+    "KB19": {
+      "title": "위키백과(스페인어) — Sotos de la Albolafia",
+      "url": "https://es.wikipedia.org/wiki/Sotos_de_la_Albolafia"
+    },
+    "KB20": {
+      "title": "안달루시아 필름 커미션·왕좌의 게임 촬영지 로마교",
+      "url": "https://andaluciadestinodecine.com/en/localizacion/puente-romano/"
     }
   }
 }

@@ -1,0 +1,377 @@
+{
+  "id": "cordoba-roman-bridge",
+  "kind": "PLACE",
+  "name": "로마교",
+  "localName": "Puente Romano de Córdoba",
+  "city": "코르도바",
+  "lat": 37.8766,
+  "lng": -4.7779,
+  "radiusM": 250,
+  "aliases": [
+    "코르도바 로마교",
+    "로마 다리",
+    "코르도바 로마 다리",
+    "푸엔테 로마노",
+    "Puente Romano",
+    "Roman Bridge",
+    "Roman Bridge of Córdoba",
+    "칼라오라 탑",
+    "칼라오라 타워",
+    "Torre de la Calahorra",
+    "Calahorra Tower",
+    "Museo Vivo de Al-Ándalus",
+    "다리 문",
+    "푸에르타 델 푸엔테",
+    "Puerta del Puente",
+    "Bridge Gate",
+    "산 라파엘 승리상",
+    "Triunfo de San Rafael",
+    "알볼라피아 물레방아",
+    "알볼라피아 수차",
+    "Molino de la Albolafia",
+    "Noria de la Albolafia",
+    "Albolafia Water Mill"
+  ],
+  "placeIds": [],
+  "voice": {
+    "engine": "Gemini 3.8 Flash TTS",
+    "name": "Sulafat"
+  },
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "하나뿐이던 다리, 로마교",
+      "textFile": "cordoba/narration/roman-bridge.txt",
+      "audio": "cordoba/roman-bridge-core.mp3",
+      "audioText": "0c784811a70b87d8",
+      "sources": [
+        "KB01",
+        "KB02",
+        "KB03",
+        "KB04",
+        "KB05",
+        "KB06",
+        "KB07",
+        "KB08",
+        "KB09",
+        "KB10",
+        "KB11",
+        "KB12",
+        "KB13",
+        "KB14",
+        "KB15",
+        "KB16",
+        "KB17",
+        "KB18",
+        "KB19",
+        "KB20"
+      ]
+    }
+  ],
+  "sources": {
+    "KB01": {
+      "title": "위키백과(스페인어) — Puente romano de Córdoba",
+      "url": "https://es.wikipedia.org/wiki/Puente_romano_de_C%C3%B3rdoba"
+    },
+    "KB02": {
+      "title": "위키백과(영어) — Roman bridge of Córdoba",
+      "url": "https://en.wikipedia.org/wiki/Roman_bridge_of_C%C3%B3rdoba"
+    },
+    "KB03": {
+      "title": "시카고 대학 빌 세이어 사이트·「히스파니아 전쟁기」 영역본",
+      "url": "https://penelope.uchicago.edu/Thayer/E/Roman/Texts/Caesar/Spanish_War/text*.html"
+    },
+    "KB04": {
+      "title": "위키백과(스페인어) — Torre de la Calahorra (Córdoba)",
+      "url": "https://es.wikipedia.org/wiki/Torre_de_la_Calahorra_(C%C3%B3rdoba)"
+    },
+    "KB05": {
+      "title": "칼라오라 탑 박물관 공식·역사",
+      "url": "https://www.torrecalahorra.es/historia/"
+    },
+    "KB06": {
+      "title": "위키백과(영어) — Joanna of Castile",
+      "url": "https://en.wikipedia.org/wiki/Joanna_of_Castile"
+    },
+    "KB07": {
+      "title": "위키백과(스페인어) — Puerta del Puente (Córdoba)",
+      "url": "https://es.wikipedia.org/wiki/Puerta_del_Puente_(C%C3%B3rdoba)"
+    },
+    "KB08": {
+      "title": "위키백과(스페인어) — Mezquita-catedral de Córdoba",
+      "url": "https://es.wikipedia.org/wiki/Mezquita-catedral_de_C%C3%B3rdoba"
+    },
+    "KB09": {
+      "title": "위키백과(스페인어) — Arcángel Rafael",
+      "url": "https://es.wikipedia.org/wiki/Arc%C3%A1ngel_Rafael"
+    },
+    "KB10": {
+      "title": "위키백과(스페인어) — Triunfo de San Rafael (Córdoba)",
+      "url": "https://es.wikipedia.org/wiki/Triunfo_de_San_Rafael_(C%C3%B3rdoba)"
+    },
+    "KB11": {
+      "title": "위키백과(스페인어) — Triunfo de San Rafael (Puente romano de Córdoba)",
+      "url": "https://es.wikipedia.org/wiki/Triunfo_de_San_Rafael_(Puente_romano_de_C%C3%B3rdoba)"
+    },
+    "KB12": {
+      "title": "아르텐코르도바·코르도바의 산 라파엘 승리상",
+      "url": "https://www.artencordoba.com/en/triumph-san-rafael-cordoba/"
+    },
+    "KB13": {
+      "title": "오픈스트리트맵 지명 검색·다리 위 산 라파엘상 위치",
+      "url": "https://nominatim.openstreetmap.org/search?q=Triunfo%20de%20San%20Rafael&format=json&viewbox=-4.7820,37.8800,-4.7750,37.8740&bounded=1"
+    },
+    "KB14": {
+      "title": "오픈스트리트맵·로마교 다리 윤곽",
+      "url": "https://www.openstreetmap.org/way/403272673"
+    },
+    "KB15": {
+      "title": "위키백과(스페인어) — Molino de la Albolafia (Córdoba)",
+      "url": "https://es.wikipedia.org/wiki/Molino_de_la_Albolafia_(C%C3%B3rdoba)"
+    },
+    "KB16": {
+      "title": "위키백과(영어) — Albolafia",
+      "url": "https://en.wikipedia.org/wiki/Albolafia"
+    },
+    "KB17": {
+      "title": "코르도폴리스·알볼라피아 물레방아의 알모아데 기원 확인(2025)",
+      "url": "https://cordopolis.eldiario.es/cultura/patrimonio/descubren-origen-almohade-molino-albolafia-limpieza-integral_1_12062578.html"
+    },
+    "KB18": {
+      "title": "코르도바 오이·알볼라피아 물레바퀴는 12세기 알모아데 시대(2025)",
+      "url": "https://www.cordobahoy.es/articulo/cultura/noria-albolafia/20250218144850172257.html"
+    },
+    "KB19": {
+      "title": "위키백과(스페인어) — Sotos de la Albolafia",
+      "url": "https://es.wikipedia.org/wiki/Sotos_de_la_Albolafia"
+    },
+    "KB20": {
+      "title": "안달루시아 필름 커미션·왕좌의 게임 촬영지 로마교",
+      "url": "https://andaluciadestinodecine.com/en/localizacion/puente-romano/"
+    },
+    "KB21": {
+      "title": "타임 투 모모(네덜란드 여행 블로그)·안달루시아의 왕좌의 게임 촬영지",
+      "url": "https://timetomomo.com/nl/andalusische-hotspots-uit-game-of-thrones"
+    }
+  },
+  "factCheckNote": "2026-11-05 독립 검증 — 주장 60개를 출처와 맞춰 보고 지적 27건을 모두 고쳤다. 여기에는 고친 곳만 적는다",
+  "factCheck": [
+    {
+      "claim": "1953년 산 라파엘 다리가 놓이기 전까지, 2천 년 가까이 이 도시에서 과달키비르강을 건너는 다리는 이것 하나뿐이었기 때문입니다.",
+      "sources": [
+        "KB01",
+        "KB02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "로마의 기록에 따르면 기원전 45년 무렵, 율리우스 카이사르는 코르도바 앞에서 강이 깊어 건너지 못했습니다. 그래서 돌을 채운 바구니를 강에 가라앉히고, 그 위에 들보를 얹어 임시 다리를 놓았다고 합니다.",
+      "sources": [
+        "KB03",
+        "KB01"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "이 기록 때문에 돌다리는 그 뒤, 아우구스투스 황제 무렵에 놓였다고 봅니다.",
+      "sources": [
+        "KB01"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "11세기에 쓴 아랍 연대기에 따르면, 720년 무렵 총독 알삼흐가 성벽의 돌을 헐어 망가져 있던 다리를 다시 놓았습니다.",
+      "sources": [
+        "KB01",
+        "KB02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "그 뒤로도 10세기 칼리프 시대에, 그리스도교 정복 뒤에, 그리고 1927년에 차가 다니도록 거듭 고쳤습니다.",
+      "sources": [
+        "KB01",
+        "KB02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "한때는 스페인 한가운데에서 남쪽으로 내려가는 국도가 이 다리를 지났고, 차가 끊기고 사람만 건너는 다리가 된 것은 2004년입니다.",
+      "sources": [
+        "KB01",
+        "KB02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "발밑도 보세요. 2008년에 끝난 큰 보수 때 깐 분홍빛 화강암은 큰 논란이 됐습니다.",
+      "sources": [
+        "KB01",
+        "KB02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "이슬람 시대에 기원을 둔 탑으로, 기록에 처음 나오는 것은 1236년입니다. 페르난도 3세가 코르도바를 정복할 때, 이 탑이 다리로 들어오는 길을 막아 애를 먹였다고 합니다.",
+      "sources": [
+        "KB04",
+        "KB05"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "그 뒤 엔리케 2세가 해자와 탑 하나를 더했고, 1514년에는 이사벨 여왕의 딸 후아나 여왕의 명령으로 바깥 방벽을 둘렀습니다.",
+      "sources": [
+        "KB04",
+        "KB05",
+        "KB06"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "공사를 맡은 에르난 루이스 3세는 메스키타 종탑을 설계한 건축가이기도 합니다.",
+      "sources": [
+        "KB07",
+        "KB08"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "다만 돈이 모자라, 문은 끝내 미완성으로 남았다고 봅니다.",
+      "sources": [
+        "KB07"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "도시 쪽 면은 1912년 둘레 성벽이 헐린 뒤, 1928년에 바깥 면을 본떠 기념문처럼 새로 만든 것입니다. 장식도 비문도 없습니다. 그래서 성문이던 이곳을 시민들은 흔히 개선문으로 잘못 부릅니다.",
+      "sources": [
+        "KB07",
+        "KB01"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "전해지는 이야기로는 1578년 5월 7일 새벽, 로엘라스 신부 앞에 라파엘이 나타났다고 합니다.",
+      "sources": [
+        "KB09",
+        "KB10"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "다리 남쪽 캄포 데 라 베르다드 동네 사람들은 지금도 이 앞에 촛불을 밝힙니다.",
+      "sources": [
+        "KB11"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "메스키타 종탑 꼭대기의 라파엘상도 이 조각가가 동료 페드로 데 라 파스와 함께 만든 것입니다.",
+      "sources": [
+        "KB08"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "바퀴 지름은 15미터쯤으로, 강물을 길어 올려 알카사르 쪽 정원과 밭에 물을 댔다고 봅니다.",
+      "sources": [
+        "KB16",
+        "KB15",
+        "KB17"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "언제 처음 지었는지는 오래 의견이 갈렸습니다. 2025년 코르도바 시의 조사는 12세기 후반, 알모아데 왕조 때 처음 지었다고 결론지었습니다.",
+      "sources": [
+        "KB17",
+        "KB18",
+        "KB15",
+        "KB16"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "14세기 코르도바 시의 인장에도 메스키타, 다리와 함께 이 물레바퀴가 새겨졌습니다.",
+      "sources": [
+        "KB15",
+        "KB16"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "1492년 6월, 알카사르에서 앓아누운 이사벨 여왕이 바퀴 소리가 시끄럽다며 떼어 내게 했다고 합니다. 시 기록 보관소에는 그 일을 적은 1508년 문서도 남아 있다고 합니다.",
+      "sources": [
+        "KB15",
+        "KB16"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "바퀴는 1960년대에 다시 걸었고, 지금 바퀴는 1990년대 초에 새로 만든 것입니다.",
+      "sources": [
+        "KB15",
+        "KB16"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "하지만 눈에 보이는 로마 때 돌은 칼라오라 탑 아래, 다리 끝을 받치는 돌 네 단뿐이라고 보는 연구자도 있습니다.",
+      "sources": [
+        "KB01"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "로마 다리를 연구하는 학자 가운데는 이 다리를 아예 로마 다리로 치지 않는 사람도 있습니다.",
+      "sources": [
+        "KB01"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "탑 안 박물관은 이 이름이 로마 이전부터 있던 말로, 알안달루스에서는 홀로 선 큰 탑을 부르는 말로도 쓰였다고 설명합니다. 어원은 아직 논쟁 중이라고 합니다.",
+      "sources": [
+        "KB05",
+        "KB04"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "그리고 많은 코르도바 사람이 라파엘을 이 도시의 수호성인으로 알지만, 수호성인은 사실 순교자 아시스클로와 빅토리아입니다. 이 다리에도 두 성인에게 바친 작은 벽감이 있어, 2008년 보수 때 함께 손봤습니다.",
+      "sources": [
+        "KB09",
+        "KB01",
+        "KB02"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "화면 속 다리는 후반 작업으로 크게 바뀌어서, 제작진도 2014년 팬들과 만난 자리에서 알아보기 어려울 것이라고 했습니다. 그래도 아치를 보면 이 다리임을 알 수 있습니다.",
+      "sources": [
+        "KB20",
+        "KB01"
+      ],
+      "status": "CONFIRMED"
+    },
+    {
+      "claim": "배우들은 스튜디오에서 연기했고, 드론으로 찍은 이 다리 위에 컴퓨터 그래픽으로 집과 가게를 얹었습니다.",
+      "sources": [
+        "KB21",
+        "KB20"
+      ],
+      "status": "UNCONFIRMED",
+      "resolution": "OMITTED"
+    },
+    {
+      "claim": "해 질 녘에는 칼라오라 탑 쪽 강가에서 다리를 돌아보세요. 아치가 늘어선 돌다리 너머로 메스키타와 종탑이 함께 보입니다.",
+      "sources": [
+        "KB01"
+      ],
+      "status": "CONFIRMED"
+    }
+  ],
+  "reviewedAt": "2026-11-05"
+}

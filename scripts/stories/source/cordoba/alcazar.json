@@ -1,0 +1,288 @@
+{
+  "id": "cordoba-alcazar",
+  "kind": "PLACE",
+  "name": "코르도바 알카사르",
+  "localName": "Alcázar de los Reyes Cristianos",
+  "city": "코르도바",
+  "lat": 37.8767,
+  "lng": -4.7829,
+  "radiusM": 230,
+  "aliases": [
+    "기독교 왕들의 알카사르",
+    "그리스도교 왕들의 알카사르",
+    "가톨릭 왕들의 알카사르",
+    "알카사르 데 로스 레예스 크리스티아노스",
+    "Alcázar de Córdoba",
+    "Alcazar of the Christian Monarchs",
+    "Alcázar of the Christian Kings",
+    "코르도바 알카사르 정원",
+    "Jardines del Alcázar de los Reyes Cristianos"
+  ],
+  "placeIds": [],
+  "voice": {
+    "engine": "Gemini 3.8 Flash TTS",
+    "name": "Sulafat"
+  },
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "강을 지키던 성, 알카사르",
+      "textFile": "cordoba/narration/alcazar.txt",
+      "audio": "cordoba/alcazar-core.mp3",
+      "audioText": "461338d38ca4a9b3",
+      "sources": [
+        "KA01",
+        "KA02",
+        "KA03",
+        "KA04",
+        "KA05",
+        "KA06",
+        "KA07",
+        "KA08",
+        "KA09",
+        "KA10",
+        "KA11",
+        "KA12",
+        "KA13",
+        "KA14",
+        "KA15",
+        "KA16",
+        "KA17",
+        "KA18",
+        "KA19",
+        "KA20",
+        "KA21"
+      ]
+    }
+  ],
+  "sources": {
+    "KA01": {
+      "title": "위키백과(스페인어) — 기독교 왕들의 알카사르",
+      "url": "https://es.wikipedia.org/wiki/Alc%C3%A1zar_de_los_Reyes_Cristianos"
+    },
+    "KA02": {
+      "title": "위키백과(영어) — 기독교 왕들의 알카사르",
+      "url": "https://en.wikipedia.org/wiki/Alc%C3%A1zar_de_los_Reyes_Cristianos"
+    },
+    "KA03": {
+      "title": "아르테 엔 코르도바·알카사르의 역사",
+      "url": "https://www.artencordoba.com/en/?p=735"
+    },
+    "KA04": {
+      "title": "위키백과(스페인어) — 마리아 데 아라곤",
+      "url": "https://es.wikipedia.org/wiki/Mar%C3%ADa_de_Arag%C3%B3n_(1482-1517)"
+    },
+    "KA05": {
+      "title": "위키백과(스페인어) — 카탈리나 페르난데스 구아나르테메",
+      "url": "https://es.wikipedia.org/wiki/Catalina_Fern%C3%A1ndez_Guanarteme"
+    },
+    "KA06": {
+      "title": "위키백과(스페인어) — 테네소르 세미단",
+      "url": "https://es.wikipedia.org/wiki/Tenesor_Semid%C3%A1n"
+    },
+    "KA07": {
+      "title": "위키백과(스페인어) — 보압딜",
+      "url": "https://es.wikipedia.org/wiki/Boabdil"
+    },
+    "KA08": {
+      "title": "스페인 관광청·회견의 집",
+      "url": "https://www.spain.info/es/lugares-interes/casa-entrevista/"
+    },
+    "KA09": {
+      "title": "비오그라피아스 이 비다스·콜럼버스",
+      "url": "https://www.biografiasyvidas.com/monografia/colon/fotos2.htm"
+    },
+    "KA10": {
+      "title": "위키백과(스페인어) — 베아트리스 엔리케스 데 아라나",
+      "url": "https://es.wikipedia.org/wiki/Beatriz_Enr%C3%ADquez_de_Arana"
+    },
+    "KA11": {
+      "title": "위키백과(스페인어) — 에르난도 콜론",
+      "url": "https://es.wikipedia.org/wiki/Hernando_Col%C3%B3n"
+    },
+    "KA12": {
+      "title": "위키백과(영어) — 디에고 로드리게스 데 루세로",
+      "url": "https://en.wikipedia.org/wiki/Diego_Rodr%C3%ADguez_de_Lucero"
+    },
+    "KA13": {
+      "title": "위키백과(영어) — 에르난도 데 탈라베라",
+      "url": "https://en.wikipedia.org/wiki/Hernando_de_Talavera"
+    },
+    "KA14": {
+      "title": "위키백과(스페인어) — 에르난도 데 탈라베라",
+      "url": "https://es.wikipedia.org/wiki/Hernando_de_Talavera"
+    },
+    "KA15": {
+      "title": "위키백과(스페인어) — 엔리케 2세",
+      "url": "https://es.wikipedia.org/wiki/Enrique_II_de_Castilla"
+    },
+    "KA16": {
+      "title": "위키백과(스페인어) — 페드로 1세",
+      "url": "https://es.wikipedia.org/wiki/Pedro_I_de_Castilla"
+    },
+    "KA17": {
+      "title": "위키백과(영어) — 트라스타마라 왕가",
+      "url": "https://en.wikipedia.org/wiki/House_of_Trast%C3%A1mara"
+    },
+    "KA18": {
+      "title": "위키백과(스페인어) — 알볼라피아 물레방아",
+      "url": "https://es.wikipedia.org/wiki/Molino_de_la_Albolafia_(C%C3%B3rdoba)"
+    },
+    "KA19": {
+      "title": "위키백과(스페인어) — 코르도바 문장",
+      "url": "https://es.wikipedia.org/wiki/Escudo_de_C%C3%B3rdoba_(Espa%C3%B1a)"
+    },
+    "KA20": {
+      "title": "위키백과(스페인어) — 폴리페모와 갈라테아의 우화",
+      "url": "https://es.wikipedia.org/wiki/F%C3%A1bula_de_Polifemo_y_Galatea"
+    },
+    "KA21": {
+      "title": "위키백과(스페인어) — 루이스 데 공고라",
+      "url": "https://es.wikipedia.org/wiki/Luis_de_G%C3%B3ngora"
+    }
+  },
+  "factCheckNote": "2026-11-05 독립 검증 — 주장 57개를 출처와 맞춰 보고 지적 16건을 모두 고쳤다. 여기에는 고친 곳만 적는다",
+  "factCheck": [
+    {
+      "claim": "북서쪽 사자의 탑은 가장 오래된 탑으로, 꼭대기의 사자 모양 물받이 조각에서 이름을 얻었습니다.",
+      "sources": [
+        "KA01",
+        "KA02"
+      ],
+      "status": "CONFIRMED",
+      "note": "이름의 출처는 꼭대기의 사자 모양 가고일이다. 막연한 '장식'을 물받이 조각으로 구체화했다."
+    },
+    {
+      "claim": "가톨릭 공동 왕이라 불리는 이사벨 여왕과 페르난도 왕은 여러 해 이 성을 본거지로 삼아 그라나다 전쟁을 지휘했습니다.",
+      "sources": [
+        "KA01"
+      ],
+      "status": "CONFIRMED",
+      "note": "뒤에서 '공동 왕'이라고만 부르므로 처음 나올 때 누구를 가리키는지 밝혔다. 스페인어판은 약 8년 동안 머물렀다고 적는다."
+    },
+    {
+      "claim": "1483년에는 사로잡힌 그라나다의 왕 보압딜이 이 성에 갇혔다는 이야기가 전해집니다. 다만 루세나와 포르쿠나의 성에 갇혔다고 적은 자료도 있습니다.",
+      "sources": [
+        "KA01",
+        "KA02",
+        "KA07"
+      ],
+      "status": "CONFIRMED",
+      "note": "알카사르 항목은 이 성에 갇혔다고, 보압딜 항목은 루세나·카브라 성과 포르쿠나의 탑에 갇혔다고 적는다. 출처가 갈려 단정하지 않은 원래 뜻은 두고, 너무 긴 문장을 둘로 나눴다."
+    },
+    {
+      "claim": "이 성에서의 첫 만남을 기린 조각이고, 맹세의 탑이 그 자리였다는 전승도 있습니다.",
+      "sources": [
+        "KA01",
+        "KA02"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '맹세의 탑 팔각 홀'이었다. 출처는 맹세의 탑까지만 말해서 '팔각 홀'을 뺐다."
+    },
+    {
+      "claim": "다만 첫 만남은 1486년 초 마드리드 근처 알칼라 데 에나레스였다고 적은 자료도 있습니다.",
+      "sources": [
+        "KA08",
+        "KA09"
+      ],
+      "status": "CONFIRMED",
+      "note": "알칼라 데 에나레스의 '회견의 집'은 1486년 1월 20일 콜럼버스와 이사벨 여왕의 첫 만남을 기린다. 언제인지를 덧붙였다."
+    },
+    {
+      "claim": "1506년 가을, 참다못한 시민들이 성으로 몰려갔습니다. 앞장선 것은 프리에고 후작 같은 귀족들이었고, 400명이 넘는 수감자가 풀려났습니다.",
+      "sources": [
+        "KA12",
+        "KA01"
+      ],
+      "status": "CONFIRMED",
+      "note": "원고는 시민들만 몰려간 것처럼 썼다. 1506년 10~11월의 폭동은 카브라 백작과 프리에고 후작 같은 귀족들이 일으켰다. 400명이 넘는 수감자는 스페인어판 알카사르 항목의 숫자다."
+    },
+    {
+      "claim": "루세로는 비밀 통로로 빠져나가 노새를 타고 달아났다고 합니다.",
+      "sources": [
+        "KA12"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '뒷문으로 달아났습니다'였다. 출처에 따르면 루세로는 터널로 빠져나가 노새를 타고 도망쳤다. 그 내용으로 바꾸고 단정하지 않게 썼다."
+    },
+    {
+      "claim": "루세로가 유대교를 몰래 믿는다며 고발한 사람 가운데는 그라나다 대주교 탈라베라도 있었습니다. 탈라베라는 여왕의 고해 신부였고, 콜럼버스를 여왕에게 소개하는 데 힘을 보탰다고 합니다.",
+      "sources": [
+        "KA13",
+        "KA14"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '콜럼버스를 여왕에게 이어 준 고해 신부'였다. 고발당할 때 탈라베라는 그라나다 대주교였고, 고해 신부 자리는 1490년대에 시스네로스에게 넘어간 뒤였다. 콜럼버스를 소개한 사람으로는 다른 인물들도 꼽히므로 '힘을 보탰다고 합니다'로 낮췄다."
+    },
+    {
+      "claim": "카탈리나는 다섯 살 무렵 다시 바다를 건너와 마리아 공주의 시녀가 되었습니다. 공주가 포르투갈 왕비가 되어 떠날 때까지 곁을 지켰다고 합니다.",
+      "sources": [
+        "KA05"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '몇 해 뒤 시녀가 되었다고 합니다'였다. 출처를 따라 1487년 다섯 살 무렵에 돌아와 1500년 공주가 결혼할 때까지 곁에 있었다는 내용으로 구체화했다. 출생일 9월 30일은 마리아 공주의 6월 29일보다 석 달 늦다."
+    },
+    {
+      "claim": "1950년대 말 코레데라 광장 공사 때 땅속에서 나온 2세기에서 3세기 무렵의 로마 모자이크가 이 홀을 꾸미고 있습니다. 그 가운데 외눈 거인 폴리페모스와 바다 요정 갈라테이아를 찾아보세요.",
+      "sources": [
+        "KA01"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '폴리페모스와 갈라테이아가 가장 유명합니다'였다. 출처는 메두사, 에로스와 프시케와 함께 늘어놓을 뿐 가장 유명하다고 하지 않으므로 '가장'을 뺐다. 모자이크는 1958~59년 코레데라 광장 공사 때 나왔다."
+    },
+    {
+      "claim": "코르도바 출신 시인 공고라가 1613년 무렵 이 신화를 긴 시로 남겼습니다. 시인의 고향 땅 밑에 같은 이야기가 잠들어 있던 셈입니다.",
+      "sources": [
+        "KA20",
+        "KA21"
+      ],
+      "status": "CONFIRMED",
+      "note": "사실은 그대로 두고 긴 문장을 둘로 나눴다. 공고라는 1561년 코르도바에서 태어났고, 이 시는 1613년 필사본으로 퍼졌다."
+    },
+    {
+      "claim": "회랑에는 저승의 문을 새긴 3세기 로마 석관도 있습니다.",
+      "sources": [
+        "KA01"
+      ],
+      "status": "CONFIRMED",
+      "note": "석관은 모자이크 홀이 아니라 회랑에 있어서 자리를 밝혔다."
+    },
+    {
+      "claim": "배다른 동생 페드로 1세와 왕위를 다툴 때 코르도바는 엔리케 편에 섰고, 이 성은 페드로의 공격을 버텼습니다.",
+      "sources": [
+        "KA15",
+        "KA16",
+        "KA01"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '이복형 페드로 1세'였는데 틀렸다. 엔리케는 1334년 1월 13일, 페드로는 1334년 8월 30일에 태어나 페드로가 동생이다. '엔리케가 성을 지켰다'는 말도 고쳤다. 1368년 코르도바는 엔리케 편이었고 페드로가 이 도시를 쳤지만, 그때 엔리케 자신은 북쪽 톨레도를 포위하고 있었다. 그래서 주어를 코르도바와 이 성으로 바꿨다."
+    },
+    {
+      "claim": "다만 이를 뒷받침하는 기록은 없고, 최근에는 이슬람 시대 목욕탕을 고쳐 쓴 것으로 봅니다.",
+      "sources": [
+        "KA01"
+      ],
+      "status": "CONFIRMED",
+      "note": "출처는 남은 기록이 없다고 하고, 최근 가설은 알모아데 왕조 때 목욕탕을 다시 쓴 것으로 본다. 원래의 '견해도 있습니다'보다 출처에 가깝게 고쳤다."
+    },
+    {
+      "claim": "로마교와 이 성 사이에 있는 그 물레방아는 14세기부터 코르도바 시의 인장에 그려졌고, 지금도 시의 상징에 남아 있습니다.",
+      "sources": [
+        "KA18",
+        "KA19"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '14세기부터 코르도바 문장에 들어 있습니다'였다. 물레방아가 그려진 것은 시의 인장이다. 16~20세기에는 지금의 주 문장을 썼고, 1983년부터 인장을 다시 쓴다. 그래서 '인장'으로 고치고 지금의 상징을 따로 말했다. 함께 물레를 '바퀴'로 바꿨다. 실 잣는 물레로 들릴 수 있기 때문이다."
+    },
+    {
+      "claim": "고대의 요새, 이슬람의 궁전, 공동 왕의 본거지, 종교재판소와 감옥이 모두 이 한 자리에 겹쳐 있습니다.",
+      "sources": [
+        "KA01"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '로마의 요새'였다. 1구간이 말한 5세기 요새는 고대 말의 성채라서 '고대의 요새'로 바꿨다. 로마 시대 유적은 1세기 성벽이다."
+    }
+  ],
+  "reviewedAt": "2026-11-05"
+}

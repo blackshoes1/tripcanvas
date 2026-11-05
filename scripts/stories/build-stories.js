@@ -248,7 +248,7 @@ function sentenceProblem(markup, pcm, rate) {
 }
 
 // 원고 묶음의 지역 — 폴더 이름이 음성 경로(stories/<지역>/)가 된다. source/cathedral/은 원자료라 읽지 않는다
-const REGIONS = ['seville', 'mallorca'];
+const REGIONS = ['seville', 'mallorca', 'cordoba'];
 
 /** 원고 묶음 — source/<지역>/*.json. 대성당은 관람 지점 원고(narration/NN_narration.txt)를 읽어 들인다 */
 function loadPlaces() {

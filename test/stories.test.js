@@ -143,3 +143,29 @@ test('배포되는 마요르카 이야기도 이름만 같은 곳에는 붙지 �
   assert.equal(city(40.0, 3.84), null);                      // 메노르카
   assert.equal(city(37.389, -5.984), 'seville-city');
 });
+
+test('배포되는 코르도바 이야기는 그 자리의 이름에만 붙는다 — 세비야·세고비아의 알카사르에는 붙지 않는다', () => {
+  const cat = S.normalizeCatalog(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'stories', 'catalog.json'), 'utf8')));
+  const at = (name, lat, lng) => (S.storyForSpot({ name, lat, lng }, cat) || { id: null }).id;
+  assert.equal(at('메스키타 대성당', 37.8789, -4.7794), 'cordoba-mezquita');
+  assert.equal(at('Mezquita-Catedral de Córdoba', 37.8792, -4.7796), 'cordoba-mezquita');
+  assert.equal(at('로마교', 37.8766, -4.7779), 'cordoba-roman-bridge');
+  assert.equal(at('Torre de la Calahorra', 37.8753, -4.7768), 'cordoba-roman-bridge');
+  assert.equal(at('알카사르', 37.8767, -4.7829), 'cordoba-alcazar');
+  assert.equal(at('Alcázar de los Reyes Cristianos', 37.8767, -4.7829), 'cordoba-alcazar');
+  assert.equal(at('시나고그', 37.8808, -4.7833), 'cordoba-juderia');
+  assert.equal(at('마이모니데스 동상', 37.8806, -4.7832), 'cordoba-juderia');
+  // 메스키타 바로 옆이어도 원고가 꽃의 골목을 부르는 곳은 유대인 거리다
+  assert.equal(at('꽃의 골목', 37.8796, -4.7797), 'cordoba-juderia');
+  // 알카사르 옆 칼리프 목욕탕은 다른 곳이다 — 맨 '알카사르'를 별칭에 두지 않는 이유
+  assert.equal(at('Baños del Alcázar Califal', 37.8771, -4.7813), null);
+  // 이름이 같아도 다른 도시면 붙지 않는다
+  assert.equal(at('알카사르', 37.3831, -5.9903), 'seville-alcazar');
+  assert.equal(at('알카사르', 40.9526, -4.1324), null);
+  assert.equal(at('메스키타', 37.1773, -3.5986), null);
+  const city = (lat, lng) => (S.cityStoryForDay({ spots: [{ name: 'x', lat, lng }] }, cat) || { id: null }).id;
+  assert.equal(city(37.8875, -4.8673), 'cordoba-city');   // 메디나 아사하라
+  assert.equal(city(37.842, -4.849), 'cordoba-city');      // 코르도바 공항
+  assert.equal(city(37.389, -5.984), 'seville-city');
+  assert.equal(city(37.1773, -3.5986), null);              // 그라나다
+});
