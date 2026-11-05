@@ -58,15 +58,44 @@ final class PlanReorderUITests: XCTestCase {
         capture(app, "reorder-edit-mode-after")
     }
 
+    /// 편집 모드 밖에서 줄을 길게 눌러 끈다. 한 번 통과가 우연이 아니도록 갔다가 되돌아온다.
+    /// ⚠️ 탭 표면(`PlanSpotTapSurface`)이 터치를 직접 받던 동안에는 이 끌기가 시작되지 않거나 들쭉날쭉했다.
     func testLongPressDragMovesSpotWithoutEditMode() {
         let app = launch()
-        let source = row(app, "가장소"), target = row(app, "다장소")
-        let from = source.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        let to = app.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: source.frame.midX, dy: target.frame.maxY - 4))
-        from.press(forDuration: 1.2, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.6)
-
+        longPressDrag(app, "가장소", below: "다장소")
         expectState(app, "order=나장소,다장소,가장소,라장소; saves=1")
+        longPressDrag(app, "라장소", below: "나장소")
+        expectState(app, "order=나장소,라장소,다장소,가장소; saves=2")
+        XCTAssertFalse(app.textFields["spotEditorName"].exists, "끌기는 편집기를 열지 않는다")
         capture(app, "reorder-long-press-after")
+    }
+
+    /// 탭 판정을 셀로 옮겨도 줄을 누르면 편집기가 열린다.
+    func testTapStillOpensTheEditor() {
+        let app = launch()
+        row(app, "나장소").tap()
+        let name = app.textFields["spotEditorName"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5), "줄을 누르면 장소 편집기가 열려야 한다")
+        XCTAssertEqual(name.value as? String, "나장소")
+    }
+
+    /// 짧게 옆으로 끌다 놓은 손은 탭이 아니다 — 편집기를 열지 않는다(탭 표면이 있는 이유).
+    func testShortSideDragDoesNotOpenTheEditor() {
+        let app = launch()
+        let target = row(app, "나장소")
+        let from = target.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
+        let to = target.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5)).withOffset(CGVector(dx: 40, dy: 0))
+        from.press(forDuration: 0.05, thenDragTo: to)
+        XCTAssertFalse(app.textFields["spotEditorName"].waitForExistence(timeout: 2))
+        expectState(app, "order=가장소,나장소,다장소,라장소; saves=0")
+    }
+
+    private func longPressDrag(_ app: XCUIApplication, _ name: String, below targetName: String) {
+        let source = row(app, name), target = row(app, targetName)
+        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let from = origin.withOffset(CGVector(dx: source.frame.midX, dy: source.frame.midY))
+        let to = origin.withOffset(CGVector(dx: source.frame.midX, dy: target.frame.minY + target.frame.height * 0.8))
+        from.press(forDuration: 1.2, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.6)
     }
 }

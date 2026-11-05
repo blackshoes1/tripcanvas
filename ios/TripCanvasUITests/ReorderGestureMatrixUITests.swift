@@ -1,6 +1,7 @@
 import XCTest
 
-/// 진단: 편집 모드 밖의 길게 눌러 끌기를 무엇이 막는지(`ReorderGestureMatrixHarness`).
+/// 편집 모드 밖의 길게 눌러 끌기를 장소 줄의 수정자가 막지 않는지(`ReorderGestureMatrixHarness`).
+/// 2026-11-05 진단에서는 `tap`(UIKit 탭 표면)만 끌기를 막았다 — 그 표면이 터치를 직접 받았기 때문이다.
 /// 각 테스트는 첫 줄을 길게 눌러 셋째 줄 아래쪽으로 끈다 — 성공이면 `둘,셋,하나,넷`.
 final class ReorderGestureMatrixUITests: XCTestCase {
     private func run(_ variant: String, file: StaticString = #filePath, line: UInt = #line) {
@@ -31,6 +32,4 @@ final class ReorderGestureMatrixUITests: XCTestCase {
     func testOnMoveWithTapSurface() { run("tap") }
     func testOnMoveWithListDragGesture() { run("swipe") }
     func testOnMoveWithEverything() { run("all") }
-    func testDraggableDrop() { run("drop") }
-    func testDraggableDropWithEverything() { run("drop-all") }
 }

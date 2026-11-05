@@ -135,7 +135,7 @@ struct SpotRow: View {
                     Label(text, systemImage: spot.admission.isBooked ? "checkmark.seal" : "ticket")
                         .font(.caption).foregroundStyle(spot.needsReservation ? Ink.warning : Ink.soft)
                 }
-                // ⚠️ 줄 안에 버튼을 두지 않는다 — 줄 전체를 탭 표면(`PlanSpotTapSurface`)이 덮어 눌리지 않는다.
+                // ⚠️ 줄 안에 버튼을 두지 않는다 — 줄 전체가 탭 판정(`PlanSpotTapSurface`) 영역이라 버튼을 누르면 편집기도 함께 열린다.
                 //    누르면 편집기·장소 정보의 '듣기'로, 길게 누르면 바로 열린다.
                 if hasStory {
                     Label("With J 이야기", systemImage: "headphones")
