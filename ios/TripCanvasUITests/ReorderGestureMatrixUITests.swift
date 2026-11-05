@@ -28,13 +28,10 @@ final class ReorderGestureMatrixUITests: XCTestCase {
     }
 
     func testPlainOnMove() { run("plain") }
-    func testOnMoveWithContextMenu() { run("menu") }
     func testOnMoveWithTapSurface() { run("tap") }
-    func testOnMoveWithListDragGesture() { run("swipe") }
     func testOnMoveWithEverything() { run("all") }
-    /// 진단: 2026-11-05 전 날짜 넘기기(드래그마다 상태를 쓴다)와 그것에 줄 수정자를 모두 얹은 것.
-    /// 막히면 그 방식이 원인이라는 증거다 — 결과를 로그에 남기고 실패로 세지 않는다.
-    func testOldStatefulDaySwipeWithEverythingDiagnostic() { run("oldswipe-all", diagnostic: true) }
+    // 2026-11-05 진단 기록: 컨텍스트 메뉴(menu)·목록 드래그 제스처(swipe)·옛 날짜 넘기기(oldswipe — 드래그마다
+    // 상태를 쓴다)는 각각 얹어도 끌기가 됐다. `all`이 앞의 둘을 함께 덮으므로 따로 두지 않는다(잡 50분 제한).
     /// 진단: 일정 목록에만 있는 것들을 줄 수정자 위에 하나씩 얹는다 — 어느 것이 끌기를 들쭉날쭉하게 하는지.
     func testInsetSectionsDiagnostic() { run("all-inset", diagnostic: true) }
     func testRefreshableDiagnostic() { run("all-refresh", diagnostic: true) }
