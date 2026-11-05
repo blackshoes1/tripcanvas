@@ -70,8 +70,10 @@ final class PlanReorderUITests: XCTestCase {
         let undo = app.buttons["되돌리기"]
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: undo)
         XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 10), .completed, "토스트가 사라져야 다음 줄을 누를 수 있다")
-        longPressDrag(app, "라장소", below: "나장소")
-        expectState(app, "order=나장소,라장소,다장소,가장소; saves=2")
+        // 두 번째도 아래로 끈다 — 위로 끌 때는 놓는 지점이 대상 줄의 어느 쪽이냐에 따라 그 줄 앞·뒤가 갈려
+        // (2026-11-05 CI — 끌기는 됐는데 '나장소' 앞으로 들어갔다) 테스트가 좌표를 시험하게 된다.
+        longPressDrag(app, "나장소", below: "가장소")
+        expectState(app, "order=다장소,가장소,나장소,라장소; saves=2")
         XCTAssertFalse(app.textFields["spotEditorName"].exists, "끌기는 편집기를 열지 않는다")
         capture(app, "reorder-long-press-after")
     }
