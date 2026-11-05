@@ -43,6 +43,8 @@ struct IOSReviewHarness: View {
                 TodayLiveReviewHarness()
             } else if arguments.contains("--review-followup") {
                 ReviewFollowupHarness()
+            } else if arguments.contains("--review-plan-reorder") {
+                PlanReorderReviewHarness()
             } else if arguments.contains("--review-refresh") {
                 RefreshReviewHarness()
             } else if arguments.contains("--review-staff") {
