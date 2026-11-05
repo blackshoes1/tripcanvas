@@ -1,0 +1,249 @@
+{
+  "id": "cordoba-city",
+  "kind": "CITY",
+  "name": "코르도바",
+  "localName": "Córdoba",
+  "city": "코르도바",
+  "lat": 37.8847,
+  "lng": -4.7792,
+  "radiusM": 12000,
+  "aliases": [
+    "코르도바",
+    "Córdoba",
+    "Cordoba",
+    "Córdoba, España"
+  ],
+  "placeIds": [],
+  "voice": {
+    "engine": "Gemini 3.8 Flash TTS",
+    "name": "Sulafat"
+  },
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "겹겹이 쌓인 시간, 코르도바",
+      "textFile": "cordoba/narration/city.txt",
+      "audio": "cordoba/city-core.mp3",
+      "audioText": "cc3d1fcf4ba5f7a1",
+      "sources": [
+        "KC01",
+        "KC02",
+        "KC03",
+        "KC04",
+        "KC05",
+        "KC06",
+        "KC07",
+        "KC08",
+        "KC09",
+        "KC10",
+        "KC11",
+        "KC12",
+        "KC13",
+        "KC14",
+        "KC15",
+        "KC16",
+        "KC17",
+        "KC18",
+        "KC19",
+        "KC20",
+        "KC21",
+        "KC22",
+        "KC23",
+        "KC24",
+        "KC25",
+        "KC26"
+      ]
+    }
+  ],
+  "sources": {
+    "KC01": {
+      "title": "위키백과(영어) — Guadalquivir",
+      "url": "https://en.wikipedia.org/wiki/Guadalquivir"
+    },
+    "KC02": {
+      "title": "위키백과(스페인어) — Corduba",
+      "url": "https://es.wikipedia.org/wiki/Corduba"
+    },
+    "KC03": {
+      "title": "위키백과(영어) — Córdoba, Spain",
+      "url": "https://en.wikipedia.org/wiki/C%C3%B3rdoba,_Spain"
+    },
+    "KC04": {
+      "title": "위키백과(스페인어) — Historia de Córdoba (España)",
+      "url": "https://es.wikipedia.org/wiki/Historia_de_C%C3%B3rdoba_(Espa%C3%B1a)"
+    },
+    "KC05": {
+      "title": "위키백과(영어) — Seneca the Younger",
+      "url": "https://en.wikipedia.org/wiki/Seneca_the_Younger"
+    },
+    "KC06": {
+      "title": "위키백과(스페인어) — Puerta de Almodóvar",
+      "url": "https://es.wikipedia.org/wiki/Puerta_de_Almod%C3%B3var"
+    },
+    "KC07": {
+      "title": "위키백과(영어) — Abd al-Rahman I",
+      "url": "https://en.wikipedia.org/wiki/Abd_al-Rahman_I"
+    },
+    "KC08": {
+      "title": "위키백과(스페인어) — Abderramán I",
+      "url": "https://es.wikipedia.org/wiki/Abderram%C3%A1n_I"
+    },
+    "KC09": {
+      "title": "케임브리지 대학 출판부·The Literature of al-Andalus' 중 'Madinat al-Zahra and the Umayyad palace",
+      "url": "https://www.cambridge.org/core/product/identifier/CBO9781139177870A007/type/BOOK_PART"
+    },
+    "KC10": {
+      "title": "하퍼스 매거진 스콧 호턴·Abd al-Rahman's Palm Tree",
+      "url": "https://harpers.org/2007/10/abd-al-rahmans-palm-tree/"
+    },
+    "KC11": {
+      "title": "위키백과(영어) — Abd al-Rahman III",
+      "url": "https://en.wikipedia.org/wiki/Abd_al-Rahman_III"
+    },
+    "KC12": {
+      "title": "위키백과(스페인어) — Abderramán III",
+      "url": "https://es.wikipedia.org/wiki/Abderram%C3%A1n_III"
+    },
+    "KC13": {
+      "title": "위키백과(영어) — Madinat al-Zahra",
+      "url": "https://en.wikipedia.org/wiki/Madinat_al-Zahra"
+    },
+    "KC14": {
+      "title": "위키백과(영어) — Hasdai ibn Shaprut",
+      "url": "https://en.wikipedia.org/wiki/Hasdai_ibn_Shaprut"
+    },
+    "KC15": {
+      "title": "위키백과(영어) — Averroes",
+      "url": "https://en.wikipedia.org/wiki/Averroes"
+    },
+    "KC16": {
+      "title": "위키백과(영어) — Maimonides",
+      "url": "https://en.wikipedia.org/wiki/Maimonides"
+    },
+    "KC17": {
+      "title": "위키백과(영어) — Martyrs of Córdoba",
+      "url": "https://en.wikipedia.org/wiki/Martyrs_of_C%C3%B3rdoba"
+    },
+    "KC18": {
+      "title": "위키백과(영어) — Dhimmi",
+      "url": "https://en.wikipedia.org/wiki/Dhimmi"
+    },
+    "KC19": {
+      "title": "위키백과(영어) — La Convivencia",
+      "url": "https://en.wikipedia.org/wiki/La_Convivencia"
+    },
+    "KC20": {
+      "title": "위키백과(스페인어) — Conquista de Córdoba",
+      "url": "https://es.wikipedia.org/wiki/Conquista_de_C%C3%B3rdoba"
+    },
+    "KC21": {
+      "title": "위키백과(영어) — Siege of Córdoba (1236)",
+      "url": "https://en.wikipedia.org/wiki/Siege_of_C%C3%B3rdoba_(1236)"
+    },
+    "KC22": {
+      "title": "위키백과(영어) — Mosque–Cathedral of Córdoba",
+      "url": "https://en.wikipedia.org/wiki/Mosque%E2%80%93Cathedral_of_C%C3%B3rdoba"
+    },
+    "KC23": {
+      "title": "위키백과(스페인어) — Judería de Córdoba",
+      "url": "https://es.wikipedia.org/wiki/Juder%C3%ADa_de_C%C3%B3rdoba"
+    },
+    "KC24": {
+      "title": "위키백과(스페인어) — Puente romano de Córdoba",
+      "url": "https://es.wikipedia.org/wiki/Puente_romano_de_C%C3%B3rdoba"
+    },
+    "KC25": {
+      "title": "위키백과(영어) — Roman bridge of Córdoba",
+      "url": "https://en.wikipedia.org/wiki/Roman_bridge_of_C%C3%B3rdoba"
+    },
+    "KC26": {
+      "title": "위키백과(스페인어) — Alcázar de los Reyes Cristianos",
+      "url": "https://es.wikipedia.org/wiki/Alc%C3%A1zar_de_los_Reyes_Cristianos"
+    }
+  },
+  "factCheckNote": "2026-11-05 독립 검증 — 주장 59개를 출처와 맞춰 보고 지적 9건을 모두 고쳤다. 여기에는 고친 곳만 적는다",
+  "factCheck": [
+    {
+      "claim": "지금의 코르도바는 기원전 2세기 로마가 세운 도시, 코르두바에서 자라났습니다. 그 전부터 근처 언덕에는 이베리아 사람들의 마을이 있었고, 코르두바라는 이름도 그 마을에서 물려받은 것으로 봅니다.",
+      "sources": [
+        "KC02",
+        "KC03"
+      ],
+      "status": "CONFIRMED",
+      "note": "원문 '코르도바는 로마가 세운 코르두바에서 시작합니다'는 과장(OVERSTATED). 로마 도시는 마르쿠스 클라우디우스 마르켈루스가 기원전 169/168년 또는 152/151년에 세웠지만, 그 전에 이베리아인 정착지가 있었고 로마 도시가 그 이름을 물려받았다는 것이 스페인어 위키백과의 설명이라 그대로 고쳐 넣었다."
+    },
+    {
+      "claim": "연대기에 따르면, 스무 살 왕자 압드 알라흐만은 유프라테스강에 뛰어들어 헤엄쳐 달아났습니다. 살려 주겠다는 말에 되돌아선 형제 야히아는 강가에서 목숨을 잃었습니다.",
+      "sources": [
+        "KC07",
+        "KC08"
+      ],
+      "status": "CONFIRMED",
+      "note": "원문의 '동생'은 나이 순서를 확인하지 못해(출처는 'brother'·'hermano'만) '형제 야히아'로 바꿨다. 살려 주겠다는 약속에 돌아갔다가 강가에서 죽었다는 대목은 17세기 알마카리 등 연대기의 서술이라 '연대기에 따르면'을 붙였다."
+    },
+    {
+      "claim": "북아프리카를 떠돌던 그는 756년 코르도바의 지배자, 압드 알라흐만 1세가 됩니다. 그리고 785년 무렵 대모스크, 지금의 메스키타를 짓기 시작합니다.",
+      "sources": [
+        "KC07",
+        "KC03"
+      ],
+      "status": "CONFIRMED",
+      "note": "사실은 맞다. 3구간은 '압드 알라흐만', 5구간은 '압드 알라흐만 1세'라 같은 사람이 두 이름으로 들려서 여기서 '압드 알라흐만 1세'를 한 번 밝혔다. 79자 문장은 둘로 나눴다."
+    },
+    {
+      "claim": "10세기 코르도바는 유럽에서 손꼽히게 큰 도시였습니다. 1000년 무렵의 인구는 학자에 따라 십만에서 백만까지 크게 엇갈립니다.",
+      "sources": [
+        "KC03"
+      ],
+      "status": "CONFIRMED",
+      "note": "영어 위키백과는 10만에서 100만의 추정 범위를 '1000년 무렵'의 것으로 적는다. 시점을 밝혔다."
+    },
+    {
+      "claim": "압드 알라흐만 3세의 어머니는 그리스도교도 포로 출신이었고, 할머니 역시 그리스도교 왕국 팜플로나의 왕녀였습니다. 팜플로나는 훗날의 나바라 왕국입니다.",
+      "sources": [
+        "KC11",
+        "KC12"
+      ],
+      "status": "CONFIRMED",
+      "note": "할머니 온네카 포르투녜스는 '팜플로나 왕' 포르툰 가르세스의 딸이다. 그때 나라 이름은 나바라가 아니라 팜플로나라 원문 '나바라 왕의 딸'을 고쳤다. 어머니 무스나는 '나바라 출신 포로'·'그리스도교도 후궁'이라 '포로 출신'으로 적었다."
+    },
+    {
+      "claim": "그의 고모인 나바라의 토다 여왕이 뚱뚱한 손자를 데려온 이야기는 유대인 거리에서 이어집니다.",
+      "sources": [
+        "KC11",
+        "KC14"
+      ],
+      "status": "CONFIRMED",
+      "note": "원문의 '친척인 나바라 여왕'을 구체화했다. 토다는 압드 알라흐만 3세 아버지의 배다른 누이(영어 위키백과는 '그의 고모')이고, 958년 손자 산초 1세를 데리고 코르도바에 왔다. 04 유대인 거리 원고의 '나바라의 토다 여왕'과 이름을 맞췄다."
+    },
+    {
+      "claim": "무슬림 주민은 목숨과 옮길 수 있는 재산만 지닌 채 떠났고, 대모스크는 곧바로 성모 마리아께 바친 성당이 됐습니다.",
+      "sources": [
+        "KC20",
+        "KC22"
+      ],
+      "status": "CONFIRMED",
+      "note": "원문의 '그날로'는 단정. 영어 위키백과는 6월 29일 첫 미사를, 스페인어 위키백과는 6월 29일 열쇠를 넘겨받고 30일에 다시 봉헌한 성당에서 장엄 미사를 드렸다고 적어 날짜가 엇갈린다. 그래서 '곧바로'로 고쳤다. 목숨과 동산만 갖고 떠난다는 항복 조건은 확인됐다."
+    },
+    {
+      "claim": "1391년 폭동으로 유대인 거리가 큰 피해를 입었고, 1492년 추방령으로 남은 유대인도 떠났습니다.",
+      "sources": [
+        "KC23"
+      ],
+      "status": "CONFIRMED",
+      "note": "원문 '1391년 폭동과 1492년 추방령으로 유대인도 떠났습니다'는 1391년의 일을 '떠남'으로 뭉뚱그렸다. 1391년에는 약탈과 살해, 강제 개종이 일어났고 떠난 것은 1492년 추방령 때라 둘을 나눠 적었다."
+    },
+    {
+      "claim": "그 북서쪽에는 그리스도교 시대에 정해진 유대인 거리가, 남서쪽 강가에는 카스티야 왕들이 옛 왕궁 자리에 지은 알카사르가 있습니다.",
+      "sources": [
+        "KC26",
+        "KC23",
+        "KC22"
+      ],
+      "status": "CONFIRMED",
+      "note": "위키백과 좌표로 보면 알카사르는 메스키타보다 남쪽이고 서쪽이라(북위 37.8772·서경 4.7819와 북위 37.8792·서경 4.7797) '서쪽'을 '남서쪽'으로 고쳤다. 유대인 거리는 1272년 알폰소 10세가 메스키타 북서쪽에 경계를 정했다."
+    }
+  ],
+  "reviewedAt": "2026-11-05"
+}

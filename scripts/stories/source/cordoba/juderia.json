@@ -1,0 +1,309 @@
+{
+  "id": "cordoba-juderia",
+  "kind": "PLACE",
+  "name": "유대인 거리",
+  "localName": "Judería de Córdoba",
+  "city": "코르도바",
+  "lat": 37.8805,
+  "lng": -4.7826,
+  "radiusM": 300,
+  "aliases": [
+    "코르도바 유대인 거리",
+    "유대인 지구",
+    "후데리아",
+    "코르도바 후데리아",
+    "Judería",
+    "Jewish Quarter",
+    "Jewish Quarter of Córdoba",
+    "코르도바 시나고그",
+    "시나고그",
+    "Sinagoga de Córdoba",
+    "Córdoba Synagogue",
+    "마이모니데스 동상",
+    "마이모니데스 상",
+    "Estatua de Maimónides",
+    "Plaza de Tiberiades",
+    "티베리아데스 광장",
+    "후디오스 거리",
+    "Calle Judíos",
+    "알모도바르 문",
+    "Puerta de Almodóvar",
+    "세네카 동상",
+    "카사 데 세파라드",
+    "Casa de Sefarad",
+    "꽃의 골목",
+    "Calleja de las Flores"
+  ],
+  "placeIds": [],
+  "voice": {
+    "engine": "Gemini 3.8 Flash TTS",
+    "name": "Sulafat"
+  },
+  "tracks": [
+    {
+      "id": "core",
+      "role": "CORE",
+      "title": "작은 성소의 거리, 후데리아",
+      "textFile": "cordoba/narration/juderia.txt",
+      "audio": "cordoba/juderia-core.mp3",
+      "audioText": "2f02d08c6a61fbb9",
+      "sources": [
+        "KJ01",
+        "KJ02",
+        "KJ03",
+        "KJ04",
+        "KJ05",
+        "KJ06",
+        "KJ07",
+        "KJ08",
+        "KJ09",
+        "KJ10",
+        "KJ11",
+        "KJ12",
+        "KJ13",
+        "KJ14",
+        "KJ15",
+        "KJ16",
+        "KJ17",
+        "KJ18",
+        "KJ19",
+        "KJ20",
+        "KJ21",
+        "KJ22",
+        "KJ23"
+      ]
+    }
+  ],
+  "sources": {
+    "KJ01": {
+      "title": "위키백과(스페인어) — 알모도바르 문",
+      "url": "https://es.wikipedia.org/wiki/Puerta_de_Almod%C3%B3var"
+    },
+    "KJ02": {
+      "title": "코르도바24·알모도바르 문",
+      "url": "https://www.cordoba24.info/english/html/almodovar_gate.html"
+    },
+    "KJ03": {
+      "title": "위키백과(영어) — 세네카",
+      "url": "https://en.wikipedia.org/wiki/Seneca_the_Younger"
+    },
+    "KJ04": {
+      "title": "위키백과(스페인어) — 코르도바 유대인 거리",
+      "url": "https://es.wikipedia.org/wiki/Juder%C3%ADa_de_C%C3%B3rdoba"
+    },
+    "KJ05": {
+      "title": "안달루시아 자치정부 문화유산·코르도바 시나고그",
+      "url": "https://www.juntadeandalucia.es/aaiicc/enclaves/enclave-monumental-sinagoga-de-cordoba"
+    },
+    "KJ06": {
+      "title": "위키백과(스페인어) — 코르도바 시나고그",
+      "url": "https://es.wikipedia.org/wiki/Sinagoga_de_C%C3%B3rdoba"
+    },
+    "KJ07": {
+      "title": "위키백과(영어) — 코르도바 시나고그",
+      "url": "https://en.wikipedia.org/wiki/C%C3%B3rdoba_Synagogue"
+    },
+    "KJ08": {
+      "title": "위키백과(영어) — 우트레라 시나고그",
+      "url": "https://en.wikipedia.org/wiki/Synagogue_of_Utrera"
+    },
+    "KJ09": {
+      "title": "위키백과(스페인어) — 성녀 키테리아",
+      "url": "https://es.wikipedia.org/wiki/Quiteria"
+    },
+    "KJ10": {
+      "title": "위키백과(스페인어) — 마이모니데스",
+      "url": "https://es.wikipedia.org/wiki/Maim%C3%B3nides"
+    },
+    "KJ11": {
+      "title": "위키백과(영어) — 마이모니데스",
+      "url": "https://en.wikipedia.org/wiki/Maimonides"
+    },
+    "KJ12": {
+      "title": "노매즈 트래블 가이드·마이모니데스 상",
+      "url": "https://www.nomads-travel-guide.com/places/maimonides-statue/"
+    },
+    "KJ13": {
+      "title": "GPSmyCity·마이모니데스 광장과 동상",
+      "url": "https://gpsmycity.com/attractions/maimonides-square-and-statue-60737.html"
+    },
+    "KJ14": {
+      "title": "위키백과(영어) — 하스다이 이븐 샤프루트",
+      "url": "https://en.wikipedia.org/wiki/Hasdai_ibn_Shaprut"
+    },
+    "KJ15": {
+      "title": "위키백과(스페인어) — 레온의 산초 1세",
+      "url": "https://es.wikipedia.org/wiki/Sancho_I_de_Le%C3%B3n"
+    },
+    "KJ16": {
+      "title": "엘제비어 『내분비·영양학』 논문·10세기 하스다이의 비만 치료",
+      "url": "https://www.elsevier.es/en-revista-endocrinologia-nutricion-english-edition--412-articulo-hasday-treatment-obesity-in-10th-S2173509316000222"
+    },
+    "KJ17": {
+      "title": "위키백과(스페인어) — 1391년 반유대 폭동",
+      "url": "https://es.wikipedia.org/wiki/Revuelta_antijud%C3%ADa_de_1391"
+    },
+    "KJ18": {
+      "title": "위키백과(스페인어) — 스페인 종교재판",
+      "url": "https://es.wikipedia.org/wiki/Inquisici%C3%B3n_espa%C3%B1ola"
+    },
+    "KJ19": {
+      "title": "위키백과(스페인어) — 그리스도교 군주의 알카사르",
+      "url": "https://es.wikipedia.org/wiki/Alc%C3%A1zar_de_los_Reyes_Cristianos"
+    },
+    "KJ20": {
+      "title": "위키백과(스페인어) — 카사 데 세파라드",
+      "url": "https://es.wikipedia.org/wiki/Casa_de_Sefarad_(C%C3%B3rdoba)"
+    },
+    "KJ21": {
+      "title": "주이시 프레스·유대인들도 열쇠를 간직해 왔다",
+      "url": "https://jewishpress.com/jews-have-also-been-holding-onto-their-keys/"
+    },
+    "KJ22": {
+      "title": "엘 데레초(스페인 법무부 발표 인용)",
+      "url": "https://elderecho.com/justicia-cierra-procedimiento-solicitud-nacionalidad-sefardies-mas-132-000-peticiones"
+    },
+    "KJ23": {
+      "title": "위키백과(스페인어) — 꽃의 골목",
+      "url": "https://es.wikipedia.org/wiki/Calleja_de_las_Flores_(C%C3%B3rdoba)"
+    }
+  },
+  "factCheckNote": "2026-11-05 독립 검증 — 주장 61개를 출처와 맞춰 보고 지적 15건을 모두 고쳤다. 여기에는 고친 곳만 적는다",
+  "factCheck": [
+    {
+      "claim": "중세 성벽의 문 가운데 지금까지 남은 것은 셋뿐인데, 이 문이 그중 가장 오래되고 가장 덜 고쳐진 문입니다.",
+      "sources": [
+        "KJ01"
+      ],
+      "status": "CONFIRMED",
+      "note": "새로 넣은 문장. 스페인어 위키백과: 중세 성벽 문 가운데 남은 셋(다리 문·세비야 문과 함께) 중 가장 오래되고 덜 고쳐진 문."
+    },
+    {
+      "claim": "예루살렘을 향한 동쪽 벽의 글귀는 이 건물을 '작은 성소'라 부르고, 예루살렘을 어서 다시 세워 달라고 빕니다.",
+      "sources": [
+        "KJ05",
+        "KJ07"
+      ],
+      "status": "CONFIRMED",
+      "note": "'벽의 글귀'를 안달루시아 자치정부 설명대로 '예루살렘을 향한 동쪽 벽'의 창건 글귀로 구체화했다. 글귀 내용('작은 성소'·예루살렘을 어서 다시 세워 달라)은 그대로 확인됨."
+    },
+    {
+      "claim": "기도실은 40제곱미터 안팎으로 작지만, 천장은 놀랄 만큼 높습니다.",
+      "sources": [
+        "KJ05",
+        "KJ06",
+        "KJ07"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '40제곱미터가 안 될 만큼'. 자치정부는 '40제곱미터 이하', 위키백과는 6.95×6.37미터(약 44제곱미터)로 출처마다 달라 '40제곱미터 안팎'으로 범위를 말하게 고쳤다."
+    },
+    {
+      "claim": "원래는 파랑과 빨강, 검정으로 칠해져 있었고, 글자는 파란 바탕에 붉은색이었습니다.",
+      "sources": [
+        "KJ05"
+      ],
+      "status": "CONFIRMED",
+      "note": "색 설명에 자치정부가 밝힌 '글자는 파란 바탕에 붉은색'을 덧붙였다. 네·여섯·여덟 꼭지 별 무늬와 시편 글귀도 같은 출처로 확인. '갈래'는 듣기에 어색해 '꼭지'로 바꿨다."
+    },
+    {
+      "claim": "이름은 광견병을 낫게 해 준다고 믿던 성녀 키테리아에게서 따왔습니다.",
+      "sources": [
+        "KJ09",
+        "KJ06"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '막아 준다고'. 성녀 키테리아에게 전통적으로 돌려진 것은 광견병을 고치는 기적이라 '낫게 해 준다고'로 고쳤다."
+    },
+    {
+      "claim": "1876년, 수리하던 신부가 제단 장식을 떼어 내다 그 뒤에 가려 있던 히브리어 글귀를 찾아냅니다.",
+      "sources": [
+        "KJ06"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '벽 속의 히브리어 글귀'. 글귀는 벽 속이 아니라 성녀 키테리아 제단 장식 뒤에 가려 있었으므로 고쳤다."
+    },
+    {
+      "claim": "중세 유대교의 가장 큰 학자 가운데 한 사람으로 꼽히는 마이모니데스입니다.",
+      "sources": [
+        "KJ11",
+        "KJ10"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '가장 큰 학자로 꼽히는'(단정). 출처는 '가장 영향력 있는 학자 가운데 한 사람'이라 '가운데 한 사람'으로 낮췄다."
+    },
+    {
+      "claim": "1148년 알모아데 왕조가 코르도바를 차지하고, 유대인과 그리스도인에게 개종과 망명, 죽음 가운데 하나를 고르게 했기 때문입니다.",
+      "sources": [
+        "KJ11",
+        "KJ10",
+        "KJ04"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '개종이냐 떠남이냐'. 출처는 개종·순교(죽음)·망명 셋을 말한다. 왕조 이름은 로마교 원고와 같게 스페인어 발음 '알모아데'로 맞췄고, '열 살을 조금 넘겨'는 출생 연도가 1135년 또는 1138년이라 '열 살 남짓에'로 다듬었다."
+    },
+    {
+      "claim": "그래도 그의 히브리어 이름 끝에는 '세파르디', 곧 스페인 사람이라는 말이 붙습니다.",
+      "sources": [
+        "KJ11",
+        "KJ10"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '스스로를 세파르디라고 불렀습니다'. 스페인어 위키백과는 이집트에서도 스스로를 세파르디라 불렀다고 하지만, 영어 위키백과는 그가 서명에서 '스페인 사람'을 대개 뺐다고 해 출처가 엇갈린다. 두 출처가 함께 받치는 '히브리어 이름에 붙는다'로 고쳤다."
+    },
+    {
+      "claim": "그해 기념행사 때 회당에서는, 1492년 이후 처음으로 드러내 놓고 유대교 기도를 올렸다고 합니다.",
+      "sources": [
+        "KJ07"
+      ],
+      "status": "CONFIRMED",
+      "note": "새로 넣은 문장. 1935년 탄생 800주년 행사 때 당국이 아는 가운데 443년 만에 공개 기도가 열렸다는 영어 위키백과 서술. 출처가 하나라 '~라고 합니다'로 썼다."
+    },
+    {
+      "claim": "958년, 너무 뚱뚱하다는 이유로 왕위에서 쫓겨난 레온의 왕 산초 1세가 할머니인 나바라의 토다 여왕과 코르도바에 옵니다.",
+      "sources": [
+        "KJ15",
+        "KJ14"
+      ],
+      "status": "CONFIRMED",
+      "note": "문장을 '뚱뚱하다는 이유로'로 다듬었다(귀족들이 지나친 비만을 이유로 폐위). 마지막 문장도 실제 군대가 나바라·칼리프 연합군이었으므로 '칼리프의 군대를 얻어'를 '칼리프의 군대와 함께'로 고쳤다."
+    },
+    {
+      "claim": "1482년에는 이 도시에도 종교재판소가 세워졌고, 얼마 뒤 강가의 알카사르가 그 본부가 됩니다.",
+      "sources": [
+        "KJ18",
+        "KJ19"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '1482년부터 강가의 알카사르에는 종교재판소가 자리를 잡았습니다'. 코르도바 재판소가 세워진 것은 1482년이지만, 알카사르에는 그때 가톨릭 공동왕이 머물렀고 재판소가 알카사르로 옮긴 것은 그라나다 정복 뒤다. 옮긴 해는 출처마다 1482~1499년으로 달라 '얼마 뒤'로 썼다."
+    },
+    {
+      "claim": "스페인에서 쫓겨난 유대인과 그 후손을 세파르디라고 부릅니다.",
+      "sources": [
+        "KJ11",
+        "KJ20"
+      ],
+      "status": "CONFIRMED",
+      "note": "원래 '추방된 이들의 후손을'. 세파르디는 이베리아 출신 유대인과 그 후손을 함께 이르는 말이라(마이모니데스도 세파르디다) 고쳤다. 라디노도 '옛 스페인어에서 온'을 '옛 스페인어를 바탕으로 한'으로 다듬었다."
+    },
+    {
+      "claim": "지금 회당보다 60여 년 앞선, 다른 건물 이야기입니다.",
+      "sources": [
+        "KJ07",
+        "KJ06"
+      ],
+      "status": "UNCONFIRMED",
+      "resolution": "OMITTED",
+      "note": "1250년 교황이 막으라고 한 회당이 지금 회당과 '다른 건물'이라는 것은 연도에서 미루어 본 것일 뿐 출처가 직접 말하지 않는다. 빼고 '지금 남은 회당은 그보다 60여 년 뒤에 완성됐습니다'로 바꿨다."
+    },
+    {
+      "claim": "그 무렵 회당은 교회 앞에서 겸손해 보이도록 크기를 제한받곤 했습니다.",
+      "sources": [
+        "KJ06",
+        "KJ07"
+      ],
+      "status": "CONFIRMED",
+      "note": "새로 넣은 문장. 회당 크기가 교회 앞에서의 겸손을 드러내도록 제한받았다는 위키백과 '건축 제한' 서술. 1250년 교황 지시와 이어 준다."
+    }
+  ],
+  "reviewedAt": "2026-11-05"
+}
