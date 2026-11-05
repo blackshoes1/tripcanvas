@@ -134,7 +134,9 @@ test('핸들 드래그는 놓은 높이에서 가장 가까운 단계로 스냅�
   const bar=await page.locator('#mobilePlanActions').evaluate(el=>el.getBoundingClientRect().height);
   await expect.poll(()=>sb.evaluate((el,h)=>Math.abs(el.getBoundingClientRect().height-(innerHeight*.6-h)),bar)).toBeLessThanOrEqual(1);
   const dragTo=async y=>{
-    const b=await page.locator('#sheetHandle').boundingBox();
+    // 손잡이는 시트를 다시 그릴 때마다 새로 만들어진다 — 찾은 뒤 재기 전에 다시 그려지면 boundingBox가 null이다(2026-10-31 CI에서 첫 드래그가 그랬다)
+    let b=null;
+    await expect.poll(async()=>(b=await page.locator('#sheetHandle').boundingBox())!==null).toBe(true);
     await page.mouse.move(b.x+b.width/2,b.y+b.height/2); await page.mouse.down();
     for(let i=1;i<=8;i++) await page.mouse.move(b.x+b.width/2,b.y+b.height/2+(y-(b.y+b.height/2))*i/8);
     await page.mouse.up(); await page.waitForTimeout(350);
