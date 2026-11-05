@@ -26,9 +26,10 @@ struct PlanSpotList: View {
     @State private var storyTarget: StoryTarget?
     /// 이야기 카탈로그를 읽는다. 여행 화면 밖(테스트·하네스)에서는 없다 — 그때는 이야기 표시가 없다.
     @Environment(AppEnvironment.self) private var env: AppEnvironment?
-    /// 종료 콜백까지 방향을 보존한다. GestureState만 쓰면 onEnded 전에 초기화될 수 있다.
-    @State private var daySwipeIntent = PlanDaySwipeIntent()
-    @GestureState private var isSwipingDay = false
+    /// 날짜 넘기기의 방향 판정. **상태가 아니다** — 세로로 끄는 동안 목록을 다시 그리지 않게(`PlanDaySwipeTracker`).
+    @State private var swipeTracker = PlanDaySwipeTracker()
+    /// 가로 의도로 잠겼는가. 화면이 알아야 하는 것은 이것뿐이고, 바뀔 때만 쓴다.
+    @State private var lockedHorizontal = false
     /// 전환 방향을 쓸지 말지. **상태가 아니라 환경 읽기다** — 부모와 값이 갈릴 일이 없다.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.editMode) private var editMode
@@ -193,12 +194,8 @@ struct PlanSpotList: View {
             .id(model.selectedDay)
             .transition(daySlide)
             // 가로 의도로 확정한 동안만 세로 이동을 멈춘다. 편집 모드의 재정렬은 그대로다.
-            .scrollDisabled(!isEditing && daySwipeIntent.axis == .horizontal)
+            .scrollDisabled(!isEditing && lockedHorizontal)
             .simultaneousGesture(daySwipe, including: isEditing ? .subviews : .all)
-            .onChange(of: isSwipingDay) { _, active in
-                // 시스템이 취소한 드래그도 방향 잠금을 남기지 않는다.
-                if !active { daySwipeIntent = PlanDaySwipeIntent() }
-            }
         } else {
             EmptyStateView(symbol: "calendar", title: "일자가 없어요", message: "웹에서 일자를 먼저 만들어 주세요.")
         }
@@ -240,14 +237,18 @@ struct PlanSpotList: View {
     /// 세로로 읽기 시작한 손은 나중에 비스듬해져도 날짜를 바꾸지 않는다.
     private var daySwipe: some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .global)
-            .updating($isSwipingDay) { _, active, _ in active = true }
             .onChanged { value in
                 guard !isEditing else { return }
-                daySwipeIntent.update(value.translation)
+                swipeTracker.update(start: value.startLocation, translation: value.translation)
+                // ⚠️ 바뀔 때만 쓴다 — 세로 드래그(스크롤·장소 끌기)는 상태를 한 번도 건드리지 않는다.
+                let horizontal = swipeTracker.intent.axis == .horizontal
+                if horizontal != lockedHorizontal { lockedHorizontal = horizontal }
             }
             .onEnded { value in
-                defer { daySwipeIntent = PlanDaySwipeIntent() }
-                guard let target = daySwipeIntent.destination(
+                let intent = swipeTracker.intent
+                swipeTracker.reset()
+                if lockedHorizontal { lockedHorizontal = false }
+                guard let target = intent.destination(
                     translation: value.translation, selectedDay: model.selectedDay,
                     dayCount: model.dayCount, isEditing: isEditing) else { return }
                 actions.selectDay(target, target > model.selectedDay)

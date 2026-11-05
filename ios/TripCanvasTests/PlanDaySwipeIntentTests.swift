@@ -45,4 +45,15 @@ final class PlanDaySwipeIntentTests: XCTestCase {
         intent.update(CGSize(width: 12, height: 12))
         XCTAssertEqual(intent.axis, .vertical)
     }
+
+    /// 시스템이 취소해 onEnded가 오지 않은 드래그의 판정이 다음 드래그로 넘어가지 않는다.
+    func testTrackerStartsOverWhenANewDragBegins() {
+        let tracker = PlanDaySwipeTracker()
+        tracker.update(start: CGPoint(x: 100, y: 300), translation: CGSize(width: -40, height: 2))
+        XCTAssertEqual(tracker.intent.axis, .horizontal)
+        tracker.update(start: CGPoint(x: 120, y: 500), translation: CGSize(width: 1, height: 30))
+        XCTAssertEqual(tracker.intent.axis, .vertical, "새 시작점이면 가로 잠금을 물려받지 않는다")
+        tracker.reset()
+        XCTAssertEqual(tracker.intent.axis, .undecided)
+    }
 }

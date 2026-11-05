@@ -27,6 +27,8 @@ final class PlanReorderUITests: XCTestCase {
         let match = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", label), object: state)
         if XCTWaiter.wait(for: [match], timeout: timeout) != .completed {
             capture(app, "reorder-state-mismatch")
+            // 첨부는 CI에서 내려받기 어렵다 — 끌어 올린 줄·메뉴가 떠 있는지 로그에서 보이게 구조를 남긴다.
+            print("REORDER-HIERARCHY-BEGIN\n\(app.debugDescription)\nREORDER-HIERARCHY-END")
             XCTFail("기대: \(label) / 실제: \(state.label)", file: file, line: line)
         }
     }

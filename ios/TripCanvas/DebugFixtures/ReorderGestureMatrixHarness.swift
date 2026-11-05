@@ -11,7 +11,11 @@ struct ReorderGestureMatrixHarness: View {
 
     private var menu: Bool { variant.contains("menu") || variant.contains("all") }
     private var tap: Bool { variant.contains("tap") || variant.contains("all") }
-    private var swipe: Bool { variant.contains("swipe") || variant.contains("all") }
+    /// 2026-11-05 전 일정 목록의 날짜 넘기기 — 손이 움직일 때마다 `@State`·`@GestureState`를 써 목록을 다시 그렸다.
+    private var oldSwipe: Bool { variant.contains("oldswipe") }
+    private var swipe: Bool { !oldSwipe && (variant.contains("swipe") || variant.contains("all")) }
+    @State private var oldIntent = PlanDaySwipeIntent()
+    @GestureState private var oldSwiping = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,7 +25,14 @@ struct ReorderGestureMatrixHarness: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in row(item) }
                     .onMove { items.move(fromOffsets: $0, toOffset: $1) }
             }
+            .scrollDisabled(oldSwipe && oldIntent.axis == .horizontal)
             .simultaneousGesture(DragGesture(minimumDistance: 12), including: swipe ? .all : .subviews)
+            .simultaneousGesture(DragGesture(minimumDistance: 12, coordinateSpace: .global)
+                .updating($oldSwiping) { _, active, _ in active = true }
+                .onChanged { oldIntent.update($0.translation) }
+                .onEnded { _ in oldIntent = PlanDaySwipeIntent() },
+                including: oldSwipe ? .all : .subviews)
+            .onChange(of: oldSwiping) { _, active in if !active { oldIntent = PlanDaySwipeIntent() } }
         }
     }
 
