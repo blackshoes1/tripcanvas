@@ -26,9 +26,10 @@ struct PlanSpotList: View {
     @State private var storyTarget: StoryTarget?
     /// 이야기 카탈로그를 읽는다. 여행 화면 밖(테스트·하네스)에서는 없다 — 그때는 이야기 표시가 없다.
     @Environment(AppEnvironment.self) private var env: AppEnvironment?
-    /// 종료 콜백까지 방향을 보존한다. GestureState만 쓰면 onEnded 전에 초기화될 수 있다.
-    @State private var daySwipeIntent = PlanDaySwipeIntent()
-    @GestureState private var isSwipingDay = false
+    /// 날짜 넘기기의 방향 판정. **상태가 아니다** — 세로로 끄는 동안 목록을 다시 그리지 않게(`PlanDaySwipeTracker`).
+    @State private var swipeTracker = PlanDaySwipeTracker()
+    /// 가로 의도로 잠겼는가. 화면이 알아야 하는 것은 이것뿐이고, 바뀔 때만 쓴다.
+    @State private var lockedHorizontal = false
     /// 전환 방향을 쓸지 말지. **상태가 아니라 환경 읽기다** — 부모와 값이 갈릴 일이 없다.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.editMode) private var editMode
@@ -80,49 +81,41 @@ struct PlanSpotList: View {
                     }
                     ForEach(Array(day.spots.enumerated()), id: \.offset) { index, spot in
                         let story = env?.stories.catalog.story(for: StorySpot(spot))
-                        HStack {
-                            if choosingPlaces {
-                                Image(systemName: chosenPlaces.contains(index) ? "checkmark.circle.fill" : "circle")
+                        HStack(spacing: 0) {
+                            HStack {
+                                if choosingPlaces {
+                                    Image(systemName: chosenPlaces.contains(index) ? "checkmark.circle.fill" : "circle")
+                                }
+                                VStack(alignment: .leading, spacing: Space.xs) {
+                                  SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
+                                        split: splitInfo(at: index),
+                                        railTop: !isEditing && (index > 0 || rail.beforeSpots),
+                                        railBottom: !isEditing && (index < day.spots.count - 1 || rail.afterSpots),
+                                        hasStory: story != nil)
+                                  SpotChoiceSummaryView(spot: spot, summary: model.planSpot(at: index)?.choice)
+                                }
                             }
-                            VStack(alignment: .leading, spacing: Space.xs) {
-                              SpotRow(spot: spot, dayMode: day.mode, plan: model.planSpot(at: index),
-                                    split: splitInfo(at: index),
-                                    railTop: !isEditing && (index > 0 || rail.beforeSpots),
-                                    railBottom: !isEditing && (index < day.spots.count - 1 || rail.afterSpots),
-                                    hasStory: story != nil)
-                              SpotChoiceSummaryView(spot: spot, summary: model.planSpot(at: index)?.choice)
+                                // 12pt 이상 움직인 터치는 탭을 취소한다. 짧게 끌다 놓아도 편집을 열지 않는다.
+                                .overlay(PlanSpotTapSurface { actions.editSpot(index, spot) })
+                                .accessibilityElement(children: .combine)
+                                .accessibilityAddTraits(.isButton)
+                                .accessibilityAction { actions.editSpot(index, spot) }
+                                .accessibilityActions {
+                                    if let story {
+                                        Button("With J 이야기 듣기") { storyTarget = StoryTarget(id: story.id) }
+                                    }
+                                }
+                            // ⚠️ 줄의 할 일은 **⋯ 하나**다 — 컨텍스트 메뉴(길게 누르기)를 두지 않는다.
+                            //    길게 누르기는 순서 바꾸기(List의 끌기)가 쓴다. 둘이 같은 손짓을 다투면 메뉴가 이길 때마다
+                            //    끌기가 시작되지 않았다(2026-11-05 CI — 메뉴를 얹은 목록만 실행마다 갈렸다).
+                            //    ⋯는 탭 판정 영역(위 overlay) 밖에 둔다 — 안에 두면 누를 때 편집기도 함께 열린다.
+                            if !isEditing && !choosingPlaces {
+                                spotMenu(index: index, spot: spot, story: story)
                             }
                         }
                             .listRowBackground(Ink.raised)
                             .listRowSeparator(.hidden)
                             .listRowInsets(PlanRail.railRowInsets)
-                            // 12pt 이상 움직인 터치는 탭을 취소한다. 짧게 끌다 놓아도 편집을 열지 않는다.
-                            .overlay(PlanSpotTapSurface { actions.editSpot(index, spot) })
-                            .accessibilityElement(children: .combine)
-                            .accessibilityAddTraits(.isButton)
-                            .accessibilityAction { actions.editSpot(index, spot) }
-                            .accessibilityActions {
-                                if let story {
-                                    Button("With J 이야기 듣기") { storyTarget = StoryTarget(id: story.id) }
-                                }
-                            }
-                            .contextMenu {
-                                // 듣기는 편집이 아니다 — 보기 권한에도 연다(웹과 같다).
-                                if let story {
-                                    Button("With J 이야기 듣기", systemImage: "headphones") {
-                                        storyTarget = StoryTarget(id: story.id)
-                                    }
-                                }
-                                if spot.choice?.state != .pending {
-                                    Button("직원에게 이 화면 보여주기", systemImage: "person.crop.rectangle") {
-                                        staffCard = StaffShowCard(spot: spot, booking: spot.bookingId.flatMap { model.document?.booking(id: $0) })
-                                    }
-                                }
-                                if model.canEdit {
-                                    Button("여기에 추가 · 이 장소 뒤") { actions.addAfter(index) }
-                                    Button("날짜·위치 옮기기") { actions.moveSpots([index]) }
-                                }
-                            }
                     }
                     // ⚠️ **편집 모드에서만** 지운다. `onDelete`는 편집 모드의 ⊖와 **스와이프 삭제를
                     //    둘 다** 켜는데, 가로 스와이프는 날짜 이동이 쓴다 — 행 위에서는 삭제가 먼저 먹어
@@ -193,14 +186,41 @@ struct PlanSpotList: View {
             .id(model.selectedDay)
             .transition(daySlide)
             // 가로 의도로 확정한 동안만 세로 이동을 멈춘다. 편집 모드의 재정렬은 그대로다.
-            .scrollDisabled(!isEditing && daySwipeIntent.axis == .horizontal)
+            .scrollDisabled(!isEditing && lockedHorizontal)
             .simultaneousGesture(daySwipe, including: isEditing ? .subviews : .all)
-            .onChange(of: isSwipingDay) { _, active in
-                // 시스템이 취소한 드래그도 방향 잠금을 남기지 않는다.
-                if !active { daySwipeIntent = PlanDaySwipeIntent() }
-            }
         } else {
             EmptyStateView(symbol: "calendar", title: "일자가 없어요", message: "웹에서 일자를 먼저 만들어 주세요.")
+        }
+    }
+
+    /// 장소 줄 끝의 ⋯ — 이야기 듣기 · 직원에게 보여주기 · 이 장소 뒤에 추가 · 날짜·위치 옮기기.
+    /// 듣기·보여주기는 편집이 아니다 — 보기 권한에도 연다(웹과 같다).
+    @ViewBuilder
+    private func spotMenu(index: Int, spot: TripSpot, story: StoryPlace?) -> some View {
+        let showsStaff = spot.choice?.state != .pending
+        if story != nil || showsStaff || model.canEdit {
+            Menu {
+                if let story {
+                    Button("With J 이야기 듣기", systemImage: "headphones") {
+                        storyTarget = StoryTarget(id: story.id)
+                    }
+                }
+                if showsStaff {
+                    Button("직원에게 이 화면 보여주기", systemImage: "person.crop.rectangle") {
+                        staffCard = StaffShowCard(spot: spot, booking: spot.bookingId.flatMap { model.document?.booking(id: $0) })
+                    }
+                }
+                if model.canEdit {
+                    Button("여기에 추가 · 이 장소 뒤") { actions.addAfter(index) }
+                    Button("날짜·위치 옮기기") { actions.moveSpots([index]) }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .foregroundStyle(Ink.soft)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("\(spot.name.isEmpty ? "장소" : spot.name) 더보기")
         }
     }
 
@@ -240,14 +260,18 @@ struct PlanSpotList: View {
     /// 세로로 읽기 시작한 손은 나중에 비스듬해져도 날짜를 바꾸지 않는다.
     private var daySwipe: some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .global)
-            .updating($isSwipingDay) { _, active, _ in active = true }
             .onChanged { value in
                 guard !isEditing else { return }
-                daySwipeIntent.update(value.translation)
+                swipeTracker.update(start: value.startLocation, translation: value.translation)
+                // ⚠️ 바뀔 때만 쓴다 — 세로 드래그(스크롤·장소 끌기)는 상태를 한 번도 건드리지 않는다.
+                let horizontal = swipeTracker.intent.axis == .horizontal
+                if horizontal != lockedHorizontal { lockedHorizontal = horizontal }
             }
             .onEnded { value in
-                defer { daySwipeIntent = PlanDaySwipeIntent() }
-                guard let target = daySwipeIntent.destination(
+                let intent = swipeTracker.intent
+                swipeTracker.reset()
+                if lockedHorizontal { lockedHorizontal = false }
+                guard let target = intent.destination(
                     translation: value.translation, selectedDay: model.selectedDay,
                     dayCount: model.dayCount, isEditing: isEditing) else { return }
                 actions.selectDay(target, target > model.selectedDay)

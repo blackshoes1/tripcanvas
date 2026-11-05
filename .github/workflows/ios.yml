@@ -26,7 +26,9 @@ jobs:
   build:
     name: Build + unit tests (simulator)
     runs-on: macos-latest
-    timeout-minutes: 50
+    # 2026-11-05: 테스트 37.8분 + Release 6.4분으로 이미 45분(제한의 90%)이었고, 일정 끌기 UI 테스트(약 3.5분)가
+    # 더해지자 느린 러너에서 테스트 64개가 모두 통과한 뒤 Release 빌드 중에 50분에 잘렸다. 여유를 둔다.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
