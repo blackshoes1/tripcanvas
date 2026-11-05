@@ -34,6 +34,10 @@ final class ReorderGestureMatrixUITests: XCTestCase {
     func testOnMoveWithEverything() { run("all") }
     /// 진단: 2026-11-05 전 날짜 넘기기(드래그마다 상태를 쓴다)와 그것에 줄 수정자를 모두 얹은 것.
     /// 막히면 그 방식이 원인이라는 증거다 — 결과를 로그에 남기고 실패로 세지 않는다.
-    func testOldStatefulDaySwipeDiagnostic() { run("oldswipe", diagnostic: true) }
     func testOldStatefulDaySwipeWithEverythingDiagnostic() { run("oldswipe-all", diagnostic: true) }
+    /// 진단: 일정 목록에만 있는 것들을 줄 수정자 위에 하나씩 얹는다 — 어느 것이 끌기를 들쭉날쭉하게 하는지.
+    func testInsetSectionsDiagnostic() { run("all-inset", diagnostic: true) }
+    func testRefreshableDiagnostic() { run("all-refresh", diagnostic: true) }
+    func testSpinnerDiagnostic() { run("all-spinner", diagnostic: true) }
+    func testProductLikeDiagnostic() { run("all-product", diagnostic: true) }
 }

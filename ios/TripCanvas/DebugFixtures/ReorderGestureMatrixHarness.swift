@@ -14,6 +14,11 @@ struct ReorderGestureMatrixHarness: View {
     /// 2026-11-05 전 일정 목록의 날짜 넘기기 — 손이 움직일 때마다 `@State`·`@GestureState`를 써 목록을 다시 그렸다.
     private var oldSwipe: Bool { variant.contains("oldswipe") }
     private var swipe: Bool { !oldSwipe && (variant.contains("swipe") || variant.contains("all")) }
+    /// 일정 목록에만 있는 것들 — insetGrouped·섹션·같은 섹션의 머리 줄 / 당겨서 새로고침 / 계속 도는 '계산 중'.
+    private var product: Bool { variant.contains("product") }
+    private var inset: Bool { product || variant.contains("inset") }
+    private var refresh: Bool { product || variant.contains("refresh") }
+    private var spinner: Bool { product || variant.contains("spinner") }
     @State private var oldIntent = PlanDaySwipeIntent()
     @GestureState private var oldSwiping = false
 
@@ -22,9 +27,19 @@ struct ReorderGestureMatrixHarness: View {
             Text("matrix=\(variant); order=\(items.joined(separator: ","))")
                 .font(.caption).accessibilityIdentifier("matrixState")
             List {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in row(item) }
-                    .onMove { items.move(fromOffsets: $0, toOffset: $1) }
+                if spinner {
+                    Section { ProgressView("이동·도착 시각을 계산하는 중").font(.caption) }
+                }
+                Section {
+                    if inset {
+                        Text("방문 일정").font(.headline).moveDisabled(true).deleteDisabled(true)
+                    }
+                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in row(item) }
+                        .onMove { items.move(fromOffsets: $0, toOffset: $1) }
+                }
             }
+            .matrixListStyle(inset ? .insetGrouped : .plain)
+            .modifier(MatrixRefresh(on: refresh))
             .scrollDisabled(oldSwipe && oldIntent.axis == .horizontal)
             .simultaneousGesture(DragGesture(minimumDistance: 12), including: swipe ? .all : .subviews)
             .simultaneousGesture(DragGesture(minimumDistance: 12, coordinateSpace: .global)
@@ -49,6 +64,23 @@ struct ReorderGestureMatrixHarness: View {
         } else {
             tapped
         }
+    }
+}
+private enum AnyListStyle { case insetGrouped, plain }
+
+private extension View {
+    @ViewBuilder func matrixListStyle(_ style: AnyListStyle) -> some View {
+        switch style {
+        case .insetGrouped: listStyle(InsetGroupedListStyle())
+        case .plain: listStyle(PlainListStyle())
+        }
+    }
+}
+
+private struct MatrixRefresh: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        if on { content.refreshable {} } else { content }
     }
 }
 #endif
