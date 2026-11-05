@@ -64,6 +64,10 @@ final class PlanReorderUITests: XCTestCase {
         let app = launch()
         longPressDrag(app, "가장소", below: "다장소")
         expectState(app, "order=나장소,다장소,가장소,라장소; saves=1")
+        // 저장 뒤 아래쪽에 '순서를 바꿨어요 · 되돌리기' 토스트가 5초 뜬다 — 그 밑의 줄을 누르면 토스트가 받는다.
+        let undo = app.buttons["되돌리기"]
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: undo)
+        XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 10), .completed, "토스트가 사라져야 다음 줄을 누를 수 있다")
         longPressDrag(app, "라장소", below: "나장소")
         expectState(app, "order=나장소,라장소,다장소,가장소; saves=2")
         XCTAssertFalse(app.textFields["spotEditorName"].exists, "끌기는 편집기를 열지 않는다")
