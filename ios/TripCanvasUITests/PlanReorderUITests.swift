@@ -85,6 +85,17 @@ final class PlanReorderUITests: XCTestCase {
         XCTAssertEqual(name.value as? String, "나장소")
     }
 
+    /// 줄의 할 일은 줄 끝 ⋯에 있다(컨텍스트 메뉴는 길게 누르기를 끌기와 다퉈 없앴다). ⋯는 편집기를 함께 열지 않는다.
+    func testRowMenuOffersActionsWithoutOpeningTheEditor() {
+        let app = launch()
+        let more = app.buttons["나장소 더보기"]
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        more.tap()
+        XCTAssertTrue(app.buttons["날짜·위치 옮기기"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["여기에 추가 · 이 장소 뒤"].exists)
+        XCTAssertFalse(app.textFields["spotEditorName"].exists, "⋯는 탭 판정 영역 밖이다")
+    }
+
     /// 짧게 옆으로 끌다 놓은 손은 탭이 아니다 — 편집기를 열지 않는다(탭 표면이 있는 이유).
     func testShortSideDragDoesNotOpenTheEditor() {
         let app = launch()

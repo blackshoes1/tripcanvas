@@ -1,7 +1,6 @@
 import XCTest
 
-/// 편집 모드 밖의 길게 눌러 끌기를 장소 줄의 수정자가 막지 않는지(`ReorderGestureMatrixHarness`).
-/// 2026-11-05 진단에서는 `tap`(UIKit 탭 표면)만 끌기를 막았다 — 그 표면이 터치를 직접 받았기 때문이다.
+/// 편집 모드 밖의 길게 눌러 끌기를 장소 줄의 수정자가 막지 않는지(`ReorderGestureMatrixHarness` — 진단 기록은 거기).
 /// 각 테스트는 첫 줄을 길게 눌러 셋째 줄 아래쪽으로 끈다 — 성공이면 `둘,셋,하나,넷`.
 final class ReorderGestureMatrixUITests: XCTestCase {
     private func run(_ variant: String, diagnostic: Bool = false, file: StaticString = #filePath, line: UInt = #line) {
@@ -29,12 +28,8 @@ final class ReorderGestureMatrixUITests: XCTestCase {
 
     func testPlainOnMove() { run("plain") }
     func testOnMoveWithTapSurface() { run("tap") }
-    func testOnMoveWithEverything() { run("all") }
-    // 2026-11-05 진단 기록: 컨텍스트 메뉴(menu)·목록 드래그 제스처(swipe)·옛 날짜 넘기기(oldswipe — 드래그마다
-    // 상태를 쓴다)는 각각 얹어도 끌기가 됐다. `all`이 앞의 둘을 함께 덮으므로 따로 두지 않는다(잡 50분 제한).
-    /// 진단: 일정 목록에만 있는 것들을 줄 수정자 위에 하나씩 얹는다 — 어느 것이 끌기를 들쭉날쭉하게 하는지.
-    func testInsetSectionsDiagnostic() { run("all-inset", diagnostic: true) }
-    func testRefreshableDiagnostic() { run("all-refresh", diagnostic: true) }
-    func testSpinnerDiagnostic() { run("all-spinner", diagnostic: true) }
-    func testProductLikeDiagnostic() { run("all-product", diagnostic: true) }
+    /// 일정 줄과 같은 모양(탭 표면 · 줄 끝 ⋯ · 날짜 넘기기 제스처).
+    func testOnMoveWithPlanRowShape() { run("all") }
+    /// 진단: 컨텍스트 메뉴는 길게 누르기를 끌기와 다퉈 실행마다 갈린다 — 일정 줄에 두지 않는 이유. 실패로 세지 않는다.
+    func testContextMenuCompetesWithDragDiagnostic() { run("menu", diagnostic: true) }
 }

@@ -1,53 +1,32 @@
 #if DEBUG
 import SwiftUI
 
-/// 편집 모드 밖의 '길게 눌러 끌기'를 무엇이 막는지 가르는 진단 화면.
-/// 일정 목록의 장소 줄이 쓰는 수정자(컨텍스트 메뉴 · UIKit 탭 표면 · 목록의 날짜 넘기기 제스처)를 하나씩 더한다.
-/// `--review-reorder-variant=<이름>`으로 고른다. 2026-11-05에 `tap`(탭 표면 하나)만 끌기가 막혀 원인을 갈랐다 —
-/// 같은 사고가 되살아나지 않게 남겨 둔다.
+/// 편집 모드 밖의 '길게 눌러 끌기'를 장소 줄의 수정자가 막지 않는지 보는 화면.
+/// `--review-reorder-variant=<이름>`으로 고른다.
+///
+/// 2026-11-05 진단 기록(CI 다섯 번):
+/// - `tap` — UIKit 탭 표면이 터치를 직접 받던 동안 끌기가 **매번** 막혔다. 터치를 받지 않게 고친 뒤로 매번 된다.
+/// - `menu` — 줄에 컨텍스트 메뉴를 붙이면 끌기가 **실행마다 갈렸다**(길게 누르기를 메뉴와 다툰다). 그래서 일정 줄은
+///   컨텍스트 메뉴 대신 줄 끝 ⋯를 쓴다. 이 변형은 그 사실을 남기는 진단이라 실패로 세지 않는다.
+/// - 목록의 날짜 넘기기 제스처·insetGrouped·섹션 머리 줄·당겨서 새로고침·계속 도는 '계산 중'은 원인이 아니었다.
 struct ReorderGestureMatrixHarness: View {
     let variant: String
     @State private var items = ["하나", "둘", "셋", "넷"]
 
-    private var menu: Bool { variant.contains("menu") || variant.contains("all") }
-    private var tap: Bool { variant.contains("tap") || variant.contains("all") }
-    /// 2026-11-05 전 일정 목록의 날짜 넘기기 — 손이 움직일 때마다 `@State`·`@GestureState`를 써 목록을 다시 그렸다.
-    private var oldSwipe: Bool { variant.contains("oldswipe") }
-    private var swipe: Bool { !oldSwipe && (variant.contains("swipe") || variant.contains("all")) }
-    /// 일정 목록에만 있는 것들 — insetGrouped·섹션·같은 섹션의 머리 줄 / 당겨서 새로고침 / 계속 도는 '계산 중'.
-    private var product: Bool { variant.contains("product") }
-    private var inset: Bool { product || variant.contains("inset") }
-    private var refresh: Bool { product || variant.contains("refresh") }
-    private var spinner: Bool { product || variant.contains("spinner") }
-    @State private var oldIntent = PlanDaySwipeIntent()
-    @GestureState private var oldSwiping = false
+    /// 일정 줄과 같은 모양 — 탭 표면 · 줄 끝 ⋯ · 목록의 날짜 넘기기 제스처.
+    private var all: Bool { variant == "all" }
+    private var tap: Bool { all || variant == "tap" }
+    private var menu: Bool { variant == "menu" }
 
     var body: some View {
         VStack(spacing: 0) {
             Text("matrix=\(variant); order=\(items.joined(separator: ","))")
                 .font(.caption).accessibilityIdentifier("matrixState")
             List {
-                if spinner {
-                    Section { ProgressView("이동·도착 시각을 계산하는 중").font(.caption) }
-                }
-                Section {
-                    if inset {
-                        Text("방문 일정").font(.headline).moveDisabled(true).deleteDisabled(true)
-                    }
-                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in row(item) }
-                        .onMove { items.move(fromOffsets: $0, toOffset: $1) }
-                }
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in row(item) }
+                    .onMove { items.move(fromOffsets: $0, toOffset: $1) }
             }
-            .matrixListStyle(inset ? .insetGrouped : .plain)
-            .modifier(MatrixRefresh(on: refresh))
-            .scrollDisabled(oldSwipe && oldIntent.axis == .horizontal)
-            .simultaneousGesture(DragGesture(minimumDistance: 12), including: swipe ? .all : .subviews)
-            .simultaneousGesture(DragGesture(minimumDistance: 12, coordinateSpace: .global)
-                .updating($oldSwiping) { _, active, _ in active = true }
-                .onChanged { oldIntent.update($0.translation) }
-                .onEnded { _ in oldIntent = PlanDaySwipeIntent() },
-                including: oldSwipe ? .all : .subviews)
-            .onChange(of: oldSwiping) { _, active in if !active { oldIntent = PlanDaySwipeIntent() } }
+            .simultaneousGesture(DragGesture(minimumDistance: 12), including: all ? .all : .subviews)
         }
     }
 
@@ -61,26 +40,16 @@ struct ReorderGestureMatrixHarness: View {
         }
         if menu {
             tapped.contextMenu { Button("메뉴 항목") {} }
+        } else if all {
+            HStack(spacing: 0) {
+                tapped
+                Menu { Button("메뉴 항목") {} } label: {
+                    Image(systemName: "ellipsis").frame(width: 44, height: 44)
+                }
+            }
         } else {
             tapped
         }
-    }
-}
-private enum AnyListStyle { case insetGrouped, plain }
-
-private extension View {
-    @ViewBuilder func matrixListStyle(_ style: AnyListStyle) -> some View {
-        switch style {
-        case .insetGrouped: listStyle(InsetGroupedListStyle())
-        case .plain: listStyle(PlainListStyle())
-        }
-    }
-}
-
-private struct MatrixRefresh: ViewModifier {
-    let on: Bool
-    func body(content: Content) -> some View {
-        if on { content.refreshable {} } else { content }
     }
 }
 #endif
